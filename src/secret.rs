@@ -10,12 +10,12 @@ use std::rc::Rc;
 pub enum BV<'ctx> {
     Public(z3::ast::BV<'ctx>),
     /// `Secret` values are opaque because we don't care about their actual value, only how they are used.
-    /// The `u32` is the size (in bits) of the tainted value.
+    /// The `u32` is the size (in bits) of the secret value.
     Secret(u32),
 }
 
 impl<'ctx> BV<'ctx> {
-    pub fn is_tainted(&self) -> bool {
+    pub fn is_secret(&self) -> bool {
         match self {
             BV::Public(_) => false,
             BV::Secret(_) => true,
@@ -157,7 +157,7 @@ pub enum Bool<'ctx> {
 }
 
 impl<'ctx> Bool<'ctx> {
-    pub fn is_tainted(&self) -> bool {
+    pub fn is_secret(&self) -> bool {
         match self {
             Bool::Public(_) => false,
             Bool::Secret => true,
@@ -370,7 +370,7 @@ impl<'ctx> haybale::backend::Solver<'ctx> for Solver<'ctx> {
     fn check_with_extra_constraints<'a>(&'a mut self, constraints: impl Iterator<Item = &'a Self::Constraint>) -> bool {
         self.haybale_solver.check_with_extra_constraints(
             constraints
-                .filter(|c| !c.is_tainted())
+                .filter(|c| !c.is_secret())
                 .map(Bool::as_public),
         )
     }
