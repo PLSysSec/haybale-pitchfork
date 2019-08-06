@@ -1,7 +1,7 @@
-//! The `BV`, `Bool`, `Array`, `Solver`, and `Backend` in this module are
+//! The `BV`, `Bool`, `Memory`, `Solver`, and `Backend` in this module are
 //! intended to be used qualified whenever there is a chance of confusing
-//! them with `haybale::backend::{BV, Bool, Array, Solver, Backend}`,
-//! `haybale::solver::Solver`, or `z3::ast::{BV, Bool, Array}`.
+//! them with `haybale::backend::{BV, Bool, Memory, Solver, Backend}`,
+//! `haybale::solver::Solver`, `haybale::memory::Memory`, or `z3::ast::{BV, Bool}`.
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -278,56 +278,66 @@ impl Default for State {
 }
 
 #[derive(PartialEq, Eq, Clone, Debug)]
-pub struct Array<'ctx> {
-    array: z3::ast::Array<'ctx>,
-    indexbits: u32,
-    valuebits: u32,
+pub struct Memory<'ctx> {
+    ctx: &'ctx z3::Context,
+    /// This memory holds the actual data
+    mem: haybale::memory::Memory<'ctx>,
+    /// This memory is a bitmap, with each bit indicating if the corresponding bit of `mem` is secret or not (1 for secret, 0 for public)
+    shadow_mem: haybale::memory::Memory<'ctx>,
     backend_state: Rc<RefCell<State>>,
 }
 
-impl<'ctx> haybale::backend::Array<'ctx> for Array<'ctx> {
+impl<'ctx> haybale::backend::Memory<'ctx> for Memory<'ctx> {
     type Index = BV<'ctx>;
     type Value = BV<'ctx>;
     type BackendState = State;
 
-    fn new(ctx: &'ctx z3::Context, backend_state: Rc<RefCell<Self::BackendState>>, name: impl Into<z3::Symbol>, indexbits: u32, valuebits: u32) -> Self {
+    fn new(ctx: &'ctx z3::Context, backend_state: Rc<RefCell<Self::BackendState>>) -> Self {
         Self {
-            array: haybale::backend::Array::new(ctx, Rc::new(RefCell::new(())), name, indexbits, valuebits),
-            indexbits,
-            valuebits,
+            ctx,
+            mem: haybale::backend::Memory::new(ctx, Rc::new(RefCell::new(()))),
+            shadow_mem: haybale::backend::Memory::new(ctx, Rc::new(RefCell::new(()))), // we assume haybale memories are zero-initialized
             backend_state,
         }
     }
-    fn select(&self, index: Self::Index) -> Self::Value {
+    fn read(&self, index: &Self::Index, bits: u32) -> Self::Value {
         match index {
-            BV::Public(index) => BV::Public(haybale::backend::Array::select(&self.array, index)),
-            BV::Secret(bits) => {
-                self.backend_state.borrow_mut().ct_violation_observed = true;  // `Secret` values influencing an address calculation is a ct violation
-                assert_eq!(bits, self.indexbits);
-                BV::Secret(self.valuebits)
+            BV::Public(index) => {
+                let shadow_cell = haybale::backend::Memory::read(&self.shadow_mem, index, bits);
+                let shadow_bits = shadow_cell.as_u64().expect("Shadow bits are non-constant");
+                if shadow_bits == 0 {
+                    // All bits being read are public
+                    BV::Public(haybale::backend::Memory::read(&self.mem, index, bits))
+                } else {
+                    // if any bits are secret, the resulting value is entirely secret
+                    BV::Secret(bits)
+                }
+            },
+            BV::Secret(_) => {
+                // `Secret` values influencing an address calculation is a ct violation
+                self.backend_state.borrow_mut().ct_violation_observed = true;
+                BV::Secret(bits)
             }
         }
     }
-    fn store(&self, index: Self::Index, value: Self::Value) -> Self {
-        match (index, value) {
-            (BV::Public(index), BV::Public(value)) => Self {
-                array: haybale::backend::Array::store(&self.array, index, value),
-                indexbits: self.indexbits,
-                valuebits: self.valuebits,
-                backend_state: self.backend_state.clone(),
+    fn write(&mut self, index: &Self::Index, value: Self::Value) {
+        match index {
+            BV::Public(index) => match value {
+                BV::Public(value) => {
+                    let all_zeroes = z3::ast::BV::from_u64(self.ctx, 0, value.get_size());
+                    haybale::backend::Memory::write(&mut self.shadow_mem, index, all_zeroes); // we are writing a public value to these bits
+                    haybale::backend::Memory::write(&mut self.mem, index, value);
+                },
+                BV::Secret(bits) => {
+                    let all_ones = z3::ast::BV::from_u64(self.ctx, 0, bits).bvnot();
+                    haybale::backend::Memory::write(&mut self.shadow_mem, index, all_ones); // we are writing a secret value to these bits
+                    // we don't write anything to self.mem, because the value of its secret bits doesn't matter
+                },
             },
-            _ => {
-                self.backend_state.borrow_mut().ct_violation_observed = true;  // `Secret` values influencing an address calculation is a ct violation
-                self.clone() // should be a cheap operation
+            BV::Secret(_) => {
+                // `Secret` values influencing an address calculation is a ct violation
+                self.backend_state.borrow_mut().ct_violation_observed = true;
             },
-        }
-    }
-    fn simplify(&self) -> Self {
-        Self {
-            array: haybale::backend::Array::simplify(&self.array),
-            indexbits: self.indexbits,
-            valuebits: self.valuebits,
-            backend_state: self.backend_state.clone(),
         }
     }
 }
@@ -402,7 +412,7 @@ pub struct Backend<'ctx> {
 impl<'ctx> haybale::backend::Backend<'ctx> for Backend<'ctx> {
     type BV = BV<'ctx>;
     type Bool = Bool<'ctx>;
-    type Array = Array<'ctx>;
+    type Memory = Memory<'ctx>;
     type Solver = Solver<'ctx>;
     type State = State;
 }
