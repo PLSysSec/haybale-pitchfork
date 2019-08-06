@@ -12,7 +12,7 @@ fn main() {
         .with_extension("bc");
     let llvm_mod = Module::from_bc_path(&filepath).unwrap_or_else(|e| panic!("Failed to parse module at path {}: {}", filepath.display(), e));
     for func in &llvm_mod.functions {
-        let ct = is_constant_time(func, &llvm_mod, 10);
-        println!("{:?} is{} constant-time", func.name, if ct {""} else {" not"});
+        let ct = is_constant_time_in_inputs(func, &llvm_mod, 10);
+        println!("{:?} is{} constant-time in its inputs", func.name, if ct {""} else {" not"});
     }
 }

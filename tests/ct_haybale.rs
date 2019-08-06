@@ -9,7 +9,7 @@ fn init_logging() {
     let _ = env_logger::builder().is_test(true).try_init();
 }
 
-/// Whether each of the functions in haybale's `basic.bc` are constant-time
+/// Whether each of the functions in haybale's `basic.bc` are constant-time in their inputs
 #[test]
 fn haybale_basic() {
     init_logging();
@@ -34,32 +34,32 @@ fn haybale_basic() {
     let mixed_bitwidths = module.get_func_by_name("mixed_bitwidths").expect("Failed to find function");
 
     // Most of the functions in basic.bc are constant-time
-    assert!(is_constant_time(&no_args_nozero, &module, 20));
-    assert!(is_constant_time(&no_args_zero, &module, 20));
-    assert!(is_constant_time(&one_arg, &module, 20));
-    assert!(is_constant_time(&two_args, &module, 20));
-    assert!(is_constant_time(&three_args, &module, 20));
-    assert!(is_constant_time(&four_args, &module, 20));
-    assert!(is_constant_time(&five_args, &module, 20));
-    assert!(is_constant_time(&binops, &module, 20));
+    assert!(is_constant_time_in_inputs(&no_args_nozero, &module, 20));
+    assert!(is_constant_time_in_inputs(&no_args_zero, &module, 20));
+    assert!(is_constant_time_in_inputs(&one_arg, &module, 20));
+    assert!(is_constant_time_in_inputs(&two_args, &module, 20));
+    assert!(is_constant_time_in_inputs(&three_args, &module, 20));
+    assert!(is_constant_time_in_inputs(&four_args, &module, 20));
+    assert!(is_constant_time_in_inputs(&five_args, &module, 20));
+    assert!(is_constant_time_in_inputs(&binops, &module, 20));
 
     // These functions branch on conditions influenced by their inputs, so they're not constant-time
-    assert!(!is_constant_time(&conditional_true, &module, 20));
-    assert!(!is_constant_time(&conditional_false, &module, 20));
-    assert!(!is_constant_time(&conditional_nozero, &module, 20));
+    assert!(!is_constant_time_in_inputs(&conditional_true, &module, 20));
+    assert!(!is_constant_time_in_inputs(&conditional_false, &module, 20));
+    assert!(!is_constant_time_in_inputs(&conditional_nozero, &module, 20));
 
     // LLVM actually compiles this function to be branch-free and therefore constant-time
-    assert!(is_constant_time(&conditional_with_and, &module, 20));
+    assert!(is_constant_time_in_inputs(&conditional_with_and, &module, 20));
 
     // These functions are also naturally constant-time
-    assert!(is_constant_time(&int8t, &module, 20));
-    assert!(is_constant_time(&int16t, &module, 20));
-    assert!(is_constant_time(&int32t, &module, 20));
-    assert!(is_constant_time(&int64t, &module, 20));
-    assert!(is_constant_time(&mixed_bitwidths, &module, 20));
+    assert!(is_constant_time_in_inputs(&int8t, &module, 20));
+    assert!(is_constant_time_in_inputs(&int16t, &module, 20));
+    assert!(is_constant_time_in_inputs(&int32t, &module, 20));
+    assert!(is_constant_time_in_inputs(&int64t, &module, 20));
+    assert!(is_constant_time_in_inputs(&mixed_bitwidths, &module, 20));
 }
 
-/// Whether each of the functions in haybale's `memory.bc` are constant-time
+/// Whether each of the functions in haybale's `memory.bc` are constant-time in their inputs
 #[test]
 fn haybale_memory() {
     init_logging();
@@ -72,13 +72,13 @@ fn haybale_memory() {
     let array = module.get_func_by_name("array").expect("Failed to find function");
     let pointer_arith = module.get_func_by_name("pointer_arith").expect("Failed to find function");
 
-    // local_ptr is the only function in this file that is constant-time
-    assert!(is_constant_time(&local_ptr, &module, 20));
+    // local_ptr is the only function in this file that is constant-time in its inputs
+    assert!(is_constant_time_in_inputs(&local_ptr, &module, 20));
 
-    // All other functions in the module perform memory accesses whose addresses depend on arguments
-    assert!(!is_constant_time(&load_and_store, &module, 20));
-    assert!(!is_constant_time(&overwrite, &module, 20));
-    assert!(!is_constant_time(&load_and_store_mult, &module, 20));
-    assert!(!is_constant_time(&array, &module, 20));
-    assert!(!is_constant_time(&pointer_arith, &module, 20));
+    // All other functions in the module perform memory accesses whose addresses depend on function arguments
+    assert!(!is_constant_time_in_inputs(&load_and_store, &module, 20));
+    assert!(!is_constant_time_in_inputs(&overwrite, &module, 20));
+    assert!(!is_constant_time_in_inputs(&load_and_store_mult, &module, 20));
+    assert!(!is_constant_time_in_inputs(&array, &module, 20));
+    assert!(!is_constant_time_in_inputs(&pointer_arith, &module, 20));
 }

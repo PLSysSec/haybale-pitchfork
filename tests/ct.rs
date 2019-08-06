@@ -1,0 +1,147 @@
+use llvm_ir::Module;
+use pitchfork::*;
+use std::path::Path;
+
+fn init_logging() {
+    // capture log messages with test harness
+    let _ = env_logger::builder().is_test(true).try_init();
+}
+
+fn get_module() -> Module {
+    Module::from_bc_path(&Path::new("tests/bcfiles/ct.bc"))
+        .expect("Failed to parse module")
+}
+
+#[test]
+fn ct_simple() {
+    init_logging();
+    let module = get_module();
+    let func = module.get_func_by_name("ct_simple").expect("Failed to find function");
+    assert!(is_constant_time_in_inputs(&func, &module, 20));
+}
+
+#[test]
+fn ct_simple2() {
+    init_logging();
+    let module = get_module();
+    let func = module.get_func_by_name("ct_simple2").expect("Failed to find function");
+    assert!(is_constant_time_in_inputs(&func, &module, 20));
+}
+
+#[test]
+fn notct_branch() {
+    init_logging();
+    let module = get_module();
+    let func = module.get_func_by_name("notct_branch").expect("Failed to find function");
+    assert!(!is_constant_time_in_inputs(&func, &module, 20));
+}
+
+#[test]
+fn notct_mem() {
+    init_logging();
+    let module = get_module();
+    let func = module.get_func_by_name("notct_mem").expect("Failed to find function");
+    assert!(!is_constant_time_in_inputs(&func, &module, 20));
+}
+
+#[test]
+fn notct_onepath() {
+    init_logging();
+    let module = get_module();
+    let func = module.get_func_by_name("notct_onepath").expect("Failed to find function");
+    assert!(!is_constant_time_in_inputs(&func, &module, 20));
+}
+
+#[test]
+fn ct_onearg() {
+    init_logging();
+    let module = get_module();
+    let func = module.get_func_by_name("ct_onearg").expect("Failed to find function");
+    let publicx_secrety = std::iter::once(AbstractData::PublicNonPointer { bits: 32, value: None })
+        .chain(std::iter::once(AbstractData::Secret { bits: 32 }));
+    let secretx_publicy = std::iter::once(AbstractData::Secret { bits: 32 })
+        .chain(std::iter::once(AbstractData::PublicNonPointer { bits: 32, value: None }));
+    assert!(is_constant_time(&func, &module, publicx_secrety, 20));
+    assert!(!is_constant_time(&func, &module, secretx_publicy, 20));
+}
+
+#[test]
+fn ct_secrets() {
+    init_logging();
+    let module = get_module();
+    let func = module.get_func_by_name("ct_secrets").expect("Failed to find function");
+    let arg = std::iter::once(AbstractData::PublicPointer(Box::new(AbstractData::Array {
+        element_type: Box::new(AbstractData::Secret { bits: 32 }),
+        num_elements: 100,
+    })));
+    assert!(is_constant_time(&func, &module, arg, 20));
+}
+
+#[test]
+fn notct_secrets() {
+    init_logging();
+    let module = get_module();
+    let func = module.get_func_by_name("notct_secrets").expect("Failed to find function");
+    let arg = std::iter::once(AbstractData::PublicPointer(Box::new(AbstractData::Array {
+        element_type: Box::new(AbstractData::Secret { bits: 32 }),
+        num_elements: 100,
+    })));
+    assert!(!is_constant_time(&func, &module, arg, 20));
+}
+
+fn struct_partially_secret() -> AbstractData {
+    AbstractData::PublicPointer(Box::new(AbstractData::Struct(vec![
+        AbstractData::PublicNonPointer { bits: 32, value: None },
+        AbstractData::Secret { bits: 32 },
+    ])))
+}
+
+#[test]
+fn ct_struct() {
+    init_logging();
+    let module = get_module();
+    let func = module.get_func_by_name("ct_struct").expect("Failed to find function");
+    let args = std::iter::once(AbstractData::PublicPointer(Box::new(AbstractData::Array {
+        element_type: Box::new(AbstractData::PublicNonPointer { bits: 32, value: None }),
+        num_elements: 100,
+    }))).chain(std::iter::once(AbstractData::PublicPointer(Box::new(struct_partially_secret()))));
+    assert!(is_constant_time(&func, &module, args, 20));
+}
+
+#[test]
+fn notct_struct() {
+    init_logging();
+    let module = get_module();
+    let func = module.get_func_by_name("notct_struct").expect("Failed to find function");
+    let args = std::iter::once(AbstractData::PublicPointer(Box::new(AbstractData::Array {
+        element_type: Box::new(AbstractData::PublicNonPointer { bits: 32, value: None }),
+        num_elements: 100,
+    }))).chain(std::iter::once(AbstractData::PublicPointer(Box::new(struct_partially_secret()))));
+    assert!(!is_constant_time(&func, &module, args, 20));
+}
+
+fn ptr_to_ptr_to_secrets() -> AbstractData {
+    AbstractData::PublicPointer(Box::new(AbstractData::Array {
+        element_type: Box::new(AbstractData::PublicPointer(Box::new(AbstractData::Array {
+            element_type: Box::new(AbstractData::Secret { bits: 32 }),
+            num_elements: 30,
+        }))),
+        num_elements: 5,
+    }))
+}
+
+#[test]
+fn ct_doubleptr() {
+    init_logging();
+    let module = get_module();
+    let func = module.get_func_by_name("ct_doubleptr").expect("Failed to find function");
+    assert!(is_constant_time(&func, &module, std::iter::once(ptr_to_ptr_to_secrets()), 20));
+}
+
+#[test]
+fn notct_doubleptr() {
+    init_logging();
+    let module = get_module();
+    let func = module.get_func_by_name("notct_doubleptr").expect("Failed to find function");
+    assert!(!is_constant_time(&func, &module, std::iter::once(ptr_to_ptr_to_secrets()), 20));
+}
