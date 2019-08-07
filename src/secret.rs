@@ -318,13 +318,20 @@ impl<'ctx> haybale::backend::Memory<'ctx> for Memory<'ctx> {
         match index {
             BV::Public(index) => {
                 let shadow_cell = haybale::backend::Memory::read(&self.shadow_mem, index, bits);
-                let shadow_bits = shadow_cell.as_u64().unwrap_or_else(|| panic!("Shadow bits are non-constant: {:?}", shadow_cell));
-                if shadow_bits == 0 {
-                    // All bits being read are public
-                    BV::Public(haybale::backend::Memory::read(&self.mem, index, bits))
-                } else {
-                    // if any bits are secret, the resulting value is entirely secret
-                    BV::Secret(bits)
+                match shadow_cell.as_u64() {
+                    Some(0) => {
+                        // All bits being read are public
+                        BV::Public(haybale::backend::Memory::read(&self.mem, index, bits))
+                    },
+                    Some(_) | None => {
+                        // Some(_): some or all of the bits are secret, so we treat the resulting value as entirely secret
+                        // None: the bits' secrecy is non-constant; i.e., the bits could be secret or not,
+                        // depending on the values of other variables. This can happen, e.g., when reading
+                        // from a symbolic address that could point to either secret or public data.
+                        // We are interested in the "worst case", so since the resulting value _could be_
+                        // secret, we follow the case where it _is_ secret.
+                        BV::Secret(bits)
+                    }
                 }
             },
             BV::Secret(_) => {

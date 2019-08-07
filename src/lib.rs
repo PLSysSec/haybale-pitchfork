@@ -5,7 +5,6 @@ mod secret;
 use haybale::{size, symex_function, ExecutionManager, State};
 use haybale::backend::*;
 use llvm_ir::*;
-use log::debug;
 
 /// Is a function "constant-time" in its inputs. That is, does the function ever
 /// make branching decisions, or perform address calculations, based on its inputs.
