@@ -89,7 +89,7 @@ fn notct_secrets() {
     assert!(!is_constant_time(&func, &module, arg, 20));
 }
 
-fn struct_partially_secret() -> AbstractData {
+fn ptr_to_struct_partially_secret() -> AbstractData {
     AbstractData::PublicPointer(Box::new(AbstractData::Struct(vec![
         AbstractData::PublicNonPointer { bits: 32, value: None },
         AbstractData::Secret { bits: 32 },
@@ -104,7 +104,7 @@ fn ct_struct() {
     let args = std::iter::once(AbstractData::PublicPointer(Box::new(AbstractData::Array {
         element_type: Box::new(AbstractData::PublicNonPointer { bits: 32, value: None }),
         num_elements: 100,
-    }))).chain(std::iter::once(AbstractData::PublicPointer(Box::new(struct_partially_secret()))));
+    }))).chain(std::iter::once(ptr_to_struct_partially_secret()));
     assert!(is_constant_time(&func, &module, args, 20));
 }
 
@@ -116,7 +116,7 @@ fn notct_struct() {
     let args = std::iter::once(AbstractData::PublicPointer(Box::new(AbstractData::Array {
         element_type: Box::new(AbstractData::PublicNonPointer { bits: 32, value: None }),
         num_elements: 100,
-    }))).chain(std::iter::once(AbstractData::PublicPointer(Box::new(struct_partially_secret()))));
+    }))).chain(std::iter::once(ptr_to_struct_partially_secret()));
     assert!(!is_constant_time(&func, &module, args, 20));
 }
 
