@@ -93,18 +93,26 @@ fn initialize_data_in_memory<'ctx>(ctx: &'ctx z3::Context, state: &mut State<'ct
             // nothing to do
         },
         AbstractData::Array { element_type, num_elements } => {
-            let element_size = element_type.size();
+            let element_size_bits = element_type.size();
+            if element_size_bits % 8 != 0 {
+                panic!("Array element size is not a multiple of 8 bits: {}", element_size_bits);
+            }
+            let element_size_bytes = element_size_bits / 8;
             for i in 0 .. *num_elements {
                 // TODO: this could be done more efficiently for certain `element_type`s
-                initialize_data_in_memory(ctx, state, &ptr.add(&secret::BV::from_u64(ctx, (i*element_size) as u64, ptr.get_size())), element_type);
+                initialize_data_in_memory(ctx, state, &ptr.add(&secret::BV::from_u64(ctx, (i*element_size_bytes) as u64, ptr.get_size())), element_type);
             }
         },
         AbstractData::Struct(elements) => {
             let mut cur_ptr = ptr.clone();
             for element in elements {
-                let element_size = element.size();
+                let element_size_bits = element.size();
+                if element_size_bits % 8 != 0 {
+                    panic!("Struct element size is not a multiple of 8 bits: {}", element_size_bits);
+                }
+                let element_size_bytes = element_size_bits / 8;
                 initialize_data_in_memory(ctx, state, &cur_ptr, element);
-                cur_ptr = cur_ptr.add(&secret::BV::from_u64(ctx, element_size as u64, ptr.get_size()));
+                cur_ptr = cur_ptr.add(&secret::BV::from_u64(ctx, element_size_bytes as u64, ptr.get_size()));
             }
         }
     }

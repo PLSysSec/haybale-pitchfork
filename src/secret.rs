@@ -318,7 +318,7 @@ impl<'ctx> haybale::backend::Memory<'ctx> for Memory<'ctx> {
         match index {
             BV::Public(index) => {
                 let shadow_cell = haybale::backend::Memory::read(&self.shadow_mem, index, bits);
-                let shadow_bits = shadow_cell.as_u64().expect("Shadow bits are non-constant");
+                let shadow_bits = shadow_cell.as_u64().unwrap_or_else(|| panic!("Shadow bits are non-constant: {:?}", shadow_cell));
                 if shadow_bits == 0 {
                     // All bits being read are public
                     BV::Public(haybale::backend::Memory::read(&self.mem, index, bits))
