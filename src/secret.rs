@@ -182,6 +182,12 @@ impl<'ctx> haybale::backend::Bool<'ctx> for Bool<'ctx> {
     fn from_bool(ctx: &'ctx z3::Context, b: bool) -> Self {
         Bool::Public(z3::ast::Bool::from_bool(ctx, b))
     }
+    fn as_bool(&self) -> Option<bool> {
+        match self {
+            Bool::Public(b) => b.as_bool(),
+            Bool::Secret => None,
+        }
+    }
     fn bvite(&self, a: &Self::AssociatedBV, b: &Self::AssociatedBV) -> Self::AssociatedBV {
         use haybale::backend::BV; // need the trait in scope so that we can use its methods (`get_size()`)
                                     // unfortunately this means that the `BV` in this module must now be referred to as `self::BV`
