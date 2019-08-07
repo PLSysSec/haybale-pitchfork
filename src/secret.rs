@@ -298,11 +298,19 @@ impl<'ctx> haybale::backend::Memory<'ctx> for Memory<'ctx> {
     type Value = BV<'ctx>;
     type BackendState = State;
 
-    fn new(ctx: &'ctx z3::Context, backend_state: Rc<RefCell<Self::BackendState>>) -> Self {
+    fn new_uninitialized(ctx: &'ctx z3::Context, backend_state: Rc<RefCell<Self::BackendState>>) -> Self {
         Self {
             ctx,
-            mem: haybale::backend::Memory::new(ctx, Rc::new(RefCell::new(()))),
-            shadow_mem: haybale::backend::Memory::new(ctx, Rc::new(RefCell::new(()))), // we assume haybale memories are zero-initialized
+            mem: haybale::backend::Memory::new_uninitialized(ctx, Rc::new(RefCell::new(()))),
+            shadow_mem: haybale::backend::Memory::new_zero_initialized(ctx, Rc::new(RefCell::new(()))), // shadow bits are zero-initialized (all public) even though the memory contents are uninitialized
+            backend_state,
+        }
+    }
+    fn new_zero_initialized(ctx: &'ctx z3::Context, backend_state: Rc<RefCell<Self::BackendState>>) -> Self {
+        Self {
+            ctx,
+            mem: haybale::backend::Memory::new_zero_initialized(ctx, Rc::new(RefCell::new(()))),
+            shadow_mem: haybale::backend::Memory::new_zero_initialized(ctx, Rc::new(RefCell::new(()))), // initialize to all public zeroes
             backend_state,
         }
     }
