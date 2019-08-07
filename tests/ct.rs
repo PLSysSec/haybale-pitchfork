@@ -17,7 +17,7 @@ fn ct_simple() {
     init_logging();
     let module = get_module();
     let func = module.get_func_by_name("ct_simple").expect("Failed to find function");
-    assert!(is_constant_time_in_inputs(&func, &module, 20));
+    assert!(is_constant_time_in_inputs(&func, &module, &Config::default()));
 }
 
 #[test]
@@ -25,7 +25,7 @@ fn ct_simple2() {
     init_logging();
     let module = get_module();
     let func = module.get_func_by_name("ct_simple2").expect("Failed to find function");
-    assert!(is_constant_time_in_inputs(&func, &module, 20));
+    assert!(is_constant_time_in_inputs(&func, &module, &Config::default()));
 }
 
 #[test]
@@ -33,7 +33,7 @@ fn notct_branch() {
     init_logging();
     let module = get_module();
     let func = module.get_func_by_name("notct_branch").expect("Failed to find function");
-    assert!(!is_constant_time_in_inputs(&func, &module, 20));
+    assert!(!is_constant_time_in_inputs(&func, &module, &Config::default()));
 }
 
 #[test]
@@ -41,7 +41,7 @@ fn notct_mem() {
     init_logging();
     let module = get_module();
     let func = module.get_func_by_name("notct_mem").expect("Failed to find function");
-    assert!(!is_constant_time_in_inputs(&func, &module, 20));
+    assert!(!is_constant_time_in_inputs(&func, &module, &Config::default()));
 }
 
 #[test]
@@ -49,7 +49,7 @@ fn notct_onepath() {
     init_logging();
     let module = get_module();
     let func = module.get_func_by_name("notct_onepath").expect("Failed to find function");
-    assert!(!is_constant_time_in_inputs(&func, &module, 20));
+    assert!(!is_constant_time_in_inputs(&func, &module, &Config::default()));
 }
 
 #[test]
@@ -61,8 +61,8 @@ fn ct_onearg() {
         .chain(std::iter::once(AbstractData::Secret { bits: 32 }));
     let secretx_publicy = std::iter::once(AbstractData::Secret { bits: 32 })
         .chain(std::iter::once(AbstractData::PublicNonPointer { bits: 32, value: None }));
-    assert!(is_constant_time(&func, &module, publicx_secrety, 20));
-    assert!(!is_constant_time(&func, &module, secretx_publicy, 20));
+    assert!(is_constant_time(&func, &module, publicx_secrety, &Config::default()));
+    assert!(!is_constant_time(&func, &module, secretx_publicy, &Config::default()));
 }
 
 #[test]
@@ -74,7 +74,7 @@ fn ct_secrets() {
         element_type: Box::new(AbstractData::Secret { bits: 32 }),
         num_elements: 100,
     })));
-    assert!(is_constant_time(&func, &module, arg, 20));
+    assert!(is_constant_time(&func, &module, arg, &Config::default()));
 }
 
 #[test]
@@ -86,7 +86,7 @@ fn notct_secrets() {
         element_type: Box::new(AbstractData::Secret { bits: 32 }),
         num_elements: 100,
     })));
-    assert!(!is_constant_time(&func, &module, arg, 20));
+    assert!(!is_constant_time(&func, &module, arg, &Config::default()));
 }
 
 fn ptr_to_struct_partially_secret() -> AbstractData {
@@ -105,7 +105,7 @@ fn ct_struct() {
         element_type: Box::new(AbstractData::PublicNonPointer { bits: 32, value: None }),
         num_elements: 100,
     }))).chain(std::iter::once(ptr_to_struct_partially_secret()));
-    assert!(is_constant_time(&func, &module, args, 20));
+    assert!(is_constant_time(&func, &module, args, &Config::default()));
 }
 
 #[test]
@@ -117,7 +117,7 @@ fn notct_struct() {
         element_type: Box::new(AbstractData::PublicNonPointer { bits: 32, value: None }),
         num_elements: 100,
     }))).chain(std::iter::once(ptr_to_struct_partially_secret()));
-    assert!(!is_constant_time(&func, &module, args, 20));
+    assert!(!is_constant_time(&func, &module, args, &Config::default()));
 }
 
 fn ptr_to_ptr_to_secrets() -> AbstractData {
@@ -135,7 +135,7 @@ fn ct_doubleptr() {
     init_logging();
     let module = get_module();
     let func = module.get_func_by_name("ct_doubleptr").expect("Failed to find function");
-    assert!(is_constant_time(&func, &module, std::iter::once(ptr_to_ptr_to_secrets()), 20));
+    assert!(is_constant_time(&func, &module, std::iter::once(ptr_to_ptr_to_secrets()), &Config::default()));
 }
 
 #[test]
@@ -143,5 +143,5 @@ fn notct_doubleptr() {
     init_logging();
     let module = get_module();
     let func = module.get_func_by_name("notct_doubleptr").expect("Failed to find function");
-    assert!(!is_constant_time(&func, &module, std::iter::once(ptr_to_ptr_to_secrets()), 20));
+    assert!(!is_constant_time(&func, &module, std::iter::once(ptr_to_ptr_to_secrets()), &Config::default()));
 }

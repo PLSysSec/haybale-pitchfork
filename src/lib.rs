@@ -4,17 +4,14 @@ mod secret;
 
 use haybale::{size, symex_function, ExecutionManager, State};
 use haybale::backend::*;
+pub use haybale::Config;
 use llvm_ir::*;
 
 /// Is a function "constant-time" in its inputs. That is, does the function ever
 /// make branching decisions, or perform address calculations, based on its inputs.
-///
-/// `loop_bound`: maximum number of times to execute any given line of LLVM IR.
-/// This bounds both the number of iterations of loops, and also the depth of recursion.
-/// For inner loops, this bounds the number of total iterations across all invocations of the loop.
-pub fn is_constant_time_in_inputs(func: &Function, module: &Module, loop_bound: usize) -> bool {
+pub fn is_constant_time_in_inputs(func: &Function, module: &Module, config: &Config) -> bool {
     let args = func.parameters.iter().map(|p| AbstractData::Secret { bits: size(&p.ty) });
-    is_constant_time(func, module, args, loop_bound)
+    is_constant_time(func, module, args, config)
 }
 
 /// Is a function "constant-time" in the secrets identified by the `args` data
@@ -26,11 +23,11 @@ pub fn is_constant_time_in_inputs(func: &Function, module: &Module, loop_bound: 
 /// (and if so how much), etc.
 ///
 /// Other arguments are the same as for `is_constant_time_in_inputs()` above.
-pub fn is_constant_time(func: &Function, module: &Module, args: impl Iterator<Item = AbstractData>, loop_bound: usize) -> bool {
+pub fn is_constant_time(func: &Function, module: &Module, args: impl Iterator<Item = AbstractData>, config: &Config) -> bool {
     let cfg = z3::Config::new();
     let ctx = z3::Context::new(&cfg);
 
-    let mut em: ExecutionManager<secret::Backend> = symex_function(&ctx, module, func, loop_bound);
+    let mut em: ExecutionManager<secret::Backend> = symex_function(&ctx, module, func, config);
 
     // overwrite the default function parameters with values marked to be `Secret`
     for (param, arg) in func.parameters.iter().zip(args) {
