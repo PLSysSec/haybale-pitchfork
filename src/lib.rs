@@ -9,9 +9,9 @@ use llvm_ir::*;
 
 /// Is a function "constant-time" in its inputs. That is, does the function ever
 /// make branching decisions, or perform address calculations, based on its inputs.
-pub fn is_constant_time_in_inputs(func: &Function, module: &Module, config: &Config) -> bool {
+pub fn is_constant_time_in_inputs<'ctx>(ctx: &'ctx z3::Context, func: &Function, module: &Module, config: &Config<secret::Backend<'ctx>>) -> bool {
     let args = func.parameters.iter().map(|p| AbstractData::Secret { bits: size(&p.ty) });
-    is_constant_time(func, module, args, config)
+    is_constant_time(ctx, func, module, args, config)
 }
 
 /// Is a function "constant-time" in the secrets identified by the `args` data
@@ -23,10 +23,7 @@ pub fn is_constant_time_in_inputs(func: &Function, module: &Module, config: &Con
 /// (and if so how much), etc.
 ///
 /// Other arguments are the same as for `is_constant_time_in_inputs()` above.
-pub fn is_constant_time(func: &Function, module: &Module, args: impl Iterator<Item = AbstractData>, config: &Config) -> bool {
-    let cfg = z3::Config::new();
-    let ctx = z3::Context::new(&cfg);
-
+pub fn is_constant_time<'ctx>(ctx: &'ctx z3::Context, func: &Function, module: &Module, args: impl Iterator<Item = AbstractData>, config: &Config<secret::Backend<'ctx>>) -> bool {
     let mut em: ExecutionManager<secret::Backend> = symex_function(&ctx, module, func, config);
 
     // overwrite the default function parameters with values marked to be `Secret`

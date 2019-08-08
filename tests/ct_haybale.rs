@@ -13,6 +13,7 @@ fn init_logging() {
 #[test]
 fn haybale_basic() {
     init_logging();
+    let ctx = z3::Context::new(&z3::Config::new());
     let module = Module::from_bc_path(&Path::new("../haybale/tests/bcfiles/basic.bc"))
         .expect("Failed to parse module");
     let config = Config::default();
@@ -35,35 +36,36 @@ fn haybale_basic() {
     let mixed_bitwidths = module.get_func_by_name("mixed_bitwidths").expect("Failed to find function");
 
     // Most of the functions in basic.bc are constant-time
-    assert!(is_constant_time_in_inputs(&no_args_nozero, &module, &config));
-    assert!(is_constant_time_in_inputs(&no_args_zero, &module, &config));
-    assert!(is_constant_time_in_inputs(&one_arg, &module, &config));
-    assert!(is_constant_time_in_inputs(&two_args, &module, &config));
-    assert!(is_constant_time_in_inputs(&three_args, &module, &config));
-    assert!(is_constant_time_in_inputs(&four_args, &module, &config));
-    assert!(is_constant_time_in_inputs(&five_args, &module, &config));
-    assert!(is_constant_time_in_inputs(&binops, &module, &config));
+    assert!(is_constant_time_in_inputs(&ctx, &no_args_nozero, &module, &config));
+    assert!(is_constant_time_in_inputs(&ctx, &no_args_zero, &module, &config));
+    assert!(is_constant_time_in_inputs(&ctx, &one_arg, &module, &config));
+    assert!(is_constant_time_in_inputs(&ctx, &two_args, &module, &config));
+    assert!(is_constant_time_in_inputs(&ctx, &three_args, &module, &config));
+    assert!(is_constant_time_in_inputs(&ctx, &four_args, &module, &config));
+    assert!(is_constant_time_in_inputs(&ctx, &five_args, &module, &config));
+    assert!(is_constant_time_in_inputs(&ctx, &binops, &module, &config));
 
     // These functions branch on conditions influenced by their inputs, so they're not constant-time
-    assert!(!is_constant_time_in_inputs(&conditional_true, &module, &config));
-    assert!(!is_constant_time_in_inputs(&conditional_false, &module, &config));
-    assert!(!is_constant_time_in_inputs(&conditional_nozero, &module, &config));
+    assert!(!is_constant_time_in_inputs(&ctx, &conditional_true, &module, &config));
+    assert!(!is_constant_time_in_inputs(&ctx, &conditional_false, &module, &config));
+    assert!(!is_constant_time_in_inputs(&ctx, &conditional_nozero, &module, &config));
 
     // LLVM actually compiles this function to be branch-free and therefore constant-time
-    assert!(is_constant_time_in_inputs(&conditional_with_and, &module, &config));
+    assert!(is_constant_time_in_inputs(&ctx, &conditional_with_and, &module, &config));
 
     // These functions are also naturally constant-time
-    assert!(is_constant_time_in_inputs(&int8t, &module, &config));
-    assert!(is_constant_time_in_inputs(&int16t, &module, &config));
-    assert!(is_constant_time_in_inputs(&int32t, &module, &config));
-    assert!(is_constant_time_in_inputs(&int64t, &module, &config));
-    assert!(is_constant_time_in_inputs(&mixed_bitwidths, &module, &config));
+    assert!(is_constant_time_in_inputs(&ctx, &int8t, &module, &config));
+    assert!(is_constant_time_in_inputs(&ctx, &int16t, &module, &config));
+    assert!(is_constant_time_in_inputs(&ctx, &int32t, &module, &config));
+    assert!(is_constant_time_in_inputs(&ctx, &int64t, &module, &config));
+    assert!(is_constant_time_in_inputs(&ctx, &mixed_bitwidths, &module, &config));
 }
 
 /// Whether each of the functions in haybale's `memory.bc` are constant-time in their inputs
 #[test]
 fn haybale_memory() {
     init_logging();
+    let ctx = z3::Context::new(&z3::Config::new());
     let module = Module::from_bc_path(&Path::new("../haybale/tests/bcfiles/memory.bc"))
         .expect("Failed to parse module");
     let config = Config::default();
@@ -75,12 +77,12 @@ fn haybale_memory() {
     let pointer_arith = module.get_func_by_name("pointer_arith").expect("Failed to find function");
 
     // local_ptr is the only function in this file that is constant-time in its inputs
-    assert!(is_constant_time_in_inputs(&local_ptr, &module, &config));
+    assert!(is_constant_time_in_inputs(&ctx, &local_ptr, &module, &config));
 
     // All other functions in the module perform memory accesses whose addresses depend on function arguments
-    assert!(!is_constant_time_in_inputs(&load_and_store, &module, &config));
-    assert!(!is_constant_time_in_inputs(&overwrite, &module, &config));
-    assert!(!is_constant_time_in_inputs(&load_and_store_mult, &module, &config));
-    assert!(!is_constant_time_in_inputs(&array, &module, &config));
-    assert!(!is_constant_time_in_inputs(&pointer_arith, &module, &config));
+    assert!(!is_constant_time_in_inputs(&ctx, &load_and_store, &module, &config));
+    assert!(!is_constant_time_in_inputs(&ctx, &overwrite, &module, &config));
+    assert!(!is_constant_time_in_inputs(&ctx, &load_and_store_mult, &module, &config));
+    assert!(!is_constant_time_in_inputs(&ctx, &array, &module, &config));
+    assert!(!is_constant_time_in_inputs(&ctx, &pointer_arith, &module, &config));
 }
