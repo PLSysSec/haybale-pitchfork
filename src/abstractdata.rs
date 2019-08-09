@@ -2,7 +2,7 @@ pub enum AbstractData {
     /// A public non-pointer value, of the given size in bits. If `value` is
     /// `Some`, then it is the actual concrete value; otherwise (if `value` is
     /// `None`) the value is unconstrained.
-    PublicNonPointer { bits: usize, value: Option<u64> },
+    PublicNonPointer { bits: usize, value: AbstractValue },
     /// A (first-class) array of values
     Array { element_type: Box<AbstractData>, num_elements: usize },
     /// A (first-class) structure of values
@@ -15,6 +15,15 @@ pub enum AbstractData {
     PublicPointerToUnconstrainedPublic,
     /// A secret value (pointer or non-pointer, doesn't matter) of the given size in bits
     Secret { bits: usize },
+}
+
+pub enum AbstractValue {
+    /// This exact numerical value
+    ExactValue(u64),
+    /// Any numerical value in the range (inclusive)
+    Range(u64, u64),
+    /// Any value whatsoever
+    Unconstrained,
 }
 
 impl AbstractData {

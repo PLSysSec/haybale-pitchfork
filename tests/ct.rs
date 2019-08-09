@@ -63,10 +63,10 @@ fn ct_onearg() {
     let ctx = z3::Context::new(&z3::Config::new());
     let module = get_module();
     let func = module.get_func_by_name("ct_onearg").expect("Failed to find function");
-    let publicx_secrety = std::iter::once(AbstractData::PublicNonPointer { bits: 32, value: None })
+    let publicx_secrety = std::iter::once(AbstractData::PublicNonPointer { bits: 32, value: AbstractValue::Unconstrained })
         .chain(std::iter::once(AbstractData::Secret { bits: 32 }));
     let secretx_publicy = std::iter::once(AbstractData::Secret { bits: 32 })
-        .chain(std::iter::once(AbstractData::PublicNonPointer { bits: 32, value: None }));
+        .chain(std::iter::once(AbstractData::PublicNonPointer { bits: 32, value: AbstractValue::Unconstrained }));
     assert!(is_constant_time(&ctx, &func, &module, publicx_secrety, &Config::default()));
     assert!(!is_constant_time(&ctx, &func, &module, secretx_publicy, &Config::default()));
 }
@@ -99,7 +99,7 @@ fn notct_secrets() {
 
 fn ptr_to_struct_partially_secret() -> AbstractData {
     AbstractData::PublicPointer(Box::new(AbstractData::Struct(vec![
-        AbstractData::PublicNonPointer { bits: 32, value: None },
+        AbstractData::PublicNonPointer { bits: 32, value: AbstractValue::Unconstrained },
         AbstractData::Secret { bits: 32 },
     ])))
 }
@@ -111,7 +111,7 @@ fn ct_struct() {
     let module = get_module();
     let func = module.get_func_by_name("ct_struct").expect("Failed to find function");
     let args = std::iter::once(AbstractData::PublicPointer(Box::new(AbstractData::Array {
-        element_type: Box::new(AbstractData::PublicNonPointer { bits: 32, value: None }),
+        element_type: Box::new(AbstractData::PublicNonPointer { bits: 32, value: AbstractValue::Unconstrained }),
         num_elements: 100,
     }))).chain(std::iter::once(ptr_to_struct_partially_secret()));
     assert!(is_constant_time(&ctx, &func, &module, args, &Config::default()));
@@ -124,7 +124,7 @@ fn notct_struct() {
     let module = get_module();
     let func = module.get_func_by_name("notct_struct").expect("Failed to find function");
     let args = std::iter::once(AbstractData::PublicPointer(Box::new(AbstractData::Array {
-        element_type: Box::new(AbstractData::PublicNonPointer { bits: 32, value: None }),
+        element_type: Box::new(AbstractData::PublicNonPointer { bits: 32, value: AbstractValue::Unconstrained }),
         num_elements: 100,
     }))).chain(std::iter::once(ptr_to_struct_partially_secret()));
     assert!(!is_constant_time(&ctx, &func, &module, args, &Config::default()));

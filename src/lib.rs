@@ -1,5 +1,5 @@
 mod abstractdata;
-pub use abstractdata::AbstractData;
+pub use abstractdata::*;
 mod secret;
 
 use haybale::{size, symex_function, ExecutionManager, State};
@@ -42,15 +42,22 @@ pub fn is_constant_time<'ctx>(ctx: &'ctx z3::Context, func: &Function, module: &
 }
 
 fn allocate_arg<'ctx, 'm>(ctx: &'ctx z3::Context, state: &mut State<'ctx, 'm, secret::Backend<'ctx>>, param: &'m function::Parameter, arg: AbstractData) {
-    assert_eq!(arg.size(), size(&param.ty));
+    if arg.size() != size(&param.ty) {
+        panic!("Parameter size mismatch for parameter {:?}: parameter is {} bits but AbstractData is {} bits", &param.name, size(&param.ty), arg.size());
+    }
     match arg {
         AbstractData::Secret { bits } => {
             state.overwrite_latest_version_of_bv(&param.name, secret::BV::Secret(bits as u32));
         },
-        AbstractData::PublicNonPointer { bits, value: Some(value) } => {
+        AbstractData::PublicNonPointer { bits, value: AbstractValue::ExactValue(value) } => {
             state.overwrite_latest_version_of_bv(&param.name, secret::BV::from_u64(ctx, value, bits as u32));
         },
-        AbstractData::PublicNonPointer { value: None, .. } => {
+        AbstractData::PublicNonPointer { bits, value: AbstractValue::Range(min, max) } => {
+            let parambv = state.operand_to_bv(&Operand::LocalOperand { name: param.name.clone(), ty: param.ty.clone() });
+            state.assert(&parambv.uge(&secret::BV::from_u64(ctx, min, bits as u32)));
+            state.assert(&parambv.ule(&secret::BV::from_u64(ctx, max, bits as u32)));
+        }
+        AbstractData::PublicNonPointer { value: AbstractValue::Unconstrained, .. } => {
             // nothing to do
         },
         AbstractData::PublicPointer(pointee) => {
@@ -71,10 +78,15 @@ fn initialize_data_in_memory<'ctx>(ctx: &'ctx z3::Context, state: &mut State<'ct
         AbstractData::Secret { bits } => {
             state.write(&ptr, secret::BV::Secret(*bits as u32));
         },
-        AbstractData::PublicNonPointer { bits, value: Some(value) } => {
+        AbstractData::PublicNonPointer { bits, value: AbstractValue::ExactValue(value) } => {
             state.write(&ptr, secret::BV::from_u64(ctx, *value, *bits as u32));
         },
-        AbstractData::PublicNonPointer { value: None, .. } => {
+        AbstractData::PublicNonPointer { bits, value: AbstractValue::Range(min, max) } => {
+            let bv = state.read(&ptr, *bits as u32);
+            state.assert(&bv.uge(&secret::BV::from_u64(ctx, *min, *bits as u32)));
+            state.assert(&bv.ule(&secret::BV::from_u64(ctx, *max, *bits as u32)));
+        }
+        AbstractData::PublicNonPointer { value: AbstractValue::Unconstrained, .. } => {
             // nothing to do
         },
         AbstractData::PublicPointer(pointee) => {
