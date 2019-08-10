@@ -1,4 +1,3 @@
-use llvm_ir::Module;
 use pitchfork::*;
 use std::path::Path;
 
@@ -10,10 +9,10 @@ fn main() {
         .join(Path::new("bcfiles"))
         .join(Path::new(&std::env::args().nth(1).expect("Please pass an argument")))
         .with_extension("bc");
-    let llvm_mod = Module::from_bc_path(&filepath).unwrap_or_else(|e| panic!("Failed to parse module at path {}: {}", filepath.display(), e));
+    let proj = Project::from_bc_path(&filepath).unwrap_or_else(|e| panic!("Failed to parse module at path {}: {}", filepath.display(), e));
     let ctx = z3::Context::new(&z3::Config::new());
-    for func in &llvm_mod.functions {
-        let ct = is_constant_time_in_inputs(&ctx, func, &llvm_mod, &Config::default());
-        println!("{:?} is{} constant-time in its inputs", func.name, if ct {""} else {" not"});
+    for funcname in proj.all_functions().map(|f| &f.name) {
+        let ct = is_constant_time_in_inputs(&ctx, funcname, &proj, Config::default());
+        println!("{:?} is{} constant-time in its inputs", funcname, if ct {""} else {" not"});
     }
 }

@@ -1,6 +1,5 @@
 //! Whether each of the functions in haybale's test suite are constant-time
 
-use llvm_ir::Module;
 use pitchfork::*;
 use std::path::Path;
 
@@ -14,51 +13,33 @@ fn init_logging() {
 fn haybale_basic() {
     init_logging();
     let ctx = z3::Context::new(&z3::Config::new());
-    let module = Module::from_bc_path(&Path::new("../haybale/tests/bcfiles/basic.bc"))
-        .expect("Failed to parse module");
-    let config = Config::default();
-    let no_args_nozero = module.get_func_by_name("no_args_nozero").expect("Failed to find function");
-    let no_args_zero = module.get_func_by_name("no_args_zero").expect("Failed to find function");
-    let one_arg = module.get_func_by_name("one_arg").expect("Failed to find function");
-    let two_args = module.get_func_by_name("two_args").expect("Failed to find function");
-    let three_args = module.get_func_by_name("three_args").expect("Failed to find function");
-    let four_args = module.get_func_by_name("four_args").expect("Failed to find function");
-    let five_args = module.get_func_by_name("five_args").expect("Failed to find function");
-    let binops = module.get_func_by_name("binops").expect("Failed to find function");
-    let conditional_true = module.get_func_by_name("conditional_true").expect("Failed to find function");
-    let conditional_false = module.get_func_by_name("conditional_false").expect("Failed to find function");
-    let conditional_nozero = module.get_func_by_name("conditional_nozero").expect("Failed to find function");
-    let conditional_with_and = module.get_func_by_name("conditional_with_and").expect("Failed to find function");
-    let int8t = module.get_func_by_name("int8t").expect("Failed to find function");
-    let int16t = module.get_func_by_name("int16t").expect("Failed to find function");
-    let int32t = module.get_func_by_name("int32t").expect("Failed to find function");
-    let int64t = module.get_func_by_name("int64t").expect("Failed to find function");
-    let mixed_bitwidths = module.get_func_by_name("mixed_bitwidths").expect("Failed to find function");
+    let project = Project::from_bc_path(&Path::new("../haybale/tests/bcfiles/basic.bc"))
+        .unwrap_or_else(|e| panic!("Failed to create project: {}", e));
 
     // Most of the functions in basic.bc are constant-time
-    assert!(is_constant_time_in_inputs(&ctx, &no_args_nozero, &module, &config));
-    assert!(is_constant_time_in_inputs(&ctx, &no_args_zero, &module, &config));
-    assert!(is_constant_time_in_inputs(&ctx, &one_arg, &module, &config));
-    assert!(is_constant_time_in_inputs(&ctx, &two_args, &module, &config));
-    assert!(is_constant_time_in_inputs(&ctx, &three_args, &module, &config));
-    assert!(is_constant_time_in_inputs(&ctx, &four_args, &module, &config));
-    assert!(is_constant_time_in_inputs(&ctx, &five_args, &module, &config));
-    assert!(is_constant_time_in_inputs(&ctx, &binops, &module, &config));
+    assert!(is_constant_time_in_inputs(&ctx, "no_args_nozero", &project, Config::default()));
+    assert!(is_constant_time_in_inputs(&ctx, "no_args_zero", &project, Config::default()));
+    assert!(is_constant_time_in_inputs(&ctx, "one_arg", &project, Config::default()));
+    assert!(is_constant_time_in_inputs(&ctx, "two_args", &project, Config::default()));
+    assert!(is_constant_time_in_inputs(&ctx, "three_args", &project, Config::default()));
+    assert!(is_constant_time_in_inputs(&ctx, "four_args", &project, Config::default()));
+    assert!(is_constant_time_in_inputs(&ctx, "five_args", &project, Config::default()));
+    assert!(is_constant_time_in_inputs(&ctx, "binops", &project, Config::default()));
 
     // These functions branch on conditions influenced by their inputs, so they're not constant-time
-    assert!(!is_constant_time_in_inputs(&ctx, &conditional_true, &module, &config));
-    assert!(!is_constant_time_in_inputs(&ctx, &conditional_false, &module, &config));
-    assert!(!is_constant_time_in_inputs(&ctx, &conditional_nozero, &module, &config));
+    assert!(!is_constant_time_in_inputs(&ctx, "conditional_true", &project, Config::default()));
+    assert!(!is_constant_time_in_inputs(&ctx, "conditional_false", &project, Config::default()));
+    assert!(!is_constant_time_in_inputs(&ctx, "conditional_nozero", &project, Config::default()));
 
     // LLVM actually compiles this function to be branch-free and therefore constant-time
-    assert!(is_constant_time_in_inputs(&ctx, &conditional_with_and, &module, &config));
+    assert!(is_constant_time_in_inputs(&ctx, "conditional_with_and", &project, Config::default()));
 
     // These functions are also naturally constant-time
-    assert!(is_constant_time_in_inputs(&ctx, &int8t, &module, &config));
-    assert!(is_constant_time_in_inputs(&ctx, &int16t, &module, &config));
-    assert!(is_constant_time_in_inputs(&ctx, &int32t, &module, &config));
-    assert!(is_constant_time_in_inputs(&ctx, &int64t, &module, &config));
-    assert!(is_constant_time_in_inputs(&ctx, &mixed_bitwidths, &module, &config));
+    assert!(is_constant_time_in_inputs(&ctx, "int8t", &project, Config::default()));
+    assert!(is_constant_time_in_inputs(&ctx, "int16t", &project, Config::default()));
+    assert!(is_constant_time_in_inputs(&ctx, "int32t", &project, Config::default()));
+    assert!(is_constant_time_in_inputs(&ctx, "int64t", &project, Config::default()));
+    assert!(is_constant_time_in_inputs(&ctx, "mixed_bitwidths", &project, Config::default()));
 }
 
 /// Whether each of the functions in haybale's `memory.bc` are constant-time in their inputs
@@ -66,23 +47,16 @@ fn haybale_basic() {
 fn haybale_memory() {
     init_logging();
     let ctx = z3::Context::new(&z3::Config::new());
-    let module = Module::from_bc_path(&Path::new("../haybale/tests/bcfiles/memory.bc"))
-        .expect("Failed to parse module");
-    let config = Config::default();
-    let load_and_store = module.get_func_by_name("load_and_store").expect("Failed to find function");
-    let local_ptr = module.get_func_by_name("local_ptr").expect("Failed to find function");
-    let overwrite = module.get_func_by_name("overwrite").expect("Failed to find function");
-    let load_and_store_mult = module.get_func_by_name("load_and_store_mult").expect("Failed to find function");
-    let array = module.get_func_by_name("array").expect("Failed to find function");
-    let pointer_arith = module.get_func_by_name("pointer_arith").expect("Failed to find function");
+    let project = Project::from_bc_path(&Path::new("../haybale/tests/bcfiles/memory.bc"))
+        .unwrap_or_else(|e| panic!("Failed to create project: {}", e));
 
     // local_ptr is the only function in this file that is constant-time in its inputs
-    assert!(is_constant_time_in_inputs(&ctx, &local_ptr, &module, &config));
+    assert!(is_constant_time_in_inputs(&ctx, "local_ptr", &project, Config::default()));
 
     // All other functions in the module perform memory accesses whose addresses depend on function arguments
-    assert!(!is_constant_time_in_inputs(&ctx, &load_and_store, &module, &config));
-    assert!(!is_constant_time_in_inputs(&ctx, &overwrite, &module, &config));
-    assert!(!is_constant_time_in_inputs(&ctx, &load_and_store_mult, &module, &config));
-    assert!(!is_constant_time_in_inputs(&ctx, &array, &module, &config));
-    assert!(!is_constant_time_in_inputs(&ctx, &pointer_arith, &module, &config));
+    assert!(!is_constant_time_in_inputs(&ctx, "load_and_store", &project, Config::default()));
+    assert!(!is_constant_time_in_inputs(&ctx, "overwrite", &project, Config::default()));
+    assert!(!is_constant_time_in_inputs(&ctx, "load_and_store_mult", &project, Config::default()));
+    assert!(!is_constant_time_in_inputs(&ctx, "array", &project, Config::default()));
+    assert!(!is_constant_time_in_inputs(&ctx, "pointer_arith", &project, Config::default()));
 }

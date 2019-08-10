@@ -4,14 +4,22 @@ mod secret;
 
 use haybale::{size, symex_function, ExecutionManager, State};
 use haybale::backend::*;
-pub use haybale::Config;
+pub use haybale::{Config, Project};
 use llvm_ir::*;
 
 /// Is a function "constant-time" in its inputs. That is, does the function ever
 /// make branching decisions, or perform address calculations, based on its inputs.
-pub fn is_constant_time_in_inputs<'ctx>(ctx: &'ctx z3::Context, func: &Function, module: &Module, config: &Config<secret::Backend<'ctx>>) -> bool {
+///
+/// For argument descriptions, see `haybale::symex_function()`.
+pub fn is_constant_time_in_inputs<'ctx, 'p>(
+    ctx: &'ctx z3::Context,
+    funcname: &str,
+    project: &'p Project,
+    config: Config<'ctx, secret::Backend<'ctx>>
+) -> bool {
+    let (func, _) = project.get_func_by_name(funcname).expect("Failed to find function");
     let args = func.parameters.iter().map(|p| AbstractData::Secret { bits: size(&p.ty) });
-    is_constant_time(ctx, func, module, args, config)
+    is_constant_time(ctx, funcname, project, args, config)
 }
 
 /// Is a function "constant-time" in the secrets identified by the `args` data
@@ -23,11 +31,18 @@ pub fn is_constant_time_in_inputs<'ctx>(ctx: &'ctx z3::Context, func: &Function,
 /// (and if so how much), etc.
 ///
 /// Other arguments are the same as for `is_constant_time_in_inputs()` above.
-pub fn is_constant_time<'ctx>(ctx: &'ctx z3::Context, func: &Function, module: &Module, args: impl Iterator<Item = AbstractData>, config: &Config<secret::Backend<'ctx>>) -> bool {
-    let mut em: ExecutionManager<secret::Backend> = symex_function(&ctx, module, func, config);
+pub fn is_constant_time<'ctx, 'p>(
+    ctx: &'ctx z3::Context,
+    funcname: &str,
+    project: &'p Project,
+    args: impl IntoIterator<Item = AbstractData>,
+    config: Config<'ctx, secret::Backend<'ctx>>
+) -> bool {
+    let mut em: ExecutionManager<secret::Backend> = symex_function(&ctx, funcname, project, config);
 
     // overwrite the default function parameters with values marked to be `Secret`
-    for (param, arg) in func.parameters.iter().zip(args) {
+    let params = em.state().cur_loc.func.parameters.iter();
+    for (param, arg) in params.zip(args.into_iter()) {
         allocate_arg(&ctx, em.mut_state(), &param, arg);
     }
 
@@ -41,7 +56,7 @@ pub fn is_constant_time<'ctx>(ctx: &'ctx z3::Context, func: &Function, module: &
     true
 }
 
-fn allocate_arg<'ctx, 'm>(ctx: &'ctx z3::Context, state: &mut State<'ctx, 'm, secret::Backend<'ctx>>, param: &'m function::Parameter, arg: AbstractData) {
+fn allocate_arg<'ctx, 'p>(ctx: &'ctx z3::Context, state: &mut State<'ctx, 'p, secret::Backend<'ctx>>, param: &'p function::Parameter, arg: AbstractData) {
     if arg.size() != size(&param.ty) {
         panic!("Parameter size mismatch for parameter {:?}: parameter is {} bits but AbstractData is {} bits", &param.name, size(&param.ty), arg.size());
     }
