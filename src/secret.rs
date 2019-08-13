@@ -379,16 +379,19 @@ impl<'ctx> haybale::backend::Solver<'ctx> for Solver<'ctx> {
             backend_state,
         }
     }
+    fn get_context(&self) -> &'ctx z3::Context {
+        self.haybale_solver.get_context()
+    }
     fn assert(&mut self, constraint: &Self::Constraint) {
         match constraint {
             Bool::Public(c) => self.haybale_solver.assert(c),
             Bool::Secret => self.backend_state.borrow_mut().ct_violation_observed = true,  // `Secret` values influencing a path constraint is a ct violation
         };
     }
-    fn check(&mut self) -> bool {
+    fn check(&mut self) -> Result<bool, &'static str> {
         self.haybale_solver.check()
     }
-    fn check_with_extra_constraints<'a>(&'a mut self, constraints: impl Iterator<Item = &'a Self::Constraint>) -> bool {
+    fn check_with_extra_constraints<'a>(&'a mut self, constraints: impl Iterator<Item = &'a Self::Constraint>) -> Result<bool, &'static str> {
         self.haybale_solver.check_with_extra_constraints(
             constraints
                 .filter(|c| !c.is_secret())
@@ -401,24 +404,24 @@ impl<'ctx> haybale::backend::Solver<'ctx> for Solver<'ctx> {
     fn pop(&mut self, n: usize) {
         self.haybale_solver.pop(n)
     }
-    fn get_a_solution_for_bv(&mut self, bv: &Self::Value) -> Option<u64> {
+    fn get_a_solution_for_bv(&mut self, bv: &Self::Value) -> Result<Option<u64>, &'static str> {
         match bv {
             BV::Public(bv) => self.haybale_solver.get_a_solution_for_bv(bv),
-            BV::Secret(_) => None,
+            BV::Secret(_) => Ok(None),
         }
     }
-    fn get_a_solution_for_specified_bits_of_bv(&mut self, bv: &Self::Value, high: u32, low: u32) -> Option<u64> {
+    fn get_a_solution_for_specified_bits_of_bv(&mut self, bv: &Self::Value, high: u32, low: u32) -> Result<Option<u64>, &'static str> {
         match bv {
             BV::Public(bv) => self
                 .haybale_solver
                 .get_a_solution_for_specified_bits_of_bv(bv, high, low),
-            BV::Secret(_) => None,
+            BV::Secret(_) => Ok(None),
         }
     }
-    fn get_a_solution_for_bool(&mut self, b: &Self::Constraint) -> Option<bool> {
+    fn get_a_solution_for_bool(&mut self, b: &Self::Constraint) -> Result<Option<bool>, &'static str> {
         match b {
             Bool::Public(b) => self.haybale_solver.get_a_solution_for_bool(b),
-            Bool::Secret => None,
+            Bool::Secret => Ok(None),
         }
     }
     fn current_model_to_pretty_string(&self) -> String {

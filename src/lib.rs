@@ -6,6 +6,7 @@ use haybale::{size, symex_function, ExecutionManager, State};
 use haybale::backend::*;
 pub use haybale::{Config, Project};
 use llvm_ir::*;
+use log::debug;
 
 /// Is a function "constant-time" in its inputs. That is, does the function ever
 /// make branching decisions, or perform address calculations, based on its inputs.
@@ -40,11 +41,12 @@ pub fn is_constant_time<'ctx, 'p>(
 ) -> bool {
     let mut em: ExecutionManager<secret::Backend> = symex_function(&ctx, funcname, project, config);
 
-    // overwrite the default function parameters with values marked to be `Secret`
+    debug!("Allocating memory for function parameters");
     let params = em.state().cur_loc.func.parameters.iter();
     for (param, arg) in params.zip(args.into_iter()) {
         allocate_arg(&ctx, em.mut_state(), &param, arg);
     }
+    debug!("Done allocating memory for function parameters");
 
     while em.next().is_some() {
         if em.state().backend_state.borrow().ct_violation_observed() {
