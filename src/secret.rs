@@ -3,6 +3,7 @@
 //! them with `haybale::backend::{BV, Bool, Memory, Solver, Backend}`,
 //! `haybale::solver::Solver`, `haybale::memory::Memory`, or `z3::ast::{BV, Bool}`.
 
+use haybale::Result;
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -388,10 +389,10 @@ impl<'ctx> haybale::backend::Solver<'ctx> for Solver<'ctx> {
             Bool::Secret => self.backend_state.borrow_mut().ct_violation_observed = true,  // `Secret` values influencing a path constraint is a ct violation
         };
     }
-    fn check(&mut self) -> Result<bool, &'static str> {
+    fn check(&mut self) -> Result<bool> {
         self.haybale_solver.check()
     }
-    fn check_with_extra_constraints<'a>(&'a mut self, constraints: impl Iterator<Item = &'a Self::Constraint>) -> Result<bool, &'static str> {
+    fn check_with_extra_constraints<'a>(&'a mut self, constraints: impl Iterator<Item = &'a Self::Constraint>) -> Result<bool> {
         self.haybale_solver.check_with_extra_constraints(
             constraints
                 .filter(|c| !c.is_secret())
@@ -404,13 +405,13 @@ impl<'ctx> haybale::backend::Solver<'ctx> for Solver<'ctx> {
     fn pop(&mut self, n: usize) {
         self.haybale_solver.pop(n)
     }
-    fn get_a_solution_for_bv(&mut self, bv: &Self::Value) -> Result<Option<u64>, &'static str> {
+    fn get_a_solution_for_bv(&mut self, bv: &Self::Value) -> Result<Option<u64>> {
         match bv {
             BV::Public(bv) => self.haybale_solver.get_a_solution_for_bv(bv),
             BV::Secret(_) => Ok(None),
         }
     }
-    fn get_a_solution_for_specified_bits_of_bv(&mut self, bv: &Self::Value, high: u32, low: u32) -> Result<Option<u64>, &'static str> {
+    fn get_a_solution_for_specified_bits_of_bv(&mut self, bv: &Self::Value, high: u32, low: u32) -> Result<Option<u64>> {
         match bv {
             BV::Public(bv) => self
                 .haybale_solver
@@ -418,7 +419,7 @@ impl<'ctx> haybale::backend::Solver<'ctx> for Solver<'ctx> {
             BV::Secret(_) => Ok(None),
         }
     }
-    fn get_a_solution_for_bool(&mut self, b: &Self::Constraint) -> Result<Option<bool>, &'static str> {
+    fn get_a_solution_for_bool(&mut self, b: &Self::Constraint) -> Result<Option<bool>> {
         match b {
             Bool::Public(b) => self.haybale_solver.get_a_solution_for_bool(b),
             Bool::Secret => Ok(None),
