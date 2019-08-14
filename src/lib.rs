@@ -1,6 +1,6 @@
 mod abstractdata;
 pub use abstractdata::*;
-mod secret;
+pub mod secret;
 
 use haybale::{size, symex_function, ExecutionManager, State};
 use haybale::backend::*;
