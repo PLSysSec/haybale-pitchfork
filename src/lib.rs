@@ -70,7 +70,7 @@ fn allocate_arg<'ctx, 'p>(ctx: &'ctx z3::Context, state: &mut State<'ctx, 'p, se
             state.overwrite_latest_version_of_bv(&param.name, secret::BV::from_u64(ctx, value, bits as u32));
         },
         AbstractData::PublicNonPointer { bits, value: AbstractValue::Range(min, max) } => {
-            let parambv = state.operand_to_bv(&Operand::LocalOperand { name: param.name.clone(), ty: param.ty.clone() });
+            let parambv = state.operand_to_bv(&Operand::LocalOperand { name: param.name.clone(), ty: param.ty.clone() }).unwrap();
             state.assert(&parambv.uge(&secret::BV::from_u64(ctx, min, bits as u32)));
             state.assert(&parambv.ule(&secret::BV::from_u64(ctx, max, bits as u32)));
         }
