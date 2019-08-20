@@ -66,22 +66,34 @@ fn allocate_arg<'ctx, 'p>(ctx: &'ctx z3::Context, state: &mut State<'ctx, 'p, se
         AbstractData::Secret { bits } => {
             state.overwrite_latest_version_of_bv(&param.name, secret::BV::Secret(bits as u32));
         },
-        AbstractData::PublicNonPointer { bits, value: AbstractValue::ExactValue(value) } => {
+        AbstractData::PublicValue { bits, value: AbstractValue::ExactValue(value) } => {
             state.overwrite_latest_version_of_bv(&param.name, secret::BV::from_u64(ctx, value, bits as u32));
         },
-        AbstractData::PublicNonPointer { bits, value: AbstractValue::Range(min, max) } => {
+        AbstractData::PublicValue { bits, value: AbstractValue::Range(min, max) } => {
             let parambv = state.operand_to_bv(&Operand::LocalOperand { name: param.name.clone(), ty: param.ty.clone() }).unwrap();
             state.assert(&parambv.uge(&secret::BV::from_u64(ctx, min, bits as u32)));
             state.assert(&parambv.ule(&secret::BV::from_u64(ctx, max, bits as u32)));
         }
-        AbstractData::PublicNonPointer { value: AbstractValue::Unconstrained, .. } => {
+        AbstractData::PublicValue { value: AbstractValue::Unconstrained, .. } => {
             // nothing to do
         },
-        AbstractData::PublicPointer(pointee) => {
+        AbstractData::PublicPointerTo(pointee) => {
             let ptr = state.allocate(pointee.size() as u64);
             state.overwrite_latest_version_of_bv(&param.name, ptr.clone());
             initialize_data_in_memory(ctx, state, &ptr, &*pointee);
         },
+        AbstractData::PublicPointerToFunction(funcname) => {
+            let ptr = state.get_pointer_to_function(funcname.clone())
+                .unwrap_or_else(|| panic!("Failed to find function {:?}", &funcname))
+                .clone();
+            state.overwrite_latest_version_of_bv(&param.name, ptr);
+        }
+        AbstractData::PublicPointerToHook(funcname) => {
+            let ptr = state.get_pointer_to_function_hook(&funcname)
+                .unwrap_or_else(|| panic!("Failed to find hook for function {:?}", &funcname))
+                .clone();
+            state.overwrite_latest_version_of_bv(&param.name, ptr);
+        }
         AbstractData::PublicPointerToUnconstrainedPublic => {
             // nothing to do
         },
@@ -95,22 +107,34 @@ fn initialize_data_in_memory<'ctx>(ctx: &'ctx z3::Context, state: &mut State<'ct
         AbstractData::Secret { bits } => {
             state.write(&ptr, secret::BV::Secret(*bits as u32));
         },
-        AbstractData::PublicNonPointer { bits, value: AbstractValue::ExactValue(value) } => {
+        AbstractData::PublicValue { bits, value: AbstractValue::ExactValue(value) } => {
             state.write(&ptr, secret::BV::from_u64(ctx, *value, *bits as u32));
         },
-        AbstractData::PublicNonPointer { bits, value: AbstractValue::Range(min, max) } => {
+        AbstractData::PublicValue { bits, value: AbstractValue::Range(min, max) } => {
             let bv = state.read(&ptr, *bits as u32);
             state.assert(&bv.uge(&secret::BV::from_u64(ctx, *min, *bits as u32)));
             state.assert(&bv.ule(&secret::BV::from_u64(ctx, *max, *bits as u32)));
         }
-        AbstractData::PublicNonPointer { value: AbstractValue::Unconstrained, .. } => {
+        AbstractData::PublicValue { value: AbstractValue::Unconstrained, .. } => {
             // nothing to do
         },
-        AbstractData::PublicPointer(pointee) => {
+        AbstractData::PublicPointerTo(pointee) => {
             let inner_ptr = state.allocate(pointee.size() as u64);
-            state.write(&ptr, inner_ptr.clone()); // make `ptr` point to the newly allocated memory
+            state.write(&ptr, inner_ptr.clone()); // make `ptr` point to a pointer to the newly allocated memory
             initialize_data_in_memory(ctx, state, &inner_ptr, &**pointee);
         },
+        AbstractData::PublicPointerToFunction(funcname) => {
+            let inner_ptr = state.get_pointer_to_function(funcname.clone())
+                .unwrap_or_else(|| panic!("Failed to find function {:?}", &funcname))
+                .clone();
+            state.write(&ptr, inner_ptr); // make `ptr` point to a pointer to the function
+        }
+        AbstractData::PublicPointerToHook(funcname) => {
+            let inner_ptr = state.get_pointer_to_function_hook(funcname)
+                .unwrap_or_else(|| panic!("Failed to find hook for function {:?}", &funcname))
+                .clone();
+            state.write(&ptr, inner_ptr); // make `ptr` point to a pointer to the hook
+        }
         AbstractData::PublicPointerToUnconstrainedPublic => {
             // nothing to do
         },

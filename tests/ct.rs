@@ -56,10 +56,10 @@ fn ct_onearg() {
     init_logging();
     let ctx = z3::Context::new(&z3::Config::new());
     let project = get_project();
-    let publicx_secrety = std::iter::once(AbstractData::PublicNonPointer { bits: 32, value: AbstractValue::Unconstrained })
+    let publicx_secrety = std::iter::once(AbstractData::PublicValue { bits: 32, value: AbstractValue::Unconstrained })
         .chain(std::iter::once(AbstractData::Secret { bits: 32 }));
     let secretx_publicy = std::iter::once(AbstractData::Secret { bits: 32 })
-        .chain(std::iter::once(AbstractData::PublicNonPointer { bits: 32, value: AbstractValue::Unconstrained }));
+        .chain(std::iter::once(AbstractData::PublicValue { bits: 32, value: AbstractValue::Unconstrained }));
     assert!(is_constant_time(&ctx, "ct_onearg", &project, publicx_secrety, Config::default()));
     assert!(!is_constant_time(&ctx, "ct_onearg", &project, secretx_publicy, Config::default()));
 }
@@ -69,7 +69,7 @@ fn ct_secrets() {
     init_logging();
     let ctx = z3::Context::new(&z3::Config::new());
     let project = get_project();
-    let arg = std::iter::once(AbstractData::PublicPointer(Box::new(AbstractData::Array {
+    let arg = std::iter::once(AbstractData::PublicPointerTo(Box::new(AbstractData::Array {
         element_type: Box::new(AbstractData::Secret { bits: 32 }),
         num_elements: 100,
     })));
@@ -81,7 +81,7 @@ fn notct_secrets() {
     init_logging();
     let ctx = z3::Context::new(&z3::Config::new());
     let project = get_project();
-    let arg = std::iter::once(AbstractData::PublicPointer(Box::new(AbstractData::Array {
+    let arg = std::iter::once(AbstractData::PublicPointerTo(Box::new(AbstractData::Array {
         element_type: Box::new(AbstractData::Secret { bits: 32 }),
         num_elements: 100,
     })));
@@ -89,8 +89,8 @@ fn notct_secrets() {
 }
 
 fn ptr_to_struct_partially_secret() -> AbstractData {
-    AbstractData::PublicPointer(Box::new(AbstractData::Struct(vec![
-        AbstractData::PublicNonPointer { bits: 32, value: AbstractValue::Unconstrained },
+    AbstractData::PublicPointerTo(Box::new(AbstractData::Struct(vec![
+        AbstractData::PublicValue { bits: 32, value: AbstractValue::Unconstrained },
         AbstractData::Secret { bits: 32 },
     ])))
 }
@@ -100,8 +100,8 @@ fn ct_struct() {
     init_logging();
     let ctx = z3::Context::new(&z3::Config::new());
     let project = get_project();
-    let args = std::iter::once(AbstractData::PublicPointer(Box::new(AbstractData::Array {
-        element_type: Box::new(AbstractData::PublicNonPointer { bits: 32, value: AbstractValue::Unconstrained }),
+    let args = std::iter::once(AbstractData::PublicPointerTo(Box::new(AbstractData::Array {
+        element_type: Box::new(AbstractData::PublicValue { bits: 32, value: AbstractValue::Unconstrained }),
         num_elements: 100,
     }))).chain(std::iter::once(ptr_to_struct_partially_secret()));
     assert!(is_constant_time(&ctx, "ct_struct", &project, args, Config::default()));
@@ -112,16 +112,16 @@ fn notct_struct() {
     init_logging();
     let ctx = z3::Context::new(&z3::Config::new());
     let project = get_project();
-    let args = std::iter::once(AbstractData::PublicPointer(Box::new(AbstractData::Array {
-        element_type: Box::new(AbstractData::PublicNonPointer { bits: 32, value: AbstractValue::Unconstrained }),
+    let args = std::iter::once(AbstractData::PublicPointerTo(Box::new(AbstractData::Array {
+        element_type: Box::new(AbstractData::PublicValue { bits: 32, value: AbstractValue::Unconstrained }),
         num_elements: 100,
     }))).chain(std::iter::once(ptr_to_struct_partially_secret()));
     assert!(!is_constant_time(&ctx, "notct_struct", &project, args, Config::default()));
 }
 
 fn ptr_to_ptr_to_secrets() -> AbstractData {
-    AbstractData::PublicPointer(Box::new(AbstractData::Array {
-        element_type: Box::new(AbstractData::PublicPointer(Box::new(AbstractData::Array {
+    AbstractData::PublicPointerTo(Box::new(AbstractData::Array {
+        element_type: Box::new(AbstractData::PublicPointerTo(Box::new(AbstractData::Array {
             element_type: Box::new(AbstractData::Secret { bits: 32 }),
             num_elements: 30,
         }))),
