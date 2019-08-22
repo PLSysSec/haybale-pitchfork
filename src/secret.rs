@@ -267,7 +267,7 @@ impl<'ctx> haybale::backend::Bool<'ctx> for Bool<'ctx> {
 
 #[derive(PartialEq, Eq, Clone, Debug)]
 pub struct State {
-    ct_violation_observed: bool,
+    pub ct_violation_observed: bool,
 }
 
 impl State {
