@@ -2,7 +2,7 @@ mod abstractdata;
 pub use abstractdata::*;
 pub mod secret;
 
-use haybale::{size, symex_function, ExecutionManager, State};
+use haybale::{layout, symex_function, ExecutionManager, State};
 use haybale::backend::*;
 pub use haybale::{Config, Project};
 use llvm_ir::*;
@@ -19,7 +19,7 @@ pub fn is_constant_time_in_inputs<'ctx, 'p>(
     config: Config<'ctx, secret::Backend<'ctx>>
 ) -> bool {
     let (func, _) = project.get_func_by_name(funcname).expect("Failed to find function");
-    let args = func.parameters.iter().map(|p| AbstractData::Secret { bits: size(&p.ty) });
+    let args = func.parameters.iter().map(|p| AbstractData::Secret { bits: layout::size(&p.ty) });
     is_constant_time(ctx, funcname, project, args, config)
 }
 
@@ -59,8 +59,8 @@ pub fn is_constant_time<'ctx, 'p>(
 }
 
 fn allocate_arg<'ctx, 'p>(ctx: &'ctx z3::Context, state: &mut State<'ctx, 'p, secret::Backend<'ctx>>, param: &'p function::Parameter, arg: AbstractData) {
-    if arg.size() != size(&param.ty) {
-        panic!("Parameter size mismatch for parameter {:?}: parameter is {} bits but AbstractData is {} bits", &param.name, size(&param.ty), arg.size());
+    if arg.size() != layout::size(&param.ty) {
+        panic!("Parameter size mismatch for parameter {:?}: parameter is {} bits but AbstractData is {} bits", &param.name, layout::size(&param.ty), arg.size());
     }
     match arg {
         AbstractData::Secret { bits } => {
