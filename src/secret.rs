@@ -37,7 +37,18 @@ macro_rules! impl_unop_as_functor {
         fn $f(&self) -> Self {
             match self {
                 BV::Public(bv) => BV::Public(bv.$f()),
-                BV::Secret(bits) => BV::Secret(*bits), // assume that unary ops don't change the bitwidth
+                BV::Secret(bits) => BV::Secret(*bits), // use this macro only for unary ops which don't change the bitwidth
+            }
+        }
+    };
+}
+
+macro_rules! impl_unop_as_functor_return_bv_length_1 {
+    ($f:ident) => {
+        fn $f(&self) -> Self {
+            match self {
+                BV::Public(bv) => BV::Public(bv.$f()),
+                _ => BV::Secret(1),
             }
         }
     };
@@ -104,8 +115,8 @@ impl<'ctx> haybale::backend::BV<'ctx> for BV<'ctx> {
     impl_binop_as_functor!(nand);
     impl_binop_as_functor!(nor);
     impl_binop_as_functor!(xnor);
-    impl_unop_as_functor!(redand);
-    impl_unop_as_functor!(redor);
+    impl_unop_as_functor_return_bv_length_1!(redand);
+    impl_unop_as_functor_return_bv_length_1!(redor);
     impl_binop_as_functor!(add);
     impl_binop_as_functor!(sub);
     impl_binop_as_functor!(mul);
@@ -127,10 +138,15 @@ impl<'ctx> haybale::backend::BV<'ctx> for BV<'ctx> {
     impl_binop_as_functor!(ashr);
     impl_binop_as_functor!(rotl);
     impl_binop_as_functor!(rotr);
-    impl_binop_as_functor!(concat);
     impl_binop_as_functor_return_bool!(_eq);
     impl_unop_as_functor!(simplify);
 
+    fn concat(&self, other: &Self) -> Self {
+        match (self, other) {
+            (BV::Public(bv), BV::Public(other)) => BV::Public(bv.concat(other)),
+            _ => BV::Secret(self.get_size() + other.get_size()),
+        }
+    }
     fn extract(&self, high: u32, low: u32) -> Self {
         match self {
             BV::Public(bv) => BV::Public(bv.extract(high, low)),
