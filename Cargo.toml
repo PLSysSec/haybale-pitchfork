@@ -8,7 +8,7 @@ edition = "2018"
 
 [dependencies]
 haybale = { path = "../haybale" }
-llvm-ir = { git = "https://github.com/cdisselkoen/llvm-ir" }
+llvm-ir = "0.2.2"
 z3 = { path = "../z3.rs/z3" }
 log = "0.4.0"
 env_logger = "0.6.1"
