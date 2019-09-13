@@ -11,16 +11,16 @@ use std::rc::Rc;
 #[derive(PartialEq, Eq, Clone, Debug)]
 pub struct BtorRef {
     pub(crate) btor: haybale::backend::BtorRef,
-    ct_violation_observed: Rc<RefCell<bool>>,
+    ct_violation_observed: Rc<RefCell<Option<CTViolation>>>,
 }
 
 impl BtorRef {
-    pub(crate) fn ct_violation_observed(&self) -> bool {
-        *self.ct_violation_observed.borrow()
+    pub(crate) fn ct_violation(&self) -> Option<CTViolation> {
+        self.ct_violation_observed.borrow().clone()
     }
 
-    fn record_ct_violation(&self) {
-        *self.ct_violation_observed.borrow_mut() = true;
+    fn record_ct_violation(&self, v: CTViolation) {
+        *self.ct_violation_observed.borrow_mut() = Some(v);
     }
 }
 
@@ -28,7 +28,7 @@ impl Default for BtorRef {
     fn default() -> Self {
         Self {
             btor: haybale::backend::BtorRef::default(),
-            ct_violation_observed: Rc::new(RefCell::new(false)),
+            ct_violation_observed: Rc::new(RefCell::new(None)),
         }
     }
 }
@@ -48,7 +48,7 @@ impl haybale::backend::SolverRef for BtorRef {
     fn duplicate(&self) -> Self {
         Self {
             btor: self.btor.duplicate(),
-            ct_violation_observed: Rc::new(RefCell::new(*self.ct_violation_observed.borrow())),
+            ct_violation_observed: Rc::new(RefCell::new(self.ct_violation_observed.borrow().clone())),
         }
     }
 
@@ -68,6 +68,16 @@ impl From<BtorRef> for Rc<Btor> {
     fn from(btor: BtorRef) -> Rc<Btor> {
         btor.btor.into()
     }
+}
+
+#[derive(PartialEq, Eq, Clone, Debug)]
+pub enum CTViolation {
+    /// `Secret` values influenced an address calculation
+    AddressCalculation,
+    /// `Secret` values influenced control flow
+    ControlFlowDecision,
+    /// `Secret` values leaked externally, e.g. influenced arguments to a logging function
+    LeakedExternally,
 }
 
 #[derive(PartialEq, Eq, Clone, Debug)]
@@ -246,7 +256,7 @@ impl haybale::backend::BV for BV {
     fn assert(&self) {
         match self {
             BV::Public(bv) => bv.assert(),
-            BV::Secret { btor, .. } => btor.record_ct_violation(),  // `Secret` values influencing a path constraint is a ct violation
+            BV::Secret { btor, .. } => btor.record_ct_violation(CTViolation::ControlFlowDecision),  // `Secret` values influencing a path constraint means they influenced a control flow decision
         }
     }
     fn is_failed_assumption(&self) -> bool {
@@ -394,8 +404,7 @@ impl haybale::backend::Memory for Memory {
                 }
             },
             BV::Secret { btor, .. } => {
-                // `Secret` values influencing an address calculation is a ct violation
-                btor.record_ct_violation();
+                btor.record_ct_violation(CTViolation::AddressCalculation);
                 BV::Secret { btor: btor.clone(), width: bits, symbol: None }
             }
         }
@@ -415,8 +424,7 @@ impl haybale::backend::Memory for Memory {
                 },
             },
             BV::Secret { btor, .. } => {
-                // `Secret` values influencing an address calculation is a ct violation
-                btor.record_ct_violation();
+                btor.record_ct_violation(CTViolation::AddressCalculation);
             },
         }
     }

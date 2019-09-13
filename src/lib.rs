@@ -1,6 +1,7 @@
 mod abstractdata;
 pub use abstractdata::*;
 pub mod secret;
+use secret::CTViolation;
 
 use haybale::{layout, symex_function, ExecutionManager, State};
 use haybale::backend::*;
@@ -37,6 +38,22 @@ pub fn is_constant_time<'p>(
     args: impl IntoIterator<Item = AbstractData>,
     config: Config<'p, secret::Backend>
 ) -> bool {
+    check_for_ct_violation(funcname, project, args, config).is_none()
+}
+
+/// Checks whether a function is "constant-time" in the secrets identified by the
+/// `args` data structure. That is, does the function ever make branching
+/// decisions, or perform address calculations, based on secrets.
+///
+/// If the function is constant-time, this returns `None`. Otherwise, it returns
+/// a `CTViolation` describing the violation. (If there is more than one
+/// violation, this will simply return the first violation it finds.)
+fn check_for_ct_violation<'p>(
+    funcname: &str,
+    project: &'p Project,
+    args: impl IntoIterator<Item = AbstractData>,
+    config: Config<'p, secret::Backend>
+) -> Option<CTViolation> {
     let mut em: ExecutionManager<secret::Backend> = symex_function(funcname, project, config);
 
     debug!("Allocating memory for function parameters");
@@ -47,13 +64,15 @@ pub fn is_constant_time<'p>(
     debug!("Done allocating memory for function parameters");
 
     while em.next().is_some() {
-        if em.state().solver.ct_violation_observed() {
-            return false;
+        let violation = em.state().solver.ct_violation();
+        if violation.is_some() {
+            debug!("Discovered a violation: {:?}", violation);
+            return violation;
         }
     }
 
     // no paths had ct violations
-    true
+    return None;
 }
 
 fn allocate_arg<'p>(state: &mut State<'p, secret::Backend>, param: &'p function::Parameter, arg: AbstractData) {
