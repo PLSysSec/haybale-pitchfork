@@ -1,33 +1,99 @@
-//! The `BV`, `Bool`, `Memory`, `Solver`, and `Backend` in this module are
+//! The `BV`, `Memory`, `BtorRef`, and `Backend` in this module are
 //! intended to be used qualified whenever there is a chance of confusing
-//! them with `haybale::backend::{BV, Bool, Memory, Solver, Backend}`,
-//! `haybale::solver::Solver`, `haybale::memory::Memory`, or `z3::ast::{BV, Bool}`.
+//! them with `haybale::backend::{BV, Memory, BtorRef, Backend}`,
+//! `haybale::memory::Memory`, or `boolector::BV`.
 
-use haybale::Result;
+use boolector::{Btor, BVSolution};
 use std::cell::RefCell;
+use std::ops::Deref;
 use std::rc::Rc;
 
 #[derive(PartialEq, Eq, Clone, Debug)]
-pub enum BV<'ctx> {
-    Public(z3::ast::BV<'ctx>),
-    /// `Secret` values are opaque because we don't care about their actual value, only how they are used.
-    /// The `u32` is the size (in bits) of the secret value.
-    Secret(u32),
+pub struct BtorRef {
+    pub(crate) btor: haybale::backend::BtorRef,
+    ct_violation_observed: Rc<RefCell<bool>>,
 }
 
-impl<'ctx> BV<'ctx> {
+impl BtorRef {
+    pub(crate) fn ct_violation_observed(&self) -> bool {
+        *self.ct_violation_observed.borrow()
+    }
+
+    fn record_ct_violation(&self) {
+        *self.ct_violation_observed.borrow_mut() = true;
+    }
+}
+
+impl Default for BtorRef {
+    fn default() -> Self {
+        Self {
+            btor: haybale::backend::BtorRef::default(),
+            ct_violation_observed: Rc::new(RefCell::new(false)),
+        }
+    }
+}
+
+impl Deref for BtorRef {
+    type Target = Btor;
+
+    fn deref(&self) -> &Btor {
+        &self.btor
+    }
+}
+
+impl haybale::backend::SolverRef for BtorRef {
+    type BV = BV;
+    type Array = boolector::Array<Rc<Btor>>;
+
+    fn duplicate(&self) -> Self {
+        Self {
+            btor: self.btor.duplicate(),
+            ct_violation_observed: Rc::new(RefCell::new(*self.ct_violation_observed.borrow())),
+        }
+    }
+
+    fn match_bv(&self, bv: &BV) -> Option<BV> {
+        match bv {
+            BV::Public(bv) => self.btor.match_bv(bv).map(BV::Public),
+            BV::Secret { .. } => Some(bv.clone()),
+        }
+    }
+
+    fn match_array(&self, array: &boolector::Array<Rc<Btor>>) -> Option<boolector::Array<Rc<Btor>>> {
+        self.btor.match_array(array)
+    }
+}
+
+impl From<BtorRef> for Rc<Btor> {
+    fn from(btor: BtorRef) -> Rc<Btor> {
+        btor.btor.into()
+    }
+}
+
+#[derive(PartialEq, Eq, Clone, Debug)]
+pub enum BV {
+    Public(boolector::BV<Rc<Btor>>),
+    /// `Secret` values are opaque because we don't care about their actual value, only how they are used.
+    Secret {
+        btor: BtorRef,
+        width: u32,
+        symbol: Option<String>,
+    },
+}
+
+impl BV {
     pub fn is_secret(&self) -> bool {
         match self {
             BV::Public(_) => false,
-            BV::Secret(_) => true,
+            BV::Secret { .. } => true,
         }
     }
 
     /// Gets the value out of a `BV::Public`, panicking if it is instead a `BV::Secret`
-    pub fn as_public(&self) -> &z3::ast::BV<'ctx> {
+    pub fn as_public(&self) -> &boolector::BV<Rc<Btor>> {
         match self {
             BV::Public(bv) => bv,
-            BV::Secret(_) => panic!("as_public on a BV::Secret"),
+            BV::Secret { .. } => panic!("as_public on a BV::Secret"),
         }
     }
 }
@@ -37,18 +103,18 @@ macro_rules! impl_unop_as_functor {
         fn $f(&self) -> Self {
             match self {
                 BV::Public(bv) => BV::Public(bv.$f()),
-                BV::Secret(bits) => BV::Secret(*bits), // use this macro only for unary ops which don't change the bitwidth
+                BV::Secret { btor, width, .. } => BV::Secret { btor: btor.clone(), width: *width, symbol: None }, // use this macro only for unary ops which don't change the bitwidth
             }
         }
     };
 }
 
-macro_rules! impl_unop_as_functor_return_bv_length_1 {
+macro_rules! impl_unop_as_functor_return_bool {
     ($f:ident) => {
         fn $f(&self) -> Self {
             match self {
                 BV::Public(bv) => BV::Public(bv.$f()),
-                _ => BV::Secret(1),
+                BV::Secret { btor, .. } => BV::Secret { btor: btor.clone(), width: 1, symbol: None },
             }
         }
     };
@@ -59,7 +125,8 @@ macro_rules! impl_binop_as_functor {
         fn $f(&self, other: &Self) -> Self {
             match (self, other) {
                 (BV::Public(bv), BV::Public(other)) => BV::Public(bv.$f(other)),
-                _ => BV::Secret(self.get_size()),
+                (BV::Secret { btor, width, .. }, _) => BV::Secret { btor: btor.clone(), width: *width, symbol: None },
+                (_, BV::Secret { btor, width, .. }) => BV::Secret { btor: btor.clone(), width: *width, symbol: None },
             }
         }
     };
@@ -67,56 +134,130 @@ macro_rules! impl_binop_as_functor {
 
 macro_rules! impl_binop_as_functor_return_bool {
     ($f:ident) => {
-        fn $f(&self, other: &Self) -> Self::AssociatedBool {
+        fn $f(&self, other: &Self) -> Self {
             match (self, other) {
-                (BV::Public(bv), BV::Public(other)) => Bool::Public(bv.$f(other)),
-                _ => Bool::Secret,
+                (BV::Public(bv), BV::Public(other)) => BV::Public(bv.$f(other)),
+                (BV::Secret { btor, .. }, _) => BV::Secret { btor: btor.clone(), width: 1, symbol: None },
+                (_, BV::Secret { btor, .. }) => BV::Secret { btor: btor.clone(), width: 1, symbol: None },
             }
         }
     };
 }
 
-impl<'ctx> haybale::backend::BV<'ctx> for BV<'ctx> {
-    type AssociatedBool = Bool<'ctx>;
+impl haybale::backend::BV for BV {
+    type SolverRef = BtorRef;
 
-    fn new(ctx: &'ctx z3::Context, name: impl Into<z3::Symbol>, size: u32) -> Self {
-        BV::Public(z3::ast::BV::new(ctx, name, size))
+    fn new(btor: BtorRef, width: u32, name: Option<&str>) -> Self {
+        BV::Public(boolector::BV::new(btor.btor.into(), width, name))
     }
-    fn from_i64(ctx: &'ctx z3::Context, i: i64, size: u32) -> Self {
-        BV::Public(z3::ast::BV::from_i64(ctx, i, size))
+    fn from_bool(btor: BtorRef, b: bool) -> Self {
+        BV::Public(boolector::BV::from_bool(btor.btor.into(), b))
     }
-    fn from_u64(ctx: &'ctx z3::Context, u: u64, size: u32) -> Self {
-        BV::Public(z3::ast::BV::from_u64(ctx, u, size))
+    fn from_i32(btor: BtorRef, i: i32, width: u32) -> Self {
+        BV::Public(boolector::BV::from_i32(btor.btor.into(), i, width))
     }
-    fn as_i64(&self) -> Option<i64> {
+    fn from_u32(btor: BtorRef, u: u32, width: u32) -> Self {
+        BV::Public(boolector::BV::from_u32(btor.btor.into(), u, width))
+    }
+    fn from_i64(btor: BtorRef, i: i64, width: u32) -> Self {
+        BV::Public(boolector::BV::from_i64(btor.btor.into(), i, width))
+    }
+    fn from_u64(btor: BtorRef, u: u64, width: u32) -> Self {
+        BV::Public(boolector::BV::from_u64(btor.btor.into(), u, width))
+    }
+    fn zero(btor: BtorRef, width: u32) -> Self {
+        BV::Public(boolector::BV::zero(btor.btor.into(), width))
+    }
+    fn one(btor: BtorRef, width: u32) -> Self {
+        BV::Public(boolector::BV::one(btor.btor.into(), width))
+    }
+    fn ones(btor: BtorRef, width: u32) -> Self {
+        BV::Public(boolector::BV::ones(btor.btor.into(), width))
+    }
+    fn from_binary_str(btor: BtorRef, bits: &str) -> Self {
+        BV::Public(boolector::BV::from_binary_str(btor.btor.into(), bits))
+    }
+    fn from_dec_str(btor: BtorRef, num: &str, width: u32) -> Self {
+        BV::Public(boolector::BV::from_dec_str(btor.btor.into(), num, width))
+    }
+    fn from_hex_str(btor: BtorRef, num: &str, width: u32) -> Self {
+        BV::Public(boolector::BV::from_hex_str(btor.btor.into(), num, width))
+    }
+    fn as_binary_str(&self) -> Option<String> {
         match self {
-            BV::Public(bv) => bv.as_i64(),
-            BV::Secret(_) => None,
+            BV::Public(bv) => bv.as_binary_str(),
+            BV::Secret { .. } => None,
         }
     }
     fn as_u64(&self) -> Option<u64> {
         match self {
             BV::Public(bv) => bv.as_u64(),
-            BV::Secret(_) => None,
+            BV::Secret { .. } => None,
         }
     }
-    fn get_size(&self) -> u32 {
+    fn as_bool(&self) -> Option<bool> {
         match self {
-            BV::Public(bv) => bv.get_size(),
-            BV::Secret(bits) => *bits,
+            BV::Public(bv) => bv.as_bool(),
+            BV::Secret { .. } => None,
+        }
+    }
+    fn get_a_solution(&self) -> BVSolution {
+        match self {
+            BV::Public(bv) => bv.get_a_solution(),
+            BV::Secret { .. } => panic!("get_a_solution() on a Secret value"),
+        }
+    }
+    fn get_id(&self) -> i32 {
+        match self {
+            BV::Public(bv) => bv.get_id(),
+            BV::Secret { .. } => panic!("get_id() on a Secret value"),
+        }
+    }
+    fn get_width(&self) -> u32 {
+        match self {
+            BV::Public(bv) => bv.get_width(),
+            BV::Secret { width, .. } => *width,
+        }
+    }
+    fn get_symbol(&self) -> Option<&str> {
+        match self {
+            BV::Public(bv) => bv.get_symbol(),
+            BV::Secret { symbol, .. } => symbol.as_ref().map(|s| s.as_ref()),
+        }
+    }
+    fn set_symbol(&mut self, symbol: Option<&str>) {
+        match self {
+            BV::Public(bv) => bv.set_symbol(symbol),
+            BV::Secret { btor, width, .. } => *self = BV::Secret { btor: btor.clone(), width: *width, symbol: symbol.map(|s| s.to_owned()) },
+        }
+    }
+    fn is_const(&self) -> bool {
+        match self {
+            BV::Public(bv) => bv.is_const(),
+            BV::Secret { .. } => false,
+        }
+    }
+    fn has_same_width(&self, other: &Self) -> bool {
+        match (self, other) {
+            (BV::Public(bv), BV::Public(other)) => bv.has_same_width(other),
+            _ => self.get_width() == other.get_width(),
+        }
+    }
+    fn assert(&self) {
+        match self {
+            BV::Public(bv) => bv.assert(),
+            BV::Secret { btor, .. } => btor.record_ct_violation(),  // `Secret` values influencing a path constraint is a ct violation
+        }
+    }
+    fn is_failed_assumption(&self) -> bool {
+        match self {
+            BV::Public(bv) => bv.is_failed_assumption(),
+            BV::Secret { .. } => false,
         }
     }
 
-    impl_unop_as_functor!(not);
-    impl_unop_as_functor!(neg);
-    impl_binop_as_functor!(and);
-    impl_binop_as_functor!(or);
-    impl_binop_as_functor!(xor);
-    impl_binop_as_functor!(nand);
-    impl_binop_as_functor!(nor);
-    impl_binop_as_functor!(xnor);
-    impl_unop_as_functor_return_bv_length_1!(redand);
-    impl_unop_as_functor_return_bv_length_1!(redor);
+    impl_binop_as_functor!(_eq);
+    impl_binop_as_functor!(_ne);
     impl_binop_as_functor!(add);
     impl_binop_as_functor!(sub);
     impl_binop_as_functor!(mul);
@@ -125,210 +266,111 @@ impl<'ctx> haybale::backend::BV<'ctx> for BV<'ctx> {
     impl_binop_as_functor!(urem);
     impl_binop_as_functor!(srem);
     impl_binop_as_functor!(smod);
-    impl_binop_as_functor_return_bool!(ult);
-    impl_binop_as_functor_return_bool!(slt);
-    impl_binop_as_functor_return_bool!(ule);
-    impl_binop_as_functor_return_bool!(sle);
-    impl_binop_as_functor_return_bool!(uge);
-    impl_binop_as_functor_return_bool!(sge);
+    impl_unop_as_functor!(inc);
+    impl_unop_as_functor!(dec);
+    impl_unop_as_functor!(neg);
+    impl_binop_as_functor!(uaddo);
+    impl_binop_as_functor!(saddo);
+    impl_binop_as_functor!(usubo);
+    impl_binop_as_functor!(ssubo);
+    impl_binop_as_functor!(umulo);
+    impl_binop_as_functor!(smulo);
+    impl_binop_as_functor!(sdivo);
+    impl_unop_as_functor!(not);
+    impl_binop_as_functor!(and);
+    impl_binop_as_functor!(or);
+    impl_binop_as_functor!(xor);
+    impl_binop_as_functor!(nand);
+    impl_binop_as_functor!(nor);
+    impl_binop_as_functor!(xnor);
+    impl_binop_as_functor!(sll);
+    impl_binop_as_functor!(srl);
+    impl_binop_as_functor!(sra);
+    impl_binop_as_functor!(rol);
+    impl_binop_as_functor!(ror);
+    impl_unop_as_functor_return_bool!(redand);
+    impl_unop_as_functor_return_bool!(redor);
+    impl_unop_as_functor_return_bool!(redxor);
     impl_binop_as_functor_return_bool!(ugt);
+    impl_binop_as_functor_return_bool!(ugte);
     impl_binop_as_functor_return_bool!(sgt);
-    impl_binop_as_functor!(shl);
-    impl_binop_as_functor!(lshr);
-    impl_binop_as_functor!(ashr);
-    impl_binop_as_functor!(rotl);
-    impl_binop_as_functor!(rotr);
-    impl_binop_as_functor_return_bool!(_eq);
-    impl_unop_as_functor!(simplify);
+    impl_binop_as_functor_return_bool!(sgte);
+    impl_binop_as_functor_return_bool!(ult);
+    impl_binop_as_functor_return_bool!(ulte);
+    impl_binop_as_functor_return_bool!(slt);
+    impl_binop_as_functor_return_bool!(slte);
 
+    fn zext(&self, i: u32) -> Self {
+        match self {
+            BV::Public(bv) => BV::Public(bv.zext(i)),
+            BV::Secret { btor, width, .. } => BV::Secret { btor: btor.clone(), width: *width + i, symbol: None },
+        }
+    }
+    fn sext(&self, i: u32) -> Self {
+        match self {
+            BV::Public(bv) => BV::Public(bv.sext(i)),
+            BV::Secret { btor, width, .. } => BV::Secret { btor: btor.clone(), width: *width + i, symbol: None },
+        }
+    }
+    fn slice(&self, high: u32, low: u32) -> Self {
+        match self {
+            BV::Public(bv) => BV::Public(bv.slice(high, low)),
+            BV::Secret { btor, .. } => BV::Secret { btor: btor.clone(), width: high - low + 1, symbol: None },
+        }
+    }
     fn concat(&self, other: &Self) -> Self {
         match (self, other) {
             (BV::Public(bv), BV::Public(other)) => BV::Public(bv.concat(other)),
-            _ => BV::Secret(self.get_size() + other.get_size()),
+            (BV::Secret { btor, width, .. }, _) => BV::Secret { btor: btor.clone(), width: *width + other.get_width(), symbol: None },
+            (_, BV::Secret { btor, width, .. }) => BV::Secret { btor: btor.clone(), width: *width + self.get_width(), symbol: None },
         }
     }
-    fn extract(&self, high: u32, low: u32) -> Self {
+    fn repeat(&self, n: u32) -> Self {
         match self {
-            BV::Public(bv) => BV::Public(bv.extract(high, low)),
-            BV::Secret(_) => BV::Secret(high - low + 1),
+            BV::Public(bv) => BV::Public(bv.repeat(n)),
+            BV::Secret { btor, width, .. } => BV::Secret { btor: btor.clone(), width: width * n, symbol: None },
         }
     }
-    fn sign_ext(&self, i: u32) -> Self {
-        match self {
-            BV::Public(bv) => BV::Public(bv.sign_ext(i)),
-            BV::Secret(bits) => BV::Secret(bits + i),
-        }
-    }
-    fn zero_ext(&self, i: u32) -> Self {
-        match self {
-            BV::Public(bv) => BV::Public(bv.zero_ext(i)),
-            BV::Secret(bits) => BV::Secret(bits + i),
+
+    impl_binop_as_functor!(iff);
+    impl_binop_as_functor!(implies);
+
+    fn cond_bv(&self, truebv: &Self, falsebv: &Self) -> Self {
+        match (self, truebv, falsebv) {
+            (BV::Public(bv), BV::Public(truebv), BV::Public(falsebv)) => BV::Public(bv.cond_bv(truebv, falsebv)),
+            (BV::Secret { btor, .. }, _, _) => BV::Secret { btor: btor.clone(), width: truebv.get_width(), symbol: None },
+            (_, BV::Secret { btor, width, .. }, _) => BV::Secret { btor: btor.clone(), width: *width, symbol: None },
+            (_, _, BV::Secret { btor, width, .. }) => BV::Secret { btor: btor.clone(), width: *width, symbol: None },
         }
     }
 }
 
 #[derive(PartialEq, Eq, Clone, Debug)]
-pub enum Bool<'ctx> {
-    Public(z3::ast::Bool<'ctx>),
-    Secret, // `Secret` values are opaque because we don't care about their actual value, only how they are used
-}
-
-impl<'ctx> Bool<'ctx> {
-    pub fn is_secret(&self) -> bool {
-        match self {
-            Bool::Public(_) => false,
-            Bool::Secret => true,
-        }
-    }
-
-    /// Gets the value out of a `Bool::Public`, panicking if it is instead a `Bool::Secret`
-    pub fn as_public(&self) -> &z3::ast::Bool<'ctx> {
-        match self {
-            Bool::Public(b) => b,
-            Bool::Secret => panic!("as_public on a Bool::Secret"),
-        }
-    }
-}
-
-impl<'ctx> haybale::backend::Bool<'ctx> for Bool<'ctx> {
-    type AssociatedBV = BV<'ctx>;
-
-    fn new(ctx: &'ctx z3::Context, name: impl Into<z3::Symbol>) -> Self {
-        Bool::Public(z3::ast::Bool::new(ctx, name))
-    }
-    fn from_bool(ctx: &'ctx z3::Context, b: bool) -> Self {
-        Bool::Public(z3::ast::Bool::from_bool(ctx, b))
-    }
-    fn as_bool(&self) -> Option<bool> {
-        match self {
-            Bool::Public(b) => b.as_bool(),
-            Bool::Secret => None,
-        }
-    }
-    fn bvite(&self, a: &Self::AssociatedBV, b: &Self::AssociatedBV) -> Self::AssociatedBV {
-        use haybale::backend::BV; // need the trait in scope so that we can use its methods (`get_size()`)
-                                    // unfortunately this means that the `BV` in this module must now be referred to as `self::BV`
-        match (self, a, b) {
-            (Bool::Public(c), self::BV::Public(a), self::BV::Public(b)) => self::BV::Public(c.bvite(a, b)),
-            _ => self::BV::Secret(a.get_size()),
-        }
-    }
-    fn boolite(&self, a: &Self, b: &Self) -> Self {
-        match (self, a, b) {
-            (Bool::Public(c), Bool::Public(a), Bool::Public(b)) => Bool::Public(c.boolite(a, b)),
-            _ => Bool::Secret,
-        }
-    }
-    fn and(&self, other: &[&Self]) -> Self {
-        let mut maybe_publics = Some(vec![]);
-        for b in other {
-            if let (Some(ref mut v), Bool::Public(b)) = (maybe_publics.as_mut(), b) {
-                v.push(b);
-            }
-        }
-        match (self, maybe_publics) {
-            (Bool::Public(b), Some(ref v)) => Bool::Public(b.and(&v)),
-            _ => Bool::Secret,
-        }
-    }
-    fn or(&self, other: &[&Self]) -> Self {
-        let mut maybe_publics = Some(vec![]);
-        for b in other {
-            if let (Some(ref mut v), Bool::Public(b)) = (maybe_publics.as_mut(), b) {
-                v.push(b);
-            }
-        }
-        match (self, maybe_publics) {
-            (Bool::Public(b), Some(ref v)) => Bool::Public(b.or(&v)),
-            _ => Bool::Secret,
-        }
-    }
-    fn xor(&self, other: &Self) -> Self {
-        match (self, other) {
-            (Bool::Public(x), Bool::Public(y)) => Bool::Public(x.xor(y)),
-            _ => Bool::Secret,
-        }
-    }
-    fn not(&self) -> Self {
-        match self {
-            Bool::Public(b) => Bool::Public(b.not()),
-            _ => Bool::Secret,
-        }
-    }
-    fn iff(&self, other: &Self) -> Self {
-        match (self, other) {
-            (Bool::Public(x), Bool::Public(y)) => Bool::Public(x.iff(y)),
-            _ => Bool::Secret,
-        }
-    }
-    fn implies(&self, other: &Self) -> Self {
-        match (self, other) {
-            (Bool::Public(x), Bool::Public(y)) => Bool::Public(x.implies(y)),
-            _ => Bool::Secret,
-        }
-    }
-    fn _eq(&self, other: &Self) -> Self {
-        match (self, other) {
-            (Bool::Public(x), Bool::Public(y)) => Bool::Public(x._eq(y)),
-            _ => Bool::Secret,
-        }
-    }
-    fn simplify(&self) -> Self {
-        match self {
-            Bool::Public(b) => Bool::Public(b.simplify()),
-            _ => Bool::Secret,
-        }
-    }
-}
-
-#[derive(PartialEq, Eq, Clone, Debug)]
-pub struct State {
-    pub ct_violation_observed: bool,
-}
-
-impl State {
-    pub fn ct_violation_observed(&self) -> bool {
-        self.ct_violation_observed
-    }
-}
-
-impl Default for State {
-    fn default() -> Self {
-        Self {
-            ct_violation_observed: false,
-        }
-    }
-}
-
-#[derive(PartialEq, Eq, Clone, Debug)]
-pub struct Memory<'ctx> {
-    ctx: &'ctx z3::Context,
+pub struct Memory {
+    btor: BtorRef,
     /// This memory holds the actual data
-    mem: haybale::memory::Memory<'ctx>,
+    mem: haybale::memory::Memory,
     /// This memory is a bitmap, with each bit indicating if the corresponding bit of `mem` is secret or not (1 for secret, 0 for public)
-    shadow_mem: haybale::memory::Memory<'ctx>,
-    backend_state: Rc<RefCell<State>>,
+    shadow_mem: haybale::memory::Memory,
 }
 
-impl<'ctx> haybale::backend::Memory<'ctx> for Memory<'ctx> {
-    type Index = BV<'ctx>;
-    type Value = BV<'ctx>;
-    type BackendState = State;
+impl haybale::backend::Memory for Memory {
+    type SolverRef = BtorRef;
+    type Index = BV;
+    type Value = BV;
 
-    fn new_uninitialized(ctx: &'ctx z3::Context, backend_state: Rc<RefCell<Self::BackendState>>) -> Self {
+    fn new_uninitialized(btor: BtorRef) -> Self {
         Self {
-            ctx,
-            mem: haybale::backend::Memory::new_uninitialized(ctx, Rc::new(RefCell::new(()))),
-            shadow_mem: haybale::backend::Memory::new_zero_initialized(ctx, Rc::new(RefCell::new(()))), // shadow bits are zero-initialized (all public) even though the memory contents are uninitialized
-            backend_state,
+            mem: haybale::backend::Memory::new_uninitialized(btor.btor.clone()),
+            shadow_mem: haybale::backend::Memory::new_zero_initialized(btor.btor.clone()), // shadow bits are zero-initialized (all public) even though the memory contents are uninitialized
+            btor,  // out of order so it can be used above but moved in here
         }
     }
-    fn new_zero_initialized(ctx: &'ctx z3::Context, backend_state: Rc<RefCell<Self::BackendState>>) -> Self {
+    fn new_zero_initialized(btor: BtorRef) -> Self {
         Self {
-            ctx,
-            mem: haybale::backend::Memory::new_zero_initialized(ctx, Rc::new(RefCell::new(()))),
-            shadow_mem: haybale::backend::Memory::new_zero_initialized(ctx, Rc::new(RefCell::new(()))), // initialize to all public zeroes
-            backend_state,
+            mem: haybale::backend::Memory::new_zero_initialized(btor.btor.clone()),
+            shadow_mem: haybale::backend::Memory::new_zero_initialized(btor.btor.clone()), // initialize to all public zeroes
+            btor,  // out of order so it can be used above but moved in here
         }
     }
     fn read(&self, index: &Self::Index, bits: u32) -> Self::Value {
@@ -347,14 +389,14 @@ impl<'ctx> haybale::backend::Memory<'ctx> for Memory<'ctx> {
                         // from a symbolic address that could point to either secret or public data.
                         // We are interested in the "worst case", so since the resulting value _could be_
                         // secret, we follow the case where it _is_ secret.
-                        BV::Secret(bits)
+                        BV::Secret { btor: self.btor.clone(), width: bits, symbol: None }
                     }
                 }
             },
-            BV::Secret(_) => {
+            BV::Secret { btor, .. } => {
                 // `Secret` values influencing an address calculation is a ct violation
-                self.backend_state.borrow_mut().ct_violation_observed = true;
-                BV::Secret(bits)
+                btor.record_ct_violation();
+                BV::Secret { btor: btor.clone(), width: bits, symbol: None }
             }
         }
     }
@@ -362,98 +404,34 @@ impl<'ctx> haybale::backend::Memory<'ctx> for Memory<'ctx> {
         match index {
             BV::Public(index) => match value {
                 BV::Public(value) => {
-                    let all_zeroes = z3::ast::BV::from_u64(self.ctx, 0, value.get_size());
+                    let all_zeroes = boolector::BV::zero(self.btor.clone().into(), value.get_width());
                     haybale::backend::Memory::write(&mut self.shadow_mem, index, all_zeroes); // we are writing a public value to these bits
                     haybale::backend::Memory::write(&mut self.mem, index, value);
                 },
-                BV::Secret(bits) => {
-                    let all_ones = z3::ast::BV::from_u64(self.ctx, 0, bits).bvnot();
+                BV::Secret { btor, width, .. } => {
+                    let all_ones = boolector::BV::ones(btor.clone().into(), width);
                     haybale::backend::Memory::write(&mut self.shadow_mem, index, all_ones); // we are writing a secret value to these bits
                     // we don't write anything to self.mem, because the value of its secret bits doesn't matter
                 },
             },
-            BV::Secret(_) => {
+            BV::Secret { btor, .. } => {
                 // `Secret` values influencing an address calculation is a ct violation
-                self.backend_state.borrow_mut().ct_violation_observed = true;
+                btor.record_ct_violation();
             },
         }
     }
-}
-
-pub struct Solver<'ctx> {
-    haybale_solver: haybale::solver::Solver<'ctx>,
-    backend_state: Rc<RefCell<State>>,
-}
-
-impl<'ctx> haybale::backend::Solver<'ctx> for Solver<'ctx> {
-    type Constraint = Bool<'ctx>;
-    type Value = BV<'ctx>;
-    type BackendState = State;
-
-    fn new(ctx: &'ctx z3::Context, backend_state: Rc<RefCell<State>>) -> Self {
-        Self {
-            haybale_solver: haybale::backend::Solver::new(ctx, Rc::new(RefCell::new(()))),
-            backend_state,
-        }
-    }
-    fn get_context(&self) -> &'ctx z3::Context {
-        self.haybale_solver.get_context()
-    }
-    fn assert(&mut self, constraint: &Self::Constraint) {
-        match constraint {
-            Bool::Public(c) => self.haybale_solver.assert(c),
-            Bool::Secret => self.backend_state.borrow_mut().ct_violation_observed = true,  // `Secret` values influencing a path constraint is a ct violation
-        };
-    }
-    fn check(&mut self) -> Result<bool> {
-        self.haybale_solver.check()
-    }
-    fn check_with_extra_constraints<'a>(&'a mut self, constraints: impl Iterator<Item = &'a Self::Constraint>) -> Result<bool> {
-        self.haybale_solver.check_with_extra_constraints(
-            constraints
-                .filter(|c| !c.is_secret())
-                .map(Bool::as_public),
-        )
-    }
-    fn push(&mut self) {
-        self.haybale_solver.push()
-    }
-    fn pop(&mut self, n: usize) {
-        self.haybale_solver.pop(n)
-    }
-    fn get_a_solution_for_bv(&mut self, bv: &Self::Value) -> Result<Option<u64>> {
-        match bv {
-            BV::Public(bv) => self.haybale_solver.get_a_solution_for_bv(bv),
-            BV::Secret(_) => Ok(None),
-        }
-    }
-    fn get_a_solution_for_specified_bits_of_bv(&mut self, bv: &Self::Value, high: u32, low: u32) -> Result<Option<u64>> {
-        match bv {
-            BV::Public(bv) => self
-                .haybale_solver
-                .get_a_solution_for_specified_bits_of_bv(bv, high, low),
-            BV::Secret(_) => Ok(None),
-        }
-    }
-    fn get_a_solution_for_bool(&mut self, b: &Self::Constraint) -> Result<Option<bool>> {
-        match b {
-            Bool::Public(b) => self.haybale_solver.get_a_solution_for_bool(b),
-            Bool::Secret => Ok(None),
-        }
-    }
-    fn current_model_to_pretty_string(&self) -> String {
-        self.haybale_solver.current_model_to_pretty_string()
+    fn change_solver(&mut self, new_solver: BtorRef) {
+        self.mem.change_solver(new_solver.btor.clone());
+        self.shadow_mem.change_solver(new_solver.btor.clone());
+        self.btor = new_solver;
     }
 }
 
-pub struct Backend<'ctx> {
-    phantomdata: std::marker::PhantomData<&'ctx ()>,
-}
+#[derive(Clone, Debug)]
+pub struct Backend {}
 
-impl<'ctx> haybale::backend::Backend<'ctx> for Backend<'ctx> {
-    type BV = BV<'ctx>;
-    type Bool = Bool<'ctx>;
-    type Memory = Memory<'ctx>;
-    type Solver = Solver<'ctx>;
-    type State = State;
+impl haybale::backend::Backend for Backend {
+    type SolverRef = BtorRef;
+    type BV = BV;
+    type Memory = Memory;
 }

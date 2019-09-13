@@ -7,8 +7,8 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+boolector = { path = "../boolector-rs" }
 haybale = { path = "../haybale" }
-llvm-ir = "0.2.2"
-z3 = "0.4.0"
+llvm-ir = { git = "https://github.com/cdisselkoen/llvm-ir" }
 log = "0.4.0"
 env_logger = "0.6.1"
