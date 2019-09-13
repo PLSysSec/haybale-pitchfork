@@ -16,11 +16,11 @@ pub struct BtorRef {
 }
 
 impl BtorRef {
-    pub(crate) fn ct_violation(&self) -> Option<CTViolation> {
+    pub fn ct_violation(&self) -> Option<CTViolation> {
         self.ct_violation_observed.borrow().clone()
     }
 
-    fn record_ct_violation(&self, v: CTViolation) {
+    pub fn record_ct_violation(&self, v: CTViolation) {
         *self.ct_violation_observed.borrow_mut() = Some(v);
     }
 }
