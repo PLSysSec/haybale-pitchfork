@@ -4,7 +4,7 @@
 //! `haybale::memory::Memory`, or `boolector::BV`.
 
 use boolector::{Btor, BVSolution};
-use haybale::PossibleSolutions;
+use haybale::sat::sat_with_extra_constraints;
 use std::cell::RefCell;
 use std::ops::Deref;
 use std::rc::Rc;
@@ -391,30 +391,28 @@ impl haybale::backend::Memory for Memory {
                 // In Boolector, reads on a constant array that return the default value are
                 // nonetheless not constant (they are merely constrained to be equal to the
                 // default value). So, we actually need to do a solve here.
-                // TODO consider how to make this more efficient.
-                match haybale::get_possible_solutions_for_bv(self.btor.btor.clone(), &shadow_cell, 1).unwrap() {
-                    PossibleSolutions::PossibleSolutions(hs) => match hs.len() {
-                        0 => panic!("No possible solution for the shadow bits"),
-                        1 => {
-                            let shadowbits = hs.iter().next().unwrap();
-                            if shadowbits.as_01x_str().chars().all(|c| c == '0') {
-                                // All bits being read are public
-                                BV::Public(haybale::backend::Memory::read(&self.mem, index, bits))
-                            } else {
-                                // Some or all of the bits are secret, so we treat the resulting value as entirely secret
-                                BV::Secret { btor: self.btor.clone(), width: bits, symbol: None }
-                            }
-                        },
-                        n => panic!("Expected at most one solution since passed in n==1, but got {} solutions", n),
-                    },
-                    PossibleSolutions::MoreThanNPossibleSolutions(_) => {
-                        // The bits' secrecy is non-constant; i.e., the bits could be secret or not,
-                        // depending on the values of other variables. This can happen, e.g., when reading
-                        // from a symbolic address that could point to either secret or public data.
-                        // We are interested in the "worst case", so since the resulting value _could be_
-                        // secret, we follow the case where it _is_ secret.
-                        BV::Secret { btor: self.btor.clone(), width: bits, symbol: None }
-                    },
+                //
+                // However, we really only care whether the shadow value is all zeroes (all
+                // public) or not-all-zeroes (some or all secret). This means we can get away
+                // with using a faster `sat_with_extra_constraints()` check rather than a slow
+                // `get_possible_solutions_for_bv()` check.
+                let rc: Rc<Btor> = self.btor.clone().into();
+                let all_zeroes = boolector::BV::zero(rc.clone(), shadow_cell.get_width());
+                if sat_with_extra_constraints(&rc, std::iter::once(&shadow_cell._ne(&all_zeroes))).unwrap() {
+                    // This can happen multiple ways:
+                    // (1) Some or all of the bits are secret;
+                    // (2) The bits' secrecy is non-constant; i.e., the bits could be secret
+                    //      or not, depending on the values of other variables. This can
+                    //      happen, e.g, when reading from a symbolic address that could
+                    //      point to either secret or public data.
+                    // In either case, since all or part of the resulting value _could be_
+                    // secret, we treat the resulting value as entirely secret (following the
+                    // worst case).
+                    BV::Secret { btor: self.btor.clone(), width: bits, symbol: None }
+                } else {
+                    // Since the above query was unsat, the only possible solution is that
+                    // the bits are all public
+                    BV::Public(haybale::backend::Memory::read(&self.mem, index, bits))
                 }
             },
             BV::Secret { btor, .. } => {
