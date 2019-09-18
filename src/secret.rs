@@ -5,23 +5,22 @@
 
 use boolector::{Btor, BVSolution};
 use haybale::sat::sat_with_extra_constraints;
-use std::cell::RefCell;
 use std::ops::Deref;
-use std::rc::Rc;
+use std::sync::{Arc, RwLock};
 
-#[derive(PartialEq, Eq, Clone, Debug)]
+#[derive(Clone, Debug)]
 pub struct BtorRef {
     pub(crate) btor: haybale::backend::BtorRef,
-    ct_violation_observed: Rc<RefCell<Option<CTViolation>>>,
+    ct_violation_observed: Arc<RwLock<Option<CTViolation>>>,
 }
 
 impl BtorRef {
     pub fn ct_violation(&self) -> Option<CTViolation> {
-        self.ct_violation_observed.borrow().clone()
+        self.ct_violation_observed.read().unwrap().clone()
     }
 
     pub fn record_ct_violation(&self, v: CTViolation) {
-        *self.ct_violation_observed.borrow_mut() = Some(v);
+        *self.ct_violation_observed.write().unwrap() = Some(v);
     }
 }
 
@@ -29,7 +28,7 @@ impl Default for BtorRef {
     fn default() -> Self {
         Self {
             btor: haybale::backend::BtorRef::default(),
-            ct_violation_observed: Rc::new(RefCell::new(None)),
+            ct_violation_observed: Arc::new(RwLock::new(None)),
         }
     }
 }
@@ -42,14 +41,22 @@ impl Deref for BtorRef {
     }
 }
 
+impl PartialEq for BtorRef {
+    fn eq(&self, other: &Self) -> bool {
+        self.btor == other.btor && Arc::ptr_eq(&self.ct_violation_observed, &other.ct_violation_observed)
+    }
+}
+
+impl Eq for BtorRef {}
+
 impl haybale::backend::SolverRef for BtorRef {
     type BV = BV;
-    type Array = boolector::Array<Rc<Btor>>;
+    type Array = boolector::Array<Arc<Btor>>;
 
     fn duplicate(&self) -> Self {
         Self {
             btor: self.btor.duplicate(),
-            ct_violation_observed: Rc::new(RefCell::new(self.ct_violation_observed.borrow().clone())),
+            ct_violation_observed: Arc::new(RwLock::new(self.ct_violation())),
         }
     }
 
@@ -60,13 +67,13 @@ impl haybale::backend::SolverRef for BtorRef {
         }
     }
 
-    fn match_array(&self, array: &boolector::Array<Rc<Btor>>) -> Option<boolector::Array<Rc<Btor>>> {
+    fn match_array(&self, array: &boolector::Array<Arc<Btor>>) -> Option<boolector::Array<Arc<Btor>>> {
         self.btor.match_array(array)
     }
 }
 
-impl From<BtorRef> for Rc<Btor> {
-    fn from(btor: BtorRef) -> Rc<Btor> {
+impl From<BtorRef> for Arc<Btor> {
+    fn from(btor: BtorRef) -> Arc<Btor> {
         btor.btor.into()
     }
 }
@@ -83,7 +90,7 @@ pub enum CTViolation {
 
 #[derive(PartialEq, Eq, Clone, Debug)]
 pub enum BV {
-    Public(boolector::BV<Rc<Btor>>),
+    Public(boolector::BV<Arc<Btor>>),
     /// `Secret` values are opaque because we don't care about their actual value, only how they are used.
     Secret {
         btor: BtorRef,
@@ -101,7 +108,7 @@ impl BV {
     }
 
     /// Gets the value out of a `BV::Public`, panicking if it is instead a `BV::Secret`
-    pub fn as_public(&self) -> &boolector::BV<Rc<Btor>> {
+    pub fn as_public(&self) -> &boolector::BV<Arc<Btor>> {
         match self {
             BV::Public(bv) => bv,
             BV::Secret { .. } => panic!("as_public on a BV::Secret"),
@@ -396,9 +403,9 @@ impl haybale::backend::Memory for Memory {
                 // public) or not-all-zeroes (some or all secret). This means we can get away
                 // with using a faster `sat_with_extra_constraints()` check rather than a slow
                 // `get_possible_solutions_for_bv()` check.
-                let rc: Rc<Btor> = self.btor.clone().into();
-                let all_zeroes = boolector::BV::zero(rc.clone(), shadow_cell.get_width());
-                if sat_with_extra_constraints(&rc, std::iter::once(&shadow_cell._ne(&all_zeroes))).unwrap() {
+                let arc: Arc<Btor> = self.btor.clone().into();
+                let all_zeroes = boolector::BV::zero(arc.clone(), shadow_cell.get_width());
+                if sat_with_extra_constraints(&arc, std::iter::once(&shadow_cell._ne(&all_zeroes))).unwrap() {
                     // This can happen multiple ways:
                     // (1) Some or all of the bits are secret;
                     // (2) The bits' secrecy is non-constant; i.e., the bits could be secret

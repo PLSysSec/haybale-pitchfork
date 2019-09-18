@@ -3,7 +3,7 @@ pub use abstractdata::*;
 pub mod secret;
 use secret::CTViolation;
 
-use haybale::{layout, symex_function, ExecutionManager, State};
+use haybale::{layout, symex_function, State};
 use haybale::backend::*;
 pub use haybale::{Config, Project};
 use llvm_ir::*;
@@ -35,7 +35,7 @@ pub fn is_constant_time_in_inputs<'p>(
 pub fn is_constant_time<'p>(
     funcname: &str,
     project: &'p Project,
-    args: impl IntoIterator<Item = AbstractData>,
+    args: impl IntoIterator<Item = AbstractData> + Send,
     config: Config<'p, secret::Backend>
 ) -> bool {
     check_for_ct_violation(funcname, project, args, config).is_none()
@@ -51,20 +51,17 @@ pub fn is_constant_time<'p>(
 fn check_for_ct_violation<'p>(
     funcname: &str,
     project: &'p Project,
-    args: impl IntoIterator<Item = AbstractData>,
+    args: impl IntoIterator<Item = AbstractData> + Send,
     config: Config<'p, secret::Backend>
 ) -> Option<CTViolation> {
-    let mut em: ExecutionManager<secret::Backend> = symex_function(funcname, project, config);
-
-    debug!("Allocating memory for function parameters");
-    let params = em.state().cur_loc.func.parameters.iter();
-    for (param, arg) in params.zip(args.into_iter()) {
-        allocate_arg(em.mut_state(), &param, arg);
-    }
-    debug!("Done allocating memory for function parameters");
-
-    while em.next().is_some() {
-        let violation = em.state().solver.ct_violation();
+    for path_result in symex_function(
+        funcname,
+        project,
+        std::iter::repeat(None),  // we have our own more-sophisticated system for doing arguments which will overwrite what haybale does with this
+        |state, _| allocate_args(state, args),
+        config
+    ) {
+        let violation = path_result.state.solver.ct_violation();
         if violation.is_some() {
             debug!("Discovered a violation: {:?}", violation);
             return violation;
@@ -73,6 +70,15 @@ fn check_for_ct_violation<'p>(
 
     // no paths had ct violations
     return None;
+}
+
+fn allocate_args<'p>(state: &mut State<'p, secret::Backend>, args: impl IntoIterator<Item = AbstractData>) {
+    debug!("Allocating memory for function parameters");
+    let params = state.cur_loc.func.parameters.iter();
+    for (param, arg) in params.zip(args.into_iter()) {
+        allocate_arg(state, &param, arg);
+    }
+    debug!("Done allocating memory for function parameters");
 }
 
 fn allocate_arg<'p>(state: &mut State<'p, secret::Backend>, param: &'p function::Parameter, arg: AbstractData) {
