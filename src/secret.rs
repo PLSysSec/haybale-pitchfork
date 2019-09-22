@@ -4,7 +4,7 @@
 //! `haybale::memory::Memory`, or `boolector::BV`.
 
 use boolector::{Btor, BVSolution};
-use haybale::sat::sat_with_extra_constraints;
+use haybale::solver_utils::sat_with_extra_constraints;
 use std::cell::RefCell;
 use std::ops::Deref;
 use std::rc::Rc;

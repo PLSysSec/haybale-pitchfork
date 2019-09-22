@@ -19,7 +19,7 @@ dependencies = [
 
 [[package]]
 name = "boolector"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "boolector-sys 0.3.1",
  "libc 0.2.62 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -63,7 +63,7 @@ dependencies = [
 name = "haybale"
 version = "0.1.0"
 dependencies = [
- "boolector 0.1.0",
+ "boolector 0.1.1",
  "either 1.5.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "env_logger 0.6.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "itertools 0.8.0 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -137,7 +137,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 name = "pitchfork"
 version = "0.1.0"
 dependencies = [
- "boolector 0.1.0",
+ "boolector 0.1.1",
  "env_logger 0.6.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "haybale 0.1.0",
  "llvm-ir 0.2.2 (git+https://github.com/cdisselkoen/llvm-ir)",
