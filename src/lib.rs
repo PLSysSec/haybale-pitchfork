@@ -87,9 +87,10 @@ fn allocate_arg<'p>(state: &mut State<'p, secret::Backend>, param: &'p function:
             state.overwrite_latest_version_of_bv(&param.name, secret::BV::from_u64(state.solver.clone(), value, bits as u32));
         },
         AbstractData::PublicValue { bits, value: AbstractValue::Range(min, max) } => {
-            let parambv = state.operand_to_bv(&Operand::LocalOperand { name: param.name.clone(), ty: param.ty.clone() }).unwrap();
+            let parambv = state.new_bv_with_name(param.name.clone(), bits as u32).unwrap();
             parambv.ugte(&secret::BV::from_u64(state.solver.clone(), min, bits as u32)).assert();
             parambv.ulte(&secret::BV::from_u64(state.solver.clone(), max, bits as u32)).assert();
+            state.overwrite_latest_version_of_bv(&param.name, parambv);
         }
         AbstractData::PublicValue { value: AbstractValue::Unconstrained, .. } => {
             // nothing to do
