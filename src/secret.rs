@@ -267,8 +267,8 @@ impl haybale::backend::BV for BV {
         }
     }
 
-    impl_binop_as_functor!(_eq);
-    impl_binop_as_functor!(_ne);
+    impl_binop_as_functor_return_bool!(_eq);
+    impl_binop_as_functor_return_bool!(_ne);
     impl_binop_as_functor!(add);
     impl_binop_as_functor!(sub);
     impl_binop_as_functor!(mul);
