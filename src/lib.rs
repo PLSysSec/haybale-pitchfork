@@ -159,13 +159,22 @@ fn initialize_data_in_memory(state: &mut State<'_, secret::Backend>, ptr: &secre
         },
         AbstractData::Array { element_type, num_elements } => {
             let element_size_bits = element_type.size();
-            if element_size_bits % 8 != 0 {
-                panic!("Array element size is not a multiple of 8 bits: {}", element_size_bits);
-            }
-            let element_size_bytes = element_size_bits / 8;
-            for i in 0 .. *num_elements {
-                // TODO: this could be done more efficiently for certain `element_type`s
-                initialize_data_in_memory(state, &ptr.add(&secret::BV::from_u64(state.solver.clone(), (i*element_size_bytes) as u64, ptr.get_width())), element_type);
+            match **element_type {
+                AbstractData::Secret { .. } => {
+                    // special-case this, as we can initialize with one big write
+                    let array_size_bits = element_size_bits * *num_elements;
+                    initialize_data_in_memory(state, &ptr, &AbstractData::Secret { bits: array_size_bits });
+                },
+                _ => {
+                    // the general case. This would work in all cases, but would be slower than the optimized special-case above
+                    if element_size_bits % 8 != 0 {
+                        panic!("Array element size is not a multiple of 8 bits: {}", element_size_bits);
+                    }
+                    let element_size_bytes = element_size_bits / 8;
+                    for i in 0 .. *num_elements {
+                        initialize_data_in_memory(state, &ptr.add(&secret::BV::from_u64(state.solver.clone(), (i*element_size_bytes) as u64, ptr.get_width())), element_type);
+                    }
+                },
             }
         },
         AbstractData::Struct(elements) => {
