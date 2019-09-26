@@ -59,6 +59,7 @@ fn check_for_ct_violation<'p>(
     debug!("Allocating memory for function parameters");
     let params = em.state().cur_loc.func.parameters.iter();
     for (param, arg) in params.zip(args.into_iter()) {
+        debug!("Allocating function parameter {:?}", param);
         allocate_arg(em.mut_state(), &param, arg);
     }
     debug!("Done allocating memory for function parameters");
