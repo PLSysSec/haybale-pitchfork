@@ -36,6 +36,7 @@ pub enum AbstractValue {
 impl AbstractData {
     pub const POINTER_SIZE_BITS: usize = 64;
 
+    /// Get the size of the `AbstractData`, in bits
     pub fn size(&self) -> usize {
         match self {
             AbstractData::PublicValue { bits, .. } => *bits,
