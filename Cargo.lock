@@ -101,7 +101,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 [[package]]
 name = "llvm-ir"
 version = "0.2.2"
-source = "git+https://github.com/cdisselkoen/llvm-ir#ed152271ce13dcc38bdefa10e966221b3dad9187"
+source = "git+https://github.com/cdisselkoen/llvm-ir#008ae6331ce2f7344f3771cc1b2ec00e34d3fe8c"
 dependencies = [
  "either 1.5.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "llvm-sys 80.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
