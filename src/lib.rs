@@ -43,10 +43,16 @@ pub fn is_constant_time<'p>(
 /// `args` data structure. That is, does the function ever make branching
 /// decisions, or perform address calculations, based on secrets.
 ///
+/// `args`: for each function parameter, an `AbstractData` describing whether the
+/// parameter is secret data itself, public data, a public pointer to secret data
+/// (and if so how much), etc.
+///
+/// Other arguments are the same as for `is_constant_time_in_inputs()` above.
+///
 /// If the function is constant-time, this returns `None`. Otherwise, it returns
 /// a `String` describing the violation. (If there is more than one violation,
 /// this will simply return the first violation it finds.)
-fn check_for_ct_violation<'p>(
+pub fn check_for_ct_violation<'p>(
     funcname: &str,
     project: &'p Project,
     args: impl IntoIterator<Item = AbstractData>,
