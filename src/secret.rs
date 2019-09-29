@@ -4,33 +4,17 @@
 //! `haybale::memory::Memory`, or `boolector::BV`.
 
 use boolector::{Btor, BVSolution};
+use haybale::{Error, Result};
 use haybale::solver_utils::sat_with_extra_constraints;
-use std::cell::RefCell;
 use std::ops::Deref;
 use std::rc::Rc;
 
 #[derive(PartialEq, Eq, Clone, Debug)]
-pub struct BtorRef {
-    pub(crate) btor: haybale::backend::BtorRef,
-    ct_violation_observed: Rc<RefCell<Option<CTViolation>>>,
-}
-
-impl BtorRef {
-    pub fn ct_violation(&self) -> Option<CTViolation> {
-        self.ct_violation_observed.borrow().clone()
-    }
-
-    pub fn record_ct_violation(&self, v: CTViolation) {
-        *self.ct_violation_observed.borrow_mut() = Some(v);
-    }
-}
+pub struct BtorRef(pub(crate) haybale::backend::BtorRef);
 
 impl Default for BtorRef {
     fn default() -> Self {
-        Self {
-            btor: haybale::backend::BtorRef::default(),
-            ct_violation_observed: Rc::new(RefCell::new(None)),
-        }
+        Self(haybale::backend::BtorRef::default())
     }
 }
 
@@ -38,7 +22,7 @@ impl Deref for BtorRef {
     type Target = Btor;
 
     fn deref(&self) -> &Btor {
-        &self.btor
+        &self.0
     }
 }
 
@@ -47,27 +31,24 @@ impl haybale::backend::SolverRef for BtorRef {
     type Array = boolector::Array<Rc<Btor>>;
 
     fn duplicate(&self) -> Self {
-        Self {
-            btor: self.btor.duplicate(),
-            ct_violation_observed: Rc::new(RefCell::new(self.ct_violation_observed.borrow().clone())),
-        }
+        Self(self.0.duplicate())
     }
 
     fn match_bv(&self, bv: &BV) -> Option<BV> {
         match bv {
-            BV::Public(bv) => self.btor.match_bv(bv).map(BV::Public),
+            BV::Public(bv) => self.0.match_bv(bv).map(BV::Public),
             BV::Secret { .. } => Some(bv.clone()),
         }
     }
 
     fn match_array(&self, array: &boolector::Array<Rc<Btor>>) -> Option<boolector::Array<Rc<Btor>>> {
-        self.btor.match_array(array)
+        self.0.match_array(array)
     }
 }
 
 impl From<BtorRef> for Rc<Btor> {
     fn from(btor: BtorRef) -> Rc<Btor> {
-        btor.btor.into()
+        btor.0.into()
     }
 }
 
@@ -159,40 +140,40 @@ impl haybale::backend::BV for BV {
     type SolverRef = BtorRef;
 
     fn new(btor: BtorRef, width: u32, name: Option<&str>) -> Self {
-        BV::Public(boolector::BV::new(btor.btor.into(), width, name))
+        BV::Public(boolector::BV::new(btor.0.into(), width, name))
     }
     fn from_bool(btor: BtorRef, b: bool) -> Self {
-        BV::Public(boolector::BV::from_bool(btor.btor.into(), b))
+        BV::Public(boolector::BV::from_bool(btor.0.into(), b))
     }
     fn from_i32(btor: BtorRef, i: i32, width: u32) -> Self {
-        BV::Public(boolector::BV::from_i32(btor.btor.into(), i, width))
+        BV::Public(boolector::BV::from_i32(btor.0.into(), i, width))
     }
     fn from_u32(btor: BtorRef, u: u32, width: u32) -> Self {
-        BV::Public(boolector::BV::from_u32(btor.btor.into(), u, width))
+        BV::Public(boolector::BV::from_u32(btor.0.into(), u, width))
     }
     fn from_i64(btor: BtorRef, i: i64, width: u32) -> Self {
-        BV::Public(boolector::BV::from_i64(btor.btor.into(), i, width))
+        BV::Public(boolector::BV::from_i64(btor.0.into(), i, width))
     }
     fn from_u64(btor: BtorRef, u: u64, width: u32) -> Self {
-        BV::Public(boolector::BV::from_u64(btor.btor.into(), u, width))
+        BV::Public(boolector::BV::from_u64(btor.0.into(), u, width))
     }
     fn zero(btor: BtorRef, width: u32) -> Self {
-        BV::Public(boolector::BV::zero(btor.btor.into(), width))
+        BV::Public(boolector::BV::zero(btor.0.into(), width))
     }
     fn one(btor: BtorRef, width: u32) -> Self {
-        BV::Public(boolector::BV::one(btor.btor.into(), width))
+        BV::Public(boolector::BV::one(btor.0.into(), width))
     }
     fn ones(btor: BtorRef, width: u32) -> Self {
-        BV::Public(boolector::BV::ones(btor.btor.into(), width))
+        BV::Public(boolector::BV::ones(btor.0.into(), width))
     }
     fn from_binary_str(btor: BtorRef, bits: &str) -> Self {
-        BV::Public(boolector::BV::from_binary_str(btor.btor.into(), bits))
+        BV::Public(boolector::BV::from_binary_str(btor.0.into(), bits))
     }
     fn from_dec_str(btor: BtorRef, num: &str, width: u32) -> Self {
-        BV::Public(boolector::BV::from_dec_str(btor.btor.into(), num, width))
+        BV::Public(boolector::BV::from_dec_str(btor.0.into(), num, width))
     }
     fn from_hex_str(btor: BtorRef, num: &str, width: u32) -> Self {
-        BV::Public(boolector::BV::from_hex_str(btor.btor.into(), num, width))
+        BV::Public(boolector::BV::from_hex_str(btor.0.into(), num, width))
     }
     fn as_binary_str(&self) -> Option<String> {
         match self {
@@ -254,10 +235,16 @@ impl haybale::backend::BV for BV {
             _ => self.get_width() == other.get_width(),
         }
     }
-    fn assert(&self) {
+    fn assert(&self) -> Result<()> {
         match self {
-            BV::Public(bv) => bv.assert(),
-            BV::Secret { btor, .. } => btor.record_ct_violation(CTViolation::ControlFlowDecision),  // `Secret` values influencing a path constraint means they influenced a control flow decision
+            BV::Public(bv) => {
+                bv.assert();
+                Ok(())
+            },
+            BV::Secret { .. } => {
+                // `Secret` values influencing a path constraint means they influenced a control flow decision
+                Err(Error::OtherError("Constant-time violation: control-flow may be influenced by secret data".to_owned()))
+            },
         }
     }
     fn is_failed_assumption(&self) -> bool {
@@ -372,22 +359,22 @@ impl haybale::backend::Memory for Memory {
 
     fn new_uninitialized(btor: BtorRef) -> Self {
         Self {
-            mem: haybale::backend::Memory::new_uninitialized(btor.btor.clone()),
-            shadow_mem: haybale::backend::Memory::new_zero_initialized(btor.btor.clone()), // shadow bits are zero-initialized (all public) even though the memory contents are uninitialized
+            mem: haybale::backend::Memory::new_uninitialized(btor.0.clone()),
+            shadow_mem: haybale::backend::Memory::new_zero_initialized(btor.0.clone()), // shadow bits are zero-initialized (all public) even though the memory contents are uninitialized
             btor,  // out of order so it can be used above but moved in here
         }
     }
     fn new_zero_initialized(btor: BtorRef) -> Self {
         Self {
-            mem: haybale::backend::Memory::new_zero_initialized(btor.btor.clone()),
-            shadow_mem: haybale::backend::Memory::new_zero_initialized(btor.btor.clone()), // initialize to all public zeroes
+            mem: haybale::backend::Memory::new_zero_initialized(btor.0.clone()),
+            shadow_mem: haybale::backend::Memory::new_zero_initialized(btor.0.clone()), // initialize to all public zeroes
             btor,  // out of order so it can be used above but moved in here
         }
     }
-    fn read(&self, index: &Self::Index, bits: u32) -> Self::Value {
+    fn read(&self, index: &Self::Index, bits: u32) -> Result<Self::Value> {
         match index {
             BV::Public(index) => {
-                let shadow_cell = haybale::backend::Memory::read(&self.shadow_mem, index, bits);
+                let shadow_cell = haybale::backend::Memory::read(&self.shadow_mem, index, bits)?;
                 // In Boolector, reads on a constant array that return the default value are
                 // nonetheless not constant (they are merely constrained to be equal to the
                 // default value). So, we actually need to do a solve here.
@@ -408,41 +395,42 @@ impl haybale::backend::Memory for Memory {
                     // In either case, since all or part of the resulting value _could be_
                     // secret, we treat the resulting value as entirely secret (following the
                     // worst case).
-                    BV::Secret { btor: self.btor.clone(), width: bits, symbol: None }
+                    Ok(BV::Secret { btor: self.btor.clone(), width: bits, symbol: None })
                 } else {
                     // Since the above query was unsat, the only possible solution is that
                     // the bits are all public
-                    BV::Public(haybale::backend::Memory::read(&self.mem, index, bits))
+                    haybale::backend::Memory::read(&self.mem, index, bits).map(BV::Public)
                 }
             },
-            BV::Secret { btor, .. } => {
-                btor.record_ct_violation(CTViolation::AddressCalculation);
-                BV::Secret { btor: btor.clone(), width: bits, symbol: None }
+            BV::Secret { .. } => {
+                Err(Error::OtherError("Constant-time violation: memory read on an address which can be influenced by secret data".to_owned()))
             }
         }
     }
-    fn write(&mut self, index: &Self::Index, value: Self::Value) {
+    fn write(&mut self, index: &Self::Index, value: Self::Value) -> Result<()> {
         match index {
             BV::Public(index) => match value {
                 BV::Public(value) => {
                     let all_zeroes = boolector::BV::zero(self.btor.clone().into(), value.get_width());
-                    haybale::backend::Memory::write(&mut self.shadow_mem, index, all_zeroes); // we are writing a public value to these bits
-                    haybale::backend::Memory::write(&mut self.mem, index, value);
+                    haybale::backend::Memory::write(&mut self.shadow_mem, index, all_zeroes)?; // we are writing a public value to these bits
+                    haybale::backend::Memory::write(&mut self.mem, index, value)?;
+                    Ok(())
                 },
                 BV::Secret { btor, width, .. } => {
                     let all_ones = boolector::BV::ones(btor.clone().into(), width);
-                    haybale::backend::Memory::write(&mut self.shadow_mem, index, all_ones); // we are writing a secret value to these bits
+                    haybale::backend::Memory::write(&mut self.shadow_mem, index, all_ones)?; // we are writing a secret value to these bits
                     // we don't write anything to self.mem, because the value of its secret bits doesn't matter
+                    Ok(())
                 },
             },
-            BV::Secret { btor, .. } => {
-                btor.record_ct_violation(CTViolation::AddressCalculation);
+            BV::Secret { .. } => {
+                Err(Error::OtherError("Constant-time violation: memory write on an address which can be influenced by secret data".to_owned()))
             },
         }
     }
     fn change_solver(&mut self, new_solver: BtorRef) {
-        self.mem.change_solver(new_solver.btor.clone());
-        self.shadow_mem.change_solver(new_solver.btor.clone());
+        self.mem.change_solver(new_solver.0.clone());
+        self.shadow_mem.change_solver(new_solver.0.clone());
         self.btor = new_solver;
     }
 }
