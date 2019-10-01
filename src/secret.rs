@@ -5,7 +5,7 @@
 
 use boolector::{Btor, BVSolution};
 use haybale::{Error, Result};
-use haybale::solver_utils::sat_with_extra_constraints;
+use haybale::solver_utils::bvs_must_be_equal;
 use std::ops::Deref;
 use std::rc::Rc;
 
@@ -381,11 +381,14 @@ impl haybale::backend::Memory for Memory {
                 //
                 // However, we really only care whether the shadow value is all zeroes (all
                 // public) or not-all-zeroes (some or all secret). This means we can get away
-                // with using a faster `sat_with_extra_constraints()` check rather than a slow
+                // with using a faster `bvs_must_be_equal` check rather than a slow
                 // `get_possible_solutions_for_bv()` check.
                 let rc: Rc<Btor> = self.btor.clone().into();
                 let all_zeroes = boolector::BV::zero(rc.clone(), shadow_cell.get_width());
-                if sat_with_extra_constraints(&rc, std::iter::once(&shadow_cell._ne(&all_zeroes))).unwrap() {
+                if bvs_must_be_equal(&rc, &shadow_cell, &all_zeroes)?.ok_or(Error::Unsat)? {
+                    // the bits are all public
+                    haybale::backend::Memory::read(&self.mem, index, bits).map(BV::Public)
+                } else {
                     // This can happen multiple ways:
                     // (1) Some or all of the bits are secret;
                     // (2) The bits' secrecy is non-constant; i.e., the bits could be secret
@@ -396,10 +399,6 @@ impl haybale::backend::Memory for Memory {
                     // secret, we treat the resulting value as entirely secret (following the
                     // worst case).
                     Ok(BV::Secret { btor: self.btor.clone(), width: bits, symbol: None })
-                } else {
-                    // Since the above query was unsat, the only possible solution is that
-                    // the bits are all public
-                    haybale::backend::Memory::read(&self.mem, index, bits).map(BV::Public)
                 }
             },
             BV::Secret { .. } => {
