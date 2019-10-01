@@ -193,10 +193,10 @@ impl haybale::backend::BV for BV {
             BV::Secret { .. } => None,
         }
     }
-    fn get_a_solution(&self) -> BVSolution {
+    fn get_a_solution(&self) -> Result<BVSolution> {
         match self {
-            BV::Public(bv) => bv.get_a_solution(),
-            BV::Secret { .. } => panic!("get_a_solution() on a Secret value"),
+            BV::Public(bv) => Ok(bv.get_a_solution()),
+            BV::Secret { .. } => Err(Error::OtherError(format!("Possible constant-time violation: get_a_solution() on a Secret value"))),
         }
     }
     fn get_id(&self) -> i32 {
