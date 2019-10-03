@@ -6,6 +6,7 @@
 use boolector::{Btor, BVSolution};
 use haybale::{Error, Result};
 use haybale::solver_utils::bvs_must_be_equal;
+use log::warn;
 use std::ops::Deref;
 use std::rc::Rc;
 
@@ -408,19 +409,24 @@ impl haybale::backend::Memory for Memory {
     }
     fn write(&mut self, index: &Self::Index, value: Self::Value) -> Result<()> {
         match index {
-            BV::Public(index) => match value {
-                BV::Public(value) => {
-                    let all_zeroes = boolector::BV::zero(self.btor.clone().into(), value.get_width());
-                    haybale::backend::Memory::write(&mut self.shadow_mem, index, all_zeroes)?; // we are writing a public value to these bits
-                    haybale::backend::Memory::write(&mut self.mem, index, value)?;
-                    Ok(())
-                },
-                BV::Secret { btor, width, .. } => {
-                    let all_ones = boolector::BV::ones(btor.clone().into(), width);
-                    haybale::backend::Memory::write(&mut self.shadow_mem, index, all_ones)?; // we are writing a secret value to these bits
-                    // we don't write anything to self.mem, because the value of its secret bits doesn't matter
-                    Ok(())
-                },
+            BV::Public(index) => {
+                if !index.is_const() {
+                    warn!("Memory write with a non-constant address {:?}", index);
+                }
+                match value {
+                    BV::Public(value) => {
+                        let all_zeroes = boolector::BV::zero(self.btor.clone().into(), value.get_width());
+                        haybale::backend::Memory::write(&mut self.shadow_mem, index, all_zeroes)?; // we are writing a public value to these bits
+                        haybale::backend::Memory::write(&mut self.mem, index, value)?;
+                        Ok(())
+                    },
+                    BV::Secret { btor, width, .. } => {
+                        let all_ones = boolector::BV::ones(btor.clone().into(), width);
+                        haybale::backend::Memory::write(&mut self.shadow_mem, index, all_ones)?; // we are writing a secret value to these bits
+                        // we don't write anything to self.mem, because the value of its secret bits doesn't matter
+                        Ok(())
+                    },
+                }
             },
             BV::Secret { .. } => {
                 Err(Error::OtherError("Constant-time violation: memory write on an address which can be influenced by secret data".to_owned()))

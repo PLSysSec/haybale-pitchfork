@@ -58,6 +58,7 @@ pub fn check_for_ct_violation<'p>(
     args: impl IntoIterator<Item = AbstractData>,
     config: Config<'p, secret::Backend>
 ) -> Option<String> {
+    info!("Checking function {:?} for ct violations", funcname);
     let mut em: ExecutionManager<secret::Backend> = symex_function(funcname, project, config);
 
     debug!("Allocating memory for function parameters");
@@ -76,5 +77,6 @@ pub fn check_for_ct_violation<'p>(
     }
 
     // If we reach this point, then no paths had ct violations
+    info!("Done checking function {:?}; no ct violations found", funcname);
     None
 }
