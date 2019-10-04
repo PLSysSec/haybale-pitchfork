@@ -1,3 +1,4 @@
+#[derive(PartialEq, Eq, Clone, Debug)]
 pub enum AbstractData {
     /// A public value, of the given size in bits. If `value` is `Some`, then it
     /// is the actual concrete value; otherwise (if `value` is `None`) the value
@@ -24,6 +25,7 @@ pub enum AbstractData {
     Secret { bits: usize },
 }
 
+#[derive(PartialEq, Eq, Clone, Debug)]
 pub enum AbstractValue {
     /// This exact numerical value
     ExactValue(u64),
@@ -37,16 +39,26 @@ impl AbstractData {
     pub const POINTER_SIZE_BITS: usize = 64;
 
     /// Get the size of the `AbstractData`, in bits
-    pub fn size(&self) -> usize {
+    pub fn size_in_bits(&self) -> usize {
         match self {
             AbstractData::PublicValue { bits, .. } => *bits,
-            AbstractData::Array { element_type, num_elements } => element_type.size() * num_elements,
-            AbstractData::Struct(elements) => elements.iter().map(AbstractData::size).sum(),
+            AbstractData::Array { element_type, num_elements } => element_type.size_in_bits() * num_elements,
+            AbstractData::Struct(elements) => elements.iter().map(AbstractData::size_in_bits).sum(),
             AbstractData::PublicPointerTo(_) => AbstractData::POINTER_SIZE_BITS,
             AbstractData::PublicPointerToFunction(_) => AbstractData::POINTER_SIZE_BITS,
             AbstractData::PublicPointerToHook(_) => AbstractData::POINTER_SIZE_BITS,
             AbstractData::PublicPointerToUnconstrainedPublic => AbstractData::POINTER_SIZE_BITS,
             AbstractData::Secret { bits } => *bits,
+        }
+    }
+
+    /// Get the offset of the nth (0-indexed) field/element of the `AbstractData`, in bits.
+    /// The `AbstractData` must be a `Struct` or `Array`.
+    pub fn offset_in_bits(&self, n: usize) -> usize {
+        match self {
+            AbstractData::Struct(elements) => elements.iter().take(n).map(AbstractData::size_in_bits).sum(),
+            AbstractData::Array { element_type, .. } => element_type.size_in_bits() * n,
+            _ => panic!("offset_in_bits called on {:?}", self),
         }
     }
 }

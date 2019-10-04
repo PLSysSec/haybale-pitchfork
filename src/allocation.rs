@@ -6,8 +6,8 @@ use haybale::Result;
 use llvm_ir::*;
 
 pub fn allocate_arg<'p>(state: &mut State<'p, secret::Backend>, param: &'p function::Parameter, arg: AbstractData) -> Result<()> {
-    if arg.size() != layout::size(&param.ty) {
-        panic!("Parameter size mismatch for parameter {:?}: parameter is {} bits but AbstractData is {} bits", &param.name, layout::size(&param.ty), arg.size());
+    if arg.size_in_bits() != layout::size(&param.ty) {
+        panic!("Parameter size mismatch for parameter {:?}: parameter is {} bits but AbstractData is {} bits", &param.name, layout::size(&param.ty), arg.size_in_bits());
     }
     match arg {
         AbstractData::Secret { bits } => {
@@ -30,7 +30,7 @@ pub fn allocate_arg<'p>(state: &mut State<'p, secret::Backend>, param: &'p funct
             Ok(())
         },
         AbstractData::PublicPointerTo(pointee) => {
-            let ptr = state.allocate(pointee.size() as u64);
+            let ptr = state.allocate(pointee.size_in_bits() as u64);
             state.overwrite_latest_version_of_bv(&param.name, ptr.clone());
             initialize_data_in_memory(state, &ptr, &*pointee)
         },
@@ -76,7 +76,7 @@ pub fn initialize_data_in_memory(state: &mut State<'_, secret::Backend>, ptr: &s
             Ok(())
         },
         AbstractData::PublicPointerTo(pointee) => {
-            let inner_ptr = state.allocate(pointee.size() as u64);
+            let inner_ptr = state.allocate(pointee.size_in_bits() as u64);
             state.write(&ptr, inner_ptr.clone())?; // make `ptr` point to a pointer to the newly allocated memory
             initialize_data_in_memory(state, &inner_ptr, &**pointee)
         },
@@ -97,7 +97,7 @@ pub fn initialize_data_in_memory(state: &mut State<'_, secret::Backend>, ptr: &s
             Ok(())
         },
         AbstractData::Array { element_type, num_elements } => {
-            let element_size_bits = element_type.size();
+            let element_size_bits = element_type.size_in_bits();
             match **element_type {
                 AbstractData::Secret { .. } => {
                     // special-case this, as we can initialize with one big write
@@ -120,7 +120,7 @@ pub fn initialize_data_in_memory(state: &mut State<'_, secret::Backend>, ptr: &s
         AbstractData::Struct(elements) => {
             let mut cur_ptr = ptr.clone();
             for element in elements {
-                let element_size_bits = element.size();
+                let element_size_bits = element.size_in_bits();
                 if element_size_bits % 8 != 0 {
                     panic!("Struct element size is not a multiple of 8 bits: {}", element_size_bits);
                 }
