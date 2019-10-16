@@ -156,7 +156,10 @@ pub fn initialize_data_in_memory(state: &mut State<'_, secret::Backend>, addr: &
                 _ => ty,  // an array, but the LLVM type is just pointer.  E.g., *int instead of *{array of 16 ints}.
             };
             let element_size_bits = element_abstractdata.size_in_bits();
-            assert_eq!(element_size_bits, layout::size(element_type), "AbstractData element size of {} bits does not match LLVM element size of {} bits", element_size_bits, layout::size(element_type));
+            let llvm_element_size_bits = layout::size(element_type);
+            if llvm_element_size_bits != 0 {
+                assert_eq!(element_size_bits, llvm_element_size_bits, "AbstractData element size of {} bits does not match LLVM element size of {} bits", element_size_bits, llvm_element_size_bits);
+            }
             match **element_abstractdata {
                 AbstractData::Secret { .. } => {
                     // special-case this, as we can initialize with one big write
@@ -193,7 +196,10 @@ pub fn initialize_data_in_memory(state: &mut State<'_, secret::Backend>, addr: &
             };
             for (element, element_ty) in elements.iter().zip(element_types) {
                 let element_size_bits = element.size_in_bits();
-                assert_eq!(element_size_bits, layout::size(&element_ty), "AbstractData element size of {} bits does not match LLVM element size of {} bits", element_size_bits, layout::size(&element_ty));
+                let llvm_element_size_bits = layout::size(&element_ty);
+                if llvm_element_size_bits != 0 {
+                    assert_eq!(element_size_bits, llvm_element_size_bits, "AbstractData element size of {} bits does not match LLVM element size of {} bits", element_size_bits, llvm_element_size_bits);
+                }
                 if element_size_bits % 8 != 0 {
                     panic!("Struct element size is not a multiple of 8 bits: {}", element_size_bits);
                 }
