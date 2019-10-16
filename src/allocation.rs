@@ -6,10 +6,12 @@ use haybale::Result;
 use llvm_ir::*;
 use std::sync::{Arc, RwLock};
 
-pub fn allocate_arg<'p>(state: &mut State<'p, secret::Backend>, param: &'p function::Parameter, arg: AbstractData) -> Result<()> {
-    if arg.size_in_bits() != layout::size(&param.ty) {
-        panic!("Parameter size mismatch for parameter {:?}: parameter is {} bits but AbstractData is {} bits", &param.name, layout::size(&param.ty), arg.size_in_bits());
-    }
+/// `arg`: `AbstractData` describing the function argument, or `None` to use the default based on the LLVM parameter type
+pub fn allocate_arg<'p>(state: &mut State<'p, secret::Backend>, param: &'p function::Parameter, arg: Option<AbstractData>) -> Result<()> {
+    let arg = arg.unwrap_or(AbstractData::default_for(&param.ty));
+    let arg_size = arg.size_in_bits();
+    let param_size = layout::size(&param.ty);
+    assert_eq!(arg_size, param_size, "Parameter size mismatch for parameter {:?}: parameter is {} bits but AbstractData is {} bits", &param.name, param_size, arg_size);
     match arg {
         AbstractData::Secret { bits } => {
             state.overwrite_latest_version_of_bv(&param.name, secret::BV::Secret { btor: state.solver.clone(), width: bits as u32, symbol: None });
@@ -142,7 +144,6 @@ pub fn initialize_data_in_memory(state: &mut State<'_, secret::Backend>, addr: &
             Ok(())
         },
         AbstractData::Array { element_type: element_abstractdata, num_elements } => {
-            let element_size_bits = element_abstractdata.size_in_bits();
             let element_type = match ty {
                 Type::ArrayType { element_type, num_elements: found_num_elements } => {
                     if *found_num_elements != 0 {
@@ -154,6 +155,8 @@ pub fn initialize_data_in_memory(state: &mut State<'_, secret::Backend>, addr: &
                 },
                 _ => ty,  // an array, but the LLVM type is just pointer.  E.g., *int instead of *{array of 16 ints}.
             };
+            let element_size_bits = element_abstractdata.size_in_bits();
+            assert_eq!(element_size_bits, layout::size(element_type), "AbstractData element size of {} bits does not match LLVM element size of {} bits", element_size_bits, layout::size(element_type));
             match **element_abstractdata {
                 AbstractData::Secret { .. } => {
                     // special-case this, as we can initialize with one big write
@@ -190,6 +193,7 @@ pub fn initialize_data_in_memory(state: &mut State<'_, secret::Backend>, addr: &
             };
             for (element, element_ty) in elements.iter().zip(element_types) {
                 let element_size_bits = element.size_in_bits();
+                assert_eq!(element_size_bits, layout::size(&element_ty), "AbstractData element size of {} bits does not match LLVM element size of {} bits", element_size_bits, layout::size(&element_ty));
                 if element_size_bits % 8 != 0 {
                     panic!("Struct element size is not a multiple of 8 bits: {}", element_size_bits);
                 }

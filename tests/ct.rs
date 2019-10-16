@@ -11,6 +11,14 @@ fn get_project() -> Project {
         .unwrap_or_else(|e| panic!("Failed to create project: {}", e))
 }
 
+fn iterator_length_one<I>(obj: I) -> impl IntoIterator<Item = I> {
+    std::iter::once(obj)
+}
+
+fn iterator_length_two<I>(a: I, b: I) -> impl IntoIterator<Item = I> {
+    std::iter::once(a).chain(std::iter::once(b))
+}
+
 #[test]
 fn ct_simple() {
     init_logging();
@@ -50,10 +58,14 @@ fn notct_onepath() {
 fn ct_onearg() {
     init_logging();
     let project = get_project();
-    let publicx_secrety = std::iter::once(AbstractData::PublicValue { bits: 32, value: AbstractValue::Unconstrained })
-        .chain(std::iter::once(AbstractData::Secret { bits: 32 }));
-    let secretx_publicy = std::iter::once(AbstractData::Secret { bits: 32 })
-        .chain(std::iter::once(AbstractData::PublicValue { bits: 32, value: AbstractValue::Unconstrained }));
+    let publicx_secrety = iterator_length_two(
+        Some(AbstractData::PublicValue { bits: 32, value: AbstractValue::Unconstrained }),
+        Some(AbstractData::Secret { bits: 32 }),
+    );
+    let secretx_publicy = iterator_length_two(
+        Some(AbstractData::Secret { bits: 32 }),
+        Some(AbstractData::PublicValue { bits: 32, value: AbstractValue::Unconstrained }),
+    );
     assert!(is_constant_time("ct_onearg", &project, publicx_secrety, Config::default()));
     assert!(!is_constant_time("ct_onearg", &project, secretx_publicy, Config::default()));
 }
@@ -62,10 +74,12 @@ fn ct_onearg() {
 fn ct_secrets() {
     init_logging();
     let project = get_project();
-    let arg = std::iter::once(AbstractData::PublicPointerTo(Box::new(AbstractData::Array {
-        element_type: Box::new(AbstractData::Secret { bits: 32 }),
-        num_elements: 100,
-    })));
+    let arg = iterator_length_one(
+        Some(AbstractData::PublicPointerTo(Box::new(AbstractData::Array {
+            element_type: Box::new(AbstractData::Secret { bits: 32 }),
+            num_elements: 100,
+        })))
+    );
     assert!(is_constant_time("ct_secrets", &project, arg, Config::default()));
 }
 
@@ -73,10 +87,12 @@ fn ct_secrets() {
 fn notct_secrets() {
     init_logging();
     let project = get_project();
-    let arg = std::iter::once(AbstractData::PublicPointerTo(Box::new(AbstractData::Array {
-        element_type: Box::new(AbstractData::Secret { bits: 32 }),
-        num_elements: 100,
-    })));
+    let arg = iterator_length_one(
+        Some(AbstractData::PublicPointerTo(Box::new(AbstractData::Array {
+            element_type: Box::new(AbstractData::Secret { bits: 32 }),
+            num_elements: 100,
+        })))
+    );
     assert!(!is_constant_time("notct_secrets", &project, arg, Config::default()));
 }
 
@@ -91,10 +107,19 @@ fn ptr_to_struct_partially_secret() -> AbstractData {
 fn ct_struct() {
     init_logging();
     let project = get_project();
-    let args = std::iter::once(AbstractData::PublicPointerTo(Box::new(AbstractData::Array {
-        element_type: Box::new(AbstractData::PublicValue { bits: 32, value: AbstractValue::Unconstrained }),
-        num_elements: 100,
-    }))).chain(std::iter::once(ptr_to_struct_partially_secret()));
+    let args = iterator_length_two(
+        Some(AbstractData::PublicPointerTo(Box::new(AbstractData::Array {
+            element_type: Box::new(AbstractData::PublicValue { bits: 32, value: AbstractValue::Unconstrained }),
+            num_elements: 100,
+        }))),
+        Some(ptr_to_struct_partially_secret()),
+    );
+    assert!(is_constant_time("ct_struct", &project, args, Config::default()));
+    // now check again, using the AbstractData default
+    let args = iterator_length_two(
+        None,
+        Some(ptr_to_struct_partially_secret()),
+    );
     assert!(is_constant_time("ct_struct", &project, args, Config::default()));
 }
 
@@ -102,10 +127,19 @@ fn ct_struct() {
 fn notct_struct() {
     init_logging();
     let project = get_project();
-    let args = std::iter::once(AbstractData::PublicPointerTo(Box::new(AbstractData::Array {
-        element_type: Box::new(AbstractData::PublicValue { bits: 32, value: AbstractValue::Unconstrained }),
-        num_elements: 100,
-    }))).chain(std::iter::once(ptr_to_struct_partially_secret()));
+    let args = iterator_length_two(
+        Some(AbstractData::PublicPointerTo(Box::new(AbstractData::Array {
+            element_type: Box::new(AbstractData::PublicValue { bits: 32, value: AbstractValue::Unconstrained }),
+            num_elements: 100,
+        }))),
+        Some(ptr_to_struct_partially_secret()),
+    );
+    assert!(!is_constant_time("notct_struct", &project, args, Config::default()));
+    // now check again, using the AbstractData default
+    let args = iterator_length_two(
+        None,
+        Some(ptr_to_struct_partially_secret()),
+    );
     assert!(!is_constant_time("notct_struct", &project, args, Config::default()));
 }
 
@@ -123,12 +157,12 @@ fn ptr_to_ptr_to_secrets() -> AbstractData {
 fn ct_doubleptr() {
     init_logging();
     let project = get_project();
-    assert!(is_constant_time("ct_doubleptr", &project, std::iter::once(ptr_to_ptr_to_secrets()), Config::default()));
+    assert!(is_constant_time("ct_doubleptr", &project, iterator_length_one(Some(ptr_to_ptr_to_secrets())), Config::default()));
 }
 
 #[test]
 fn notct_doubleptr() {
     init_logging();
     let project = get_project();
-    assert!(!is_constant_time("notct_doubleptr", &project, std::iter::once(ptr_to_ptr_to_secrets()), Config::default()));
+    assert!(!is_constant_time("notct_doubleptr", &project, iterator_length_one(Some(ptr_to_ptr_to_secrets())), Config::default()));
 }

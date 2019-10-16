@@ -3,8 +3,10 @@ pub use abstractdata::*;
 pub mod allocation;
 pub mod secret;
 
-use haybale::{layout, symex_function, ExecutionManager};
+use haybale::{layout, symex_function, backend::Backend, ExecutionManager, State, ReturnValue};
+use haybale::{Error, Result};
 pub use haybale::{Config, Project};
+use llvm_ir::instruction;
 use log::{debug, info};
 
 /// Is a function "constant-time" in its inputs. That is, does the function ever
@@ -17,7 +19,7 @@ pub fn is_constant_time_in_inputs<'p>(
     config: Config<'p, secret::Backend>
 ) -> bool {
     let (func, _) = project.get_func_by_name(funcname).expect("Failed to find function");
-    let args = func.parameters.iter().map(|p| AbstractData::Secret { bits: layout::size(&p.ty) });
+    let args = func.parameters.iter().map(|p| Some(AbstractData::Secret { bits: layout::size(&p.ty) }));
     is_constant_time(funcname, project, args, config)
 }
 
@@ -27,13 +29,14 @@ pub fn is_constant_time_in_inputs<'p>(
 ///
 /// `args`: for each function parameter, an `AbstractData` describing whether the
 /// parameter is secret data itself, public data, a public pointer to secret data
-/// (and if so how much), etc.
+/// (and if so how much), etc; or `None` to use the default based on the LLVM
+/// parameter type.
 ///
 /// Other arguments are the same as for `is_constant_time_in_inputs()` above.
 pub fn is_constant_time<'p>(
     funcname: &str,
     project: &'p Project,
-    args: impl IntoIterator<Item = AbstractData>,
+    args: impl IntoIterator<Item = Option<AbstractData>>,
     config: Config<'p, secret::Backend>
 ) -> bool {
     check_for_ct_violation(funcname, project, args, config).is_none()
@@ -45,7 +48,8 @@ pub fn is_constant_time<'p>(
 ///
 /// `args`: for each function parameter, an `AbstractData` describing whether the
 /// parameter is secret data itself, public data, a public pointer to secret data
-/// (and if so how much), etc.
+/// (and if so how much), etc; or `None` to use the default based on the LLVM
+/// parameter type.
 ///
 /// Other arguments are the same as for `is_constant_time_in_inputs()` above.
 ///
@@ -55,9 +59,13 @@ pub fn is_constant_time<'p>(
 pub fn check_for_ct_violation<'p>(
     funcname: &str,
     project: &'p Project,
-    args: impl IntoIterator<Item = AbstractData>,
-    config: Config<'p, secret::Backend>
+    args: impl IntoIterator<Item = Option<AbstractData>>,
+    mut config: Config<'p, secret::Backend>
 ) -> Option<String> {
+    if !config.function_hooks.is_hooked("hook_uninitialized_function_pointer") {
+        config.function_hooks.add("hook_uninitialized_function_pointer", &hook_uninitialized_function_pointer);
+    }
+
     info!("Checking function {:?} for ct violations", funcname);
     let mut em: ExecutionManager<secret::Backend> = symex_function(funcname, project, config);
 
@@ -79,4 +87,11 @@ pub fn check_for_ct_violation<'p>(
     // If we reach this point, then no paths had ct violations
     info!("Done checking function {:?}; no ct violations found", funcname);
     None
+}
+
+fn hook_uninitialized_function_pointer<B: Backend>(
+    _state: &mut State<B>,
+    _call: &instruction::Call,
+) -> Result<ReturnValue<B::BV>> {
+    Err(Error::OtherError("Call of an uninitialized function pointer".to_owned()))
 }
