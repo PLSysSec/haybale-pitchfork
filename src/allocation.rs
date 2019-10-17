@@ -6,9 +6,8 @@ use haybale::Result;
 use llvm_ir::*;
 use std::sync::{Arc, RwLock};
 
-/// `arg`: `AbstractData` describing the function argument, or `None` to use the default based on the LLVM parameter type
-pub fn allocate_arg<'p>(state: &mut State<'p, secret::Backend>, param: &'p function::Parameter, arg: Option<AbstractData>) -> Result<()> {
-    let arg = arg.unwrap_or(AbstractData::default_for(&param.ty));
+pub fn allocate_arg<'p>(state: &mut State<'p, secret::Backend>, param: &'p function::Parameter, arg: UnderspecifiedAbstractData) -> Result<()> {
+    let arg = arg.convert_to_fully_specified_as(&param.ty);
     let arg_size = arg.size_in_bits();
     let param_size = layout::size(&param.ty);
     assert_eq!(arg_size, param_size, "Parameter size mismatch for parameter {:?}: parameter is {} bits but AbstractData is {} bits", &param.name, param_size, arg_size);

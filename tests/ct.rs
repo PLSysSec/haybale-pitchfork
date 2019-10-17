@@ -59,12 +59,12 @@ fn ct_onearg() {
     init_logging();
     let project = get_project();
     let publicx_secrety = iterator_length_two(
-        Some(AbstractData::pub_i32(AbstractValue::Unconstrained)),
-        Some(AbstractData::sec_i32()),
+        UnderspecifiedAbstractData::pub_i32(AbstractValue::Unconstrained),
+        UnderspecifiedAbstractData::sec_i32(),
     );
     let secretx_publicy = iterator_length_two(
-        Some(AbstractData::sec_i32()),
-        Some(AbstractData::pub_i32(AbstractValue::Unconstrained)),
+        UnderspecifiedAbstractData::sec_i32(),
+        UnderspecifiedAbstractData::pub_i32(AbstractValue::Unconstrained),
     );
     assert!(is_constant_time("ct_onearg", &project, publicx_secrety, Config::default()));
     assert!(!is_constant_time("ct_onearg", &project, secretx_publicy, Config::default()));
@@ -75,10 +75,10 @@ fn ct_secrets() {
     init_logging();
     let project = get_project();
     let arg = iterator_length_one(
-        Some(AbstractData::pub_pointer_to(AbstractData::Array {
+        UnderspecifiedAbstractData::pub_pointer_to(AbstractData::Array {
             element_type: Box::new(AbstractData::sec_i32()),
             num_elements: 100,
-        }))
+        })
     );
     assert!(is_constant_time("ct_secrets", &project, arg, Config::default()));
 }
@@ -88,16 +88,16 @@ fn notct_secrets() {
     init_logging();
     let project = get_project();
     let arg = iterator_length_one(
-        Some(AbstractData::pub_pointer_to(AbstractData::Array {
+        UnderspecifiedAbstractData::pub_pointer_to(AbstractData::Array {
             element_type: Box::new(AbstractData::sec_i32()),
             num_elements: 100,
-        }))
+        })
     );
     assert!(!is_constant_time("notct_secrets", &project, arg, Config::default()));
 }
 
-fn ptr_to_struct_partially_secret() -> AbstractData {
-    AbstractData::pub_pointer_to(AbstractData::Struct(vec![
+fn ptr_to_struct_partially_secret() -> UnderspecifiedAbstractData {
+    UnderspecifiedAbstractData::pub_pointer_to(AbstractData::Struct(vec![
         AbstractData::pub_i32(AbstractValue::Unconstrained),
         AbstractData::sec_i32(),
     ]))
@@ -108,17 +108,17 @@ fn ct_struct() {
     init_logging();
     let project = get_project();
     let args = iterator_length_two(
-        Some(AbstractData::pub_pointer_to(AbstractData::Array {
+        UnderspecifiedAbstractData::pub_pointer_to(AbstractData::Array {
             element_type: Box::new(AbstractData::pub_i32(AbstractValue::Unconstrained)),
             num_elements: 100,
-        })),
-        Some(ptr_to_struct_partially_secret()),
+        }),
+        ptr_to_struct_partially_secret(),
     );
     assert!(is_constant_time("ct_struct", &project, args, Config::default()));
-    // now check again, using the AbstractData default
+    // now check again, using Unspecified
     let args = iterator_length_two(
-        None,
-        Some(ptr_to_struct_partially_secret()),
+        UnderspecifiedAbstractData::Unspecified,
+        ptr_to_struct_partially_secret(),
     );
     assert!(is_constant_time("ct_struct", &project, args, Config::default()));
 }
@@ -128,23 +128,23 @@ fn notct_struct() {
     init_logging();
     let project = get_project();
     let args = iterator_length_two(
-        Some(AbstractData::pub_pointer_to(AbstractData::Array {
+        UnderspecifiedAbstractData::pub_pointer_to(AbstractData::Array {
             element_type: Box::new(AbstractData::pub_i32(AbstractValue::Unconstrained)),
             num_elements: 100,
-        })),
-        Some(ptr_to_struct_partially_secret()),
+        }),
+        ptr_to_struct_partially_secret(),
     );
     assert!(!is_constant_time("notct_struct", &project, args, Config::default()));
-    // now check again, using the AbstractData default
+    // now check again, using Unspecified
     let args = iterator_length_two(
-        None,
-        Some(ptr_to_struct_partially_secret()),
+        UnderspecifiedAbstractData::Unspecified,
+        ptr_to_struct_partially_secret(),
     );
     assert!(!is_constant_time("notct_struct", &project, args, Config::default()));
 }
 
-fn ptr_to_ptr_to_secrets() -> AbstractData {
-    AbstractData::pub_pointer_to(AbstractData::Array {
+fn ptr_to_ptr_to_secrets() -> UnderspecifiedAbstractData {
+    UnderspecifiedAbstractData::pub_pointer_to(AbstractData::Array {
         element_type: Box::new(AbstractData::pub_pointer_to(AbstractData::Array {
             element_type: Box::new(AbstractData::sec_i32()),
             num_elements: 30,
@@ -157,12 +157,12 @@ fn ptr_to_ptr_to_secrets() -> AbstractData {
 fn ct_doubleptr() {
     init_logging();
     let project = get_project();
-    assert!(is_constant_time("ct_doubleptr", &project, iterator_length_one(Some(ptr_to_ptr_to_secrets())), Config::default()));
+    assert!(is_constant_time("ct_doubleptr", &project, iterator_length_one(ptr_to_ptr_to_secrets()), Config::default()));
 }
 
 #[test]
 fn notct_doubleptr() {
     init_logging();
     let project = get_project();
-    assert!(!is_constant_time("notct_doubleptr", &project, iterator_length_one(Some(ptr_to_ptr_to_secrets())), Config::default()));
+    assert!(!is_constant_time("notct_doubleptr", &project, iterator_length_one(ptr_to_ptr_to_secrets()), Config::default()));
 }
