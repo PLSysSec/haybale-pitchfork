@@ -59,12 +59,12 @@ fn ct_onearg() {
     init_logging();
     let project = get_project();
     let publicx_secrety = iterator_length_two(
-        Some(AbstractData::PublicValue { bits: 32, value: AbstractValue::Unconstrained }),
-        Some(AbstractData::Secret { bits: 32 }),
+        Some(AbstractData::pub_i32(AbstractValue::Unconstrained)),
+        Some(AbstractData::sec_i32()),
     );
     let secretx_publicy = iterator_length_two(
-        Some(AbstractData::Secret { bits: 32 }),
-        Some(AbstractData::PublicValue { bits: 32, value: AbstractValue::Unconstrained }),
+        Some(AbstractData::sec_i32()),
+        Some(AbstractData::pub_i32(AbstractValue::Unconstrained)),
     );
     assert!(is_constant_time("ct_onearg", &project, publicx_secrety, Config::default()));
     assert!(!is_constant_time("ct_onearg", &project, secretx_publicy, Config::default()));
@@ -75,10 +75,10 @@ fn ct_secrets() {
     init_logging();
     let project = get_project();
     let arg = iterator_length_one(
-        Some(AbstractData::PublicPointerTo(Box::new(AbstractData::Array {
-            element_type: Box::new(AbstractData::Secret { bits: 32 }),
+        Some(AbstractData::pub_pointer_to(AbstractData::Array {
+            element_type: Box::new(AbstractData::sec_i32()),
             num_elements: 100,
-        })))
+        }))
     );
     assert!(is_constant_time("ct_secrets", &project, arg, Config::default()));
 }
@@ -88,19 +88,19 @@ fn notct_secrets() {
     init_logging();
     let project = get_project();
     let arg = iterator_length_one(
-        Some(AbstractData::PublicPointerTo(Box::new(AbstractData::Array {
-            element_type: Box::new(AbstractData::Secret { bits: 32 }),
+        Some(AbstractData::pub_pointer_to(AbstractData::Array {
+            element_type: Box::new(AbstractData::sec_i32()),
             num_elements: 100,
-        })))
+        }))
     );
     assert!(!is_constant_time("notct_secrets", &project, arg, Config::default()));
 }
 
 fn ptr_to_struct_partially_secret() -> AbstractData {
-    AbstractData::PublicPointerTo(Box::new(AbstractData::Struct(vec![
-        AbstractData::PublicValue { bits: 32, value: AbstractValue::Unconstrained },
-        AbstractData::Secret { bits: 32 },
-    ])))
+    AbstractData::pub_pointer_to(AbstractData::Struct(vec![
+        AbstractData::pub_i32(AbstractValue::Unconstrained),
+        AbstractData::sec_i32(),
+    ]))
 }
 
 #[test]
@@ -108,10 +108,10 @@ fn ct_struct() {
     init_logging();
     let project = get_project();
     let args = iterator_length_two(
-        Some(AbstractData::PublicPointerTo(Box::new(AbstractData::Array {
-            element_type: Box::new(AbstractData::PublicValue { bits: 32, value: AbstractValue::Unconstrained }),
+        Some(AbstractData::pub_pointer_to(AbstractData::Array {
+            element_type: Box::new(AbstractData::pub_i32(AbstractValue::Unconstrained)),
             num_elements: 100,
-        }))),
+        })),
         Some(ptr_to_struct_partially_secret()),
     );
     assert!(is_constant_time("ct_struct", &project, args, Config::default()));
@@ -128,10 +128,10 @@ fn notct_struct() {
     init_logging();
     let project = get_project();
     let args = iterator_length_two(
-        Some(AbstractData::PublicPointerTo(Box::new(AbstractData::Array {
-            element_type: Box::new(AbstractData::PublicValue { bits: 32, value: AbstractValue::Unconstrained }),
+        Some(AbstractData::pub_pointer_to(AbstractData::Array {
+            element_type: Box::new(AbstractData::pub_i32(AbstractValue::Unconstrained)),
             num_elements: 100,
-        }))),
+        })),
         Some(ptr_to_struct_partially_secret()),
     );
     assert!(!is_constant_time("notct_struct", &project, args, Config::default()));
@@ -144,13 +144,13 @@ fn notct_struct() {
 }
 
 fn ptr_to_ptr_to_secrets() -> AbstractData {
-    AbstractData::PublicPointerTo(Box::new(AbstractData::Array {
-        element_type: Box::new(AbstractData::PublicPointerTo(Box::new(AbstractData::Array {
-            element_type: Box::new(AbstractData::Secret { bits: 32 }),
+    AbstractData::pub_pointer_to(AbstractData::Array {
+        element_type: Box::new(AbstractData::pub_pointer_to(AbstractData::Array {
+            element_type: Box::new(AbstractData::sec_i32()),
             num_elements: 30,
-        }))),
+        })),
         num_elements: 5,
-    }))
+    })
 }
 
 #[test]

@@ -36,6 +36,53 @@ pub enum AbstractData {
 }
 
 impl AbstractData {
+    /// an 8-bit public value
+    pub fn pub_i8(value: AbstractValue) -> Self {
+        Self::PublicValue { bits: 8, value }
+    }
+
+    /// a 16-bit public value
+    pub fn pub_i16(value: AbstractValue) -> Self {
+        Self::PublicValue { bits: 16, value }
+    }
+
+    /// a 32-bit public value
+    pub fn pub_i32(value: AbstractValue) -> Self {
+        Self::PublicValue { bits: 32, value }
+    }
+
+    /// a 64-bit public value
+    pub fn pub_i64(value: AbstractValue) -> Self {
+        Self::PublicValue { bits: 64, value }
+    }
+
+    /// an 8-bit secret value
+    pub fn sec_i8() -> Self {
+        Self::Secret { bits: 8 }
+    }
+
+    /// a 16-bit secret value
+    pub fn sec_i16() -> Self {
+        Self::Secret { bits: 16 }
+    }
+
+    /// a 32-bit secret value
+    pub fn sec_i32() -> Self {
+        Self::Secret { bits: 32 }
+    }
+
+    /// a 64-bit secret value
+    pub fn sec_i64() -> Self {
+        Self::Secret { bits: 64 }
+    }
+
+    /// a (public) pointer to something - another value, an array, etc
+    pub fn pub_pointer_to(data: Self) -> Self {
+        Self::PublicPointerTo(Box::new(data))
+    }
+}
+
+impl AbstractData {
     /// Get the default `AbstractData` for a value of the given LLVM type.
     /// Those defaults are:
     ///
