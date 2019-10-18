@@ -135,6 +135,16 @@ impl CompleteAbstractData {
         }
     }
 
+    /// Get the size of the nth (0-indexed) field/element of the `CompleteAbstractData`, in bits.
+    /// The `CompleteAbstractData` must be a `Struct` or `Array`.
+    pub fn field_size_in_bits(&self, n: usize) -> usize {
+        match self {
+            Self::Struct(elements) => Self::size_in_bits(&elements[n]),
+            Self::Array { element_type, .. } => Self::size_in_bits(element_type),
+            _ => panic!("field_size_in_bits called on {:?}", self),
+        }
+    }
+
     /// Get the offset of the nth (0-indexed) field/element of the `CompleteAbstractData`, in bits.
     /// The `CompleteAbstractData` must be a `Struct` or `Array`.
     pub fn offset_in_bits(&self, n: usize) -> usize {
@@ -266,6 +276,7 @@ impl AbstractData {
 
 impl AbstractData {
     pub const DEFAULT_ARRAY_LENGTH: usize = 1024;
+    pub const POINTER_SIZE_BITS: usize = CompleteAbstractData::POINTER_SIZE_BITS;
 
     /// Fill in the default `CompleteAbstractData` for any parts of the
     /// `AbstractData` which are unspecified, using the information in the given
