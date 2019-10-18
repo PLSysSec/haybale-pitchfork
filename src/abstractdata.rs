@@ -4,8 +4,11 @@ use llvm_ir::Type;
 /// An abstract description of a value: if it is public or not, if it is a
 /// pointer or not, does it point to data that is public/secret, maybe it's a
 /// struct with some public and some secret fields, etc.
+///
+/// Unlike `AbstractData`, these may never be "underspecified" - that is, they
+/// must be a complete description of the data structure.
 #[derive(PartialEq, Eq, Clone, Debug)]
-pub enum AbstractData {
+pub enum CompleteAbstractData {
     /// A public value, of the given size in bits. If `value` is `Some`, then it
     /// is the actual concrete value; otherwise (if `value` is `None`) the value
     /// is unconstrained.
@@ -15,13 +18,13 @@ pub enum AbstractData {
     PublicValue { bits: usize, value: AbstractValue },
 
     /// A (first-class) array of values
-    Array { element_type: Box<AbstractData>, num_elements: usize },
+    Array { element_type: Box<Self>, num_elements: usize },
 
     /// A (first-class) structure of values
-    Struct(Vec<AbstractData>),
+    Struct(Vec<Self>),
 
     /// A (public) pointer to something - another value, an array, etc
-    PublicPointerTo(Box<AbstractData>),
+    PublicPointerTo(Box<Self>),
 
     /// A (public) pointer to the LLVM `Function` with the given name
     PublicPointerToFunction(String),
@@ -38,7 +41,7 @@ pub enum AbstractData {
     Secret { bits: usize },
 }
 
-impl AbstractData {
+impl CompleteAbstractData {
     /// an 8-bit public value
     pub fn pub_i8(value: AbstractValue) -> Self {
         Self::PublicValue { bits: 8, value }
@@ -57,6 +60,11 @@ impl AbstractData {
     /// a 64-bit public value
     pub fn pub_i64(value: AbstractValue) -> Self {
         Self::PublicValue { bits: 64, value }
+    }
+
+    /// a public value with the given number of bits
+    pub fn pub_integer(bits: usize, value: AbstractValue) -> Self {
+        Self::PublicValue { bits, value }
     }
 
     /// an 8-bit secret value
@@ -79,123 +87,191 @@ impl AbstractData {
         Self::Secret { bits: 64 }
     }
 
+    /// a secret value with the given number of bits
+    pub fn sec_integer(bits: usize) -> Self {
+        Self::Secret { bits }
+    }
+
     /// a (public) pointer to something - another value, an array, etc
     pub fn pub_pointer_to(data: Self) -> Self {
         Self::PublicPointerTo(Box::new(data))
     }
+
+    /// a (public) pointer to the LLVM `Function` with the given name
+    pub fn pub_pointer_to_func(funcname: impl Into<String>) -> Self {
+        Self::PublicPointerToFunction(funcname.into())
+    }
+
+    /// a (public) pointer to the _hook_ registered for the given name
+    pub fn pub_pointer_to_hook(funcname: impl Into<String>) -> Self {
+        Self::PublicPointerToHook(funcname.into())
+    }
+
+    /// A (first-class) array of values
+    pub fn array_of(element_type: Self, num_elements: usize) -> Self {
+        Self::Array { element_type: Box::new(element_type), num_elements }
+    }
+
+    /// A (first-class) structure of values
+    pub fn struct_of(elements: impl IntoIterator<Item = Self>) -> Self {
+        Self::Struct(elements.into_iter().collect())
+    }
 }
 
-impl AbstractData {
+impl CompleteAbstractData {
     pub const POINTER_SIZE_BITS: usize = 64;
-    pub const DEFAULT_ARRAY_LENGTH: usize = 1024;
 
-    /// Get the size of the `AbstractData`, in bits
+    /// Get the size of the `CompleteAbstractData`, in bits
     pub fn size_in_bits(&self) -> usize {
         match self {
-            AbstractData::PublicValue { bits, .. } => *bits,
-            AbstractData::Array { element_type, num_elements } => element_type.size_in_bits() * num_elements,
-            AbstractData::Struct(elements) => elements.iter().map(AbstractData::size_in_bits).sum(),
-            AbstractData::PublicPointerTo(_) => AbstractData::POINTER_SIZE_BITS,
-            AbstractData::PublicPointerToFunction(_) => AbstractData::POINTER_SIZE_BITS,
-            AbstractData::PublicPointerToHook(_) => AbstractData::POINTER_SIZE_BITS,
-            AbstractData::PublicPointerToUnconstrainedPublic => AbstractData::POINTER_SIZE_BITS,
-            AbstractData::Secret { bits } => *bits,
+            Self::PublicValue { bits, .. } => *bits,
+            Self::Array { element_type, num_elements } => element_type.size_in_bits() * num_elements,
+            Self::Struct(elements) => elements.iter().map(Self::size_in_bits).sum(),
+            Self::PublicPointerTo(_) => Self::POINTER_SIZE_BITS,
+            Self::PublicPointerToFunction(_) => Self::POINTER_SIZE_BITS,
+            Self::PublicPointerToHook(_) => Self::POINTER_SIZE_BITS,
+            Self::PublicPointerToUnconstrainedPublic => Self::POINTER_SIZE_BITS,
+            Self::Secret { bits } => *bits,
         }
     }
 
-    /// Get the offset of the nth (0-indexed) field/element of the `AbstractData`, in bits.
-    /// The `AbstractData` must be a `Struct` or `Array`.
+    /// Get the offset of the nth (0-indexed) field/element of the `CompleteAbstractData`, in bits.
+    /// The `CompleteAbstractData` must be a `Struct` or `Array`.
     pub fn offset_in_bits(&self, n: usize) -> usize {
         match self {
-            AbstractData::Struct(elements) => elements.iter().take(n).map(AbstractData::size_in_bits).sum(),
-            AbstractData::Array { element_type, .. } => element_type.size_in_bits() * n,
+            Self::Struct(elements) => elements.iter().take(n).map(Self::size_in_bits).sum(),
+            Self::Array { element_type, .. } => element_type.size_in_bits() * n,
             _ => panic!("offset_in_bits called on {:?}", self),
         }
     }
 }
 
-/// Like `AbstractData`, but includes options for parts of the value (or the
-/// whole value) to be `Unspecified`, meaning to just use the default based on
-/// the LLVM type.
+/// An abstract description of a value: if it is public or not, if it is a
+/// pointer or not, does it point to data that is public/secret, maybe it's a
+/// struct with some public and some secret fields, etc.
+///
+/// Unlike `CompleteAbstractData`, these may be "underspecified": parts of the
+/// value (or the whole value) may be `Unspecified`, meaning to just use the
+/// default based on the LLVM type.
 #[derive(PartialEq, Eq, Clone, Debug)]
-pub enum UnderspecifiedAbstractData {
+// we wrap the actual enum so that external users can't rely on the actual enum
+// variants, and only see the (nicer and more stable) function constructors
+pub struct AbstractData(pub(crate) UnderspecifiedAbstractData);
+
+/// Enum which backs `AbstractData`; see comments there
+#[derive(PartialEq, Eq, Clone, Debug)]
+pub(crate) enum UnderspecifiedAbstractData {
     /// Just use the default structure based on the LLVM type.
     ///
-    /// See [`UnderspecifiedAbstractData::convert_to_fully_specified_as`](enum.UnderspecifiedAbstractData.html#method.convert_to_fully_specified_as)
+    /// See [`AbstractData::to_complete`](enum.AbstractData.html#method.to_complete)
     Unspecified,
 
-    /// Use the given fully specified `AbstractData`
-    FullySpecified(AbstractData),
+    /// Use the given `CompleteAbstractData`, which gives a complete description
+    Complete(CompleteAbstractData),
 
     /// A (public) pointer to something underspecified
-    PublicPointerTo(Box<UnderspecifiedAbstractData>),
+    PublicPointerTo(Box<AbstractData>),
 
     /// an array with underspecified elements
-    Array { element_type: Box<UnderspecifiedAbstractData>, num_elements: usize },
+    Array { element_type: Box<AbstractData>, num_elements: usize },
 
     /// a struct with underspecified fields
     /// (for instance, some unspecified and some fully-specified fields)
-    Struct(Vec<UnderspecifiedAbstractData>),
+    Struct(Vec<AbstractData>),
 }
 
-impl UnderspecifiedAbstractData {
+impl AbstractData {
     /// an 8-bit public value
     pub fn pub_i8(value: AbstractValue) -> Self {
-        Self::FullySpecified(AbstractData::pub_i8(value))
+        Self(UnderspecifiedAbstractData::Complete(CompleteAbstractData::pub_i8(value)))
     }
 
     /// a 16-bit public value
     pub fn pub_i16(value: AbstractValue) -> Self {
-        Self::FullySpecified(AbstractData::pub_i16(value))
+        Self(UnderspecifiedAbstractData::Complete(CompleteAbstractData::pub_i16(value)))
     }
 
     /// a 32-bit public value
     pub fn pub_i32(value: AbstractValue) -> Self {
-        Self::FullySpecified(AbstractData::pub_i32(value))
+        Self(UnderspecifiedAbstractData::Complete(CompleteAbstractData::pub_i32(value)))
     }
 
     /// a 64-bit public value
     pub fn pub_i64(value: AbstractValue) -> Self {
-        Self::FullySpecified(AbstractData::pub_i64(value))
+        Self(UnderspecifiedAbstractData::Complete(CompleteAbstractData::pub_i64(value)))
+    }
+
+    /// a public value with the given number of bits
+    pub fn pub_integer(bits: usize, value: AbstractValue) -> Self {
+        Self(UnderspecifiedAbstractData::Complete(CompleteAbstractData::pub_integer(bits, value)))
     }
 
     /// an 8-bit secret value
     pub fn sec_i8() -> Self {
-        Self::FullySpecified(AbstractData::sec_i8())
+        Self(UnderspecifiedAbstractData::Complete(CompleteAbstractData::sec_i8()))
     }
 
     /// a 16-bit secret value
     pub fn sec_i16() -> Self {
-        Self::FullySpecified(AbstractData::sec_i16())
+        Self(UnderspecifiedAbstractData::Complete(CompleteAbstractData::sec_i16()))
     }
 
     /// a 32-bit secret value
     pub fn sec_i32() -> Self {
-        Self::FullySpecified(AbstractData::sec_i32())
+        Self(UnderspecifiedAbstractData::Complete(CompleteAbstractData::sec_i32()))
     }
 
     /// a 64-bit secret value
     pub fn sec_i64() -> Self {
-        Self::FullySpecified(AbstractData::sec_i64())
+        Self(UnderspecifiedAbstractData::Complete(CompleteAbstractData::sec_i64()))
     }
 
-    /// A (public) pointer to something fully specified - another value, an array, etc
-    pub fn pub_pointer_to(data: AbstractData) -> Self {
-        Self::FullySpecified(AbstractData::PublicPointerTo(Box::new(data)))
+    /// a secret value with the given number of bits
+    pub fn sec_integer(bits: usize) -> Self {
+        Self(UnderspecifiedAbstractData::Complete(CompleteAbstractData::sec_integer(bits)))
     }
 
-    /// A (public) pointer to something underspecified - another value, an array, etc
-    pub fn pub_pointer_to_underspec(data: UnderspecifiedAbstractData) -> Self {
-        Self::PublicPointerTo(Box::new(data))
+    /// A (public) pointer to something - another value, an array, etc
+    pub fn pub_pointer_to(data: Self) -> Self {
+        Self(UnderspecifiedAbstractData::PublicPointerTo(Box::new(data)))
+    }
+
+    /// a (public) pointer to the LLVM `Function` with the given name
+    pub fn pub_pointer_to_func(funcname: impl Into<String>) -> Self {
+        Self(UnderspecifiedAbstractData::Complete(CompleteAbstractData::PublicPointerToFunction(funcname.into())))
+    }
+
+    /// a (public) pointer to the _hook_ registered for the given name
+    pub fn pub_pointer_to_hook(funcname: impl Into<String>) -> Self {
+        Self(UnderspecifiedAbstractData::Complete(CompleteAbstractData::PublicPointerToHook(funcname.into())))
+    }
+
+    /// A (first-class) array of values
+    pub fn array_of(element_type: Self, num_elements: usize) -> Self {
+        Self(UnderspecifiedAbstractData::Array { element_type: Box::new(element_type), num_elements })
+    }
+
+    /// A (first-class) structure of values
+    pub fn struct_of(elements: impl IntoIterator<Item = Self>) -> Self {
+        Self(UnderspecifiedAbstractData::Struct(elements.into_iter().collect()))
+    }
+
+    /// Just use the default structure based on the LLVM type.
+    ///
+    /// See [`AbstractData::to_complete`](struct.AbstractData.html#method.to_complete)
+    pub fn unspecified() -> Self {
+        Self(UnderspecifiedAbstractData::Unspecified)
     }
 }
 
-impl UnderspecifiedAbstractData {
-    /// Fill in the default `AbstractData` for any parts of the
-    /// `UnderspecifiedAbstractData` which are unspecified, using the information
-    /// in the given LLVM type.
+impl AbstractData {
+    pub const DEFAULT_ARRAY_LENGTH: usize = 1024;
+
+    /// Fill in the default `CompleteAbstractData` for any parts of the
+    /// `AbstractData` which are unspecified, using the information in the given
+    /// LLVM type.
     ///
-    /// The default `AbstractData` based on the LLVM type is:
+    /// The default `CompleteAbstractData` based on the LLVM type is:
     ///
     /// - for LLVM integer type: public unconstrained value of the appropriate size
     /// - for LLVM pointer type (except function pointer): public concrete pointer value to allocated memory, depending on pointer type:
@@ -207,11 +283,18 @@ impl UnderspecifiedAbstractData {
     ///   (unless the number of elements is 0, in which case, we default to DEFAULT_ARRAY_LENGTH elements)
     ///   - (in any case, apply these rules recursively to each element)
     /// - for LLVM structure type: apply these rules recursively to each field
-    pub fn convert_to_fully_specified_as(self, ty: &Type) -> AbstractData {
+    pub fn to_complete(self, ty: &Type) -> CompleteAbstractData {
+        self.0.to_complete(ty)
+    }
+}
+
+impl UnderspecifiedAbstractData {
+    /// See method description on `AbstractData::to_complete`
+    pub fn to_complete(self, ty: &Type) -> CompleteAbstractData {
         if let Type::NamedStructType { ty, .. } = ty {
-            self.convert_to_fully_specified_as(
+            self.to_complete(
                 &ty.as_ref()
-                .expect("Can't convert to fully specified as an opaque struct type")
+                .expect("Can't convert to complete with an opaque struct type")
                 .upgrade()
                 .expect("Failed to upgrade weak reference")
                 .read()
@@ -219,57 +302,74 @@ impl UnderspecifiedAbstractData {
             )
         } else {
             match self {
-                Self::FullySpecified(abstractdata) => abstractdata,
-                Self::PublicPointerTo(uad) => match ty {
+                Self::Complete(abstractdata) => abstractdata,
+                Self::PublicPointerTo(ad) => match ty {
                     Type::PointerType { pointee_type, .. } =>
-                        AbstractData::PublicPointerTo(Box::new(uad.convert_to_fully_specified_as(&**pointee_type))),
-                    _ => panic!("Type mismatch: UnderspecifiedAbstractData::PublicPointerTo but LLVM type is {:?}", ty),
+                        CompleteAbstractData::PublicPointerTo(Box::new(match &ad.0 {
+                            Self::Array { num_elements, .. } => {
+                                // AbstractData is pointer-to-array, but LLVM type may be pointer-to-scalar
+                                match &**pointee_type {
+                                    ty@Type::ArrayType { .. } | ty@Type::VectorType { .. } => {
+                                        ad.to_complete(ty)  // LLVM type is array or vector as well, it matches
+                                    },
+                                    ty => {
+                                        // LLVM type is scalar, but AbstractData is array, so it's actually pointer-to-array
+                                        let num_elements = *num_elements;
+                                        ad.to_complete(&Type::ArrayType { element_type: Box::new(ty.clone()), num_elements })
+                                    },
+                                }
+                            },
+                            _ => {
+                                // AbstractData is pointer-to-something-else, just let the recursive call handle it
+                                ad.to_complete(&**pointee_type)
+                            },
+                        })),
+                    _ => panic!("Type mismatch: AbstractData::PublicPointerTo but LLVM type is {:?}", ty),
                 },
                 Self::Array { element_type, num_elements } => match ty {
-                    Type::ArrayType { element_type: llvm_element_type, num_elements: llvm_num_elements } => {
+                    Type::ArrayType { element_type: llvm_element_type, num_elements: llvm_num_elements }
+                    | Type::VectorType { element_type: llvm_element_type, num_elements: llvm_num_elements } => {
                         if *llvm_num_elements != 0 {
                             assert_eq!(num_elements, *llvm_num_elements, "Type mismatch: AbstractData specifies an array with {} elements, but found an array with {} elements", num_elements, llvm_num_elements);
                         }
-                        AbstractData::Array { element_type: Box::new(element_type.convert_to_fully_specified_as(&**llvm_element_type)), num_elements }
+                        CompleteAbstractData::Array { element_type: Box::new(element_type.to_complete(&**llvm_element_type)), num_elements }
                     },
-                    Type::PointerType { pointee_type, .. } =>
-                        AbstractData::Array { element_type: Box::new(element_type.convert_to_fully_specified_as(&**pointee_type)), num_elements },
-                    _ => panic!("Type mismatch: UnderspecifiedAbstractData::Array but LLVM type is {:?}", ty),
+                    _ => panic!("Type mismatch: AbstractData::Array but LLVM type is {:?}", ty),
                 }
                 Self::Struct(v) => match ty {
-                    Type::StructType { element_types, .. } => AbstractData::Struct(
+                    Type::StructType { element_types, .. } => CompleteAbstractData::Struct(
                         v.into_iter()
                         .zip(element_types)
-                        .map(|(el_data, el_type)| el_data.convert_to_fully_specified_as(el_type))
+                        .map(|(el_data, el_type)| el_data.to_complete(el_type))
                         .collect()
                     ),
                     Type::NamedStructType { .. } => panic!("This case should have been already handled above"),
-                    _ => panic!("Type mismatch: UnderspecifiedAbstractData::Struct but LLVM type is {:?}", ty),
+                    _ => panic!("Type mismatch: AbstractData::Struct but LLVM type is {:?}", ty),
                 },
                 Self::Unspecified => match ty {
                     Type::IntegerType { .. } =>
-                        AbstractData::PublicValue { bits: layout::size(ty), value: AbstractValue::Unconstrained },
+                        CompleteAbstractData::PublicValue { bits: layout::size(ty), value: AbstractValue::Unconstrained },
                     Type::PointerType { pointee_type, .. } => match &**pointee_type {
                         Type::FuncType { .. } =>
-                            AbstractData::PublicPointerToHook("hook_uninitialized_function_pointer".to_owned()),
+                            CompleteAbstractData::PublicPointerToHook("hook_uninitialized_function_pointer".to_owned()),
                         Type::IntegerType { bits } =>
-                            AbstractData::PublicPointerTo(Box::new(AbstractData::Array {
-                                element_type: Box::new(AbstractData::PublicValue { bits: *bits as usize, value: AbstractValue::Unconstrained}),
+                            CompleteAbstractData::PublicPointerTo(Box::new(CompleteAbstractData::Array {
+                                element_type: Box::new(CompleteAbstractData::PublicValue { bits: *bits as usize, value: AbstractValue::Unconstrained}),
                                 num_elements: AbstractData::DEFAULT_ARRAY_LENGTH,
                             })),
-                        ty => AbstractData::PublicPointerTo(Box::new(Self::Unspecified.convert_to_fully_specified_as(ty))),
+                        ty => CompleteAbstractData::PublicPointerTo(Box::new(Self::Unspecified.to_complete(ty))),
                     },
                     Type::VectorType { element_type, num_elements } | Type::ArrayType { element_type, num_elements } =>
-                        AbstractData::Array {
-                            element_type: Box::new(Self::Unspecified.convert_to_fully_specified_as(element_type)),
+                        CompleteAbstractData::Array {
+                            element_type: Box::new(Self::Unspecified.to_complete(element_type)),
                             num_elements: if *num_elements == 0 { AbstractData::DEFAULT_ARRAY_LENGTH } else { *num_elements },
                         },
-                    Type::StructType { element_types, .. } => AbstractData::Struct(
+                    Type::StructType { element_types, .. } => CompleteAbstractData::Struct(
                         element_types.iter()
-                        .map(|el_type| Self::Unspecified.convert_to_fully_specified_as(el_type))
+                        .map(|el_type| Self::Unspecified.to_complete(el_type))
                         .collect()
                     ),
-                    _ => unimplemented!("UnderspecifiedAbstractData::convert_to_fully_specified_as {:?}", ty),
+                    _ => unimplemented!("AbstractData::to_complete with {:?}", ty),
                 },
             }
         }

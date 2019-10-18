@@ -1,5 +1,5 @@
 mod abstractdata;
-pub use abstractdata::*;
+pub use abstractdata::{AbstractData, AbstractValue};
 pub mod allocation;
 pub mod secret;
 
@@ -19,7 +19,7 @@ pub fn is_constant_time_in_inputs<'p>(
     config: Config<'p, secret::Backend>
 ) -> bool {
     let (func, _) = project.get_func_by_name(funcname).expect("Failed to find function");
-    let args = func.parameters.iter().map(|p| UnderspecifiedAbstractData::FullySpecified(AbstractData::Secret { bits: layout::size(&p.ty) }));
+    let args = func.parameters.iter().map(|p| AbstractData::sec_integer(layout::size(&p.ty)));
     is_constant_time(funcname, project, args, config)
 }
 
@@ -36,7 +36,7 @@ pub fn is_constant_time_in_inputs<'p>(
 pub fn is_constant_time<'p>(
     funcname: &str,
     project: &'p Project,
-    args: impl IntoIterator<Item = UnderspecifiedAbstractData>,
+    args: impl IntoIterator<Item = AbstractData>,
     config: Config<'p, secret::Backend>
 ) -> bool {
     check_for_ct_violation(funcname, project, args, config).is_none()
@@ -59,7 +59,7 @@ pub fn is_constant_time<'p>(
 pub fn check_for_ct_violation<'p>(
     funcname: &str,
     project: &'p Project,
-    args: impl IntoIterator<Item = UnderspecifiedAbstractData>,
+    args: impl IntoIterator<Item = AbstractData>,
     mut config: Config<'p, secret::Backend>
 ) -> Option<String> {
     if !config.function_hooks.is_hooked("hook_uninitialized_function_pointer") {
