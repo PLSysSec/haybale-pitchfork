@@ -345,6 +345,10 @@ impl UnderspecifiedAbstractData {
                                 ad.to_complete(&**pointee_type)
                             },
                         })),
+                    Type::ArrayType { num_elements: 1, element_type } | Type::VectorType { num_elements: 1, element_type } => {
+                        // auto-unwrap LLVM type if it is array or vector of one element
+                        Self::PublicPointerTo(ad).to_complete(&**element_type)
+                    },
                     _ => panic!("Type mismatch: AbstractData::PublicPointerTo but LLVM type is {:?}", ty),
                 },
                 Self::Array { element_type, num_elements } => match ty {
@@ -365,6 +369,10 @@ impl UnderspecifiedAbstractData {
                         .collect()
                     ),
                     Type::NamedStructType { .. } => panic!("This case should have been already handled above"),
+                    Type::ArrayType { num_elements: 1, element_type } | Type::VectorType { num_elements: 1, element_type } => {
+                        // auto-unwrap LLVM type if it is array or vector of one element
+                        Self::Struct(v).to_complete(&**element_type)
+                    },
                     _ => panic!("Type mismatch: AbstractData::Struct but LLVM type is {:?}", ty),
                 },
                 Self::Unspecified => match ty {

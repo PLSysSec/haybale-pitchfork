@@ -90,6 +90,18 @@ pub fn allocate_arg<'p>(state: &mut State<'p, secret::Backend>, param: &'p funct
 ///
 /// `ty` should be the type of the pointed-to object, not the type of `addr`.
 pub fn initialize_data_in_memory(state: &mut State<'_, secret::Backend>, addr: &secret::BV, data: &CompleteAbstractData, ty: &Type) -> Result<()> {
+    if let Type::ArrayType { num_elements: 1, element_type } | Type::VectorType { num_elements: 1, element_type } = ty {
+        match data {
+            CompleteAbstractData::Array { num_elements: 1, element_type: element_abstractdata } => {
+                // both LLVM and CAD type are array-of-one-element.  Unwrap and call recursively
+                return initialize_data_in_memory(state, addr, element_abstractdata, element_type);
+            },
+            data => {
+                // LLVM type is array-of-one-element but CAD type is not.  Unwrap the LLVM type and call recursively
+                return initialize_data_in_memory(state, addr, data, element_type);
+            },
+        }
+    };
     debug!("Initializing data in memory at address {:?}", addr);
     match data {
         CompleteAbstractData::Secret { bits } => {
