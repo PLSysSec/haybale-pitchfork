@@ -116,6 +116,11 @@ impl CompleteAbstractData {
     pub fn struct_of(elements: impl IntoIterator<Item = Self>) -> Self {
         Self::Struct(elements.into_iter().collect())
     }
+
+    /// A (public) pointer which may point anywhere
+    pub fn unconstrained_pointer() -> Self {
+        Self::PublicPointerToUnconstrainedPublic
+    }
 }
 
 impl CompleteAbstractData {
@@ -271,6 +276,11 @@ impl AbstractData {
     /// See [`AbstractData::to_complete`](struct.AbstractData.html#method.to_complete)
     pub fn unspecified() -> Self {
         Self(UnderspecifiedAbstractData::Unspecified)
+    }
+
+    /// A (public) pointer which may point anywhere
+    pub fn unconstrained_pointer() -> Self {
+        Self(UnderspecifiedAbstractData::Complete(CompleteAbstractData::PublicPointerToUnconstrainedPublic))
     }
 }
 
