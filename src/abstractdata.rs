@@ -426,7 +426,7 @@ impl UnderspecifiedAbstractData {
                             if unspecified_named_structs.insert(name) {
                                 self.to_complete_rec(inner_ty, sd, unspecified_named_structs)
                             } else {
-                                panic!("AbstractData::unspecified() applied to recursive struct {:?}", name)
+                                panic!("AbstractData::default() applied to recursive struct {:?}", name)
                             }
                         },
                     }
