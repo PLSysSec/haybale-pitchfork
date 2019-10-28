@@ -8,6 +8,7 @@ use haybale::{Error, Result};
 pub use haybale::{Config, Project};
 use llvm_ir::instruction;
 use log::{debug, info};
+use std::collections::HashSet;
 
 /// Is a function "constant-time" in its inputs. That is, does the function ever
 /// make branching decisions, or perform address calculations, based on its inputs.
@@ -66,6 +67,13 @@ pub fn check_for_ct_violation<'p>(
 ) -> Option<String> {
     if !config.function_hooks.is_hooked("hook_uninitialized_function_pointer") {
         config.function_hooks.add("hook_uninitialized_function_pointer", &hook_uninitialized_function_pointer);
+    }
+
+    // first sanity-check the StructDescriptions, ensure that all its struct names are valid
+    let sd_names: HashSet<_> = sd.iter().map(|(name, _)| name).collect();
+    let proj_names: HashSet<_> = project.all_named_struct_types().map(|(name, _, _)| name).collect();
+    for name in sd_names.difference(&proj_names) {
+        panic!("Struct name {:?} appears in StructDescriptions but not found in the Project", name);
     }
 
     info!("Checking function {:?} for ct violations", funcname);
