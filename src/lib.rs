@@ -20,7 +20,7 @@ pub fn is_constant_time_in_inputs<'p>(
 ) -> bool {
     let (func, _) = project.get_func_by_name(funcname).expect("Failed to find function");
     let args = func.parameters.iter().map(|p| AbstractData::sec_integer(layout::size(&p.ty)));
-    is_constant_time(funcname, project, args, config)
+    is_constant_time(funcname, project, args, &StructDescriptions::new(), config)
 }
 
 /// Is a function "constant-time" in the secrets identified by the `args` data
@@ -29,17 +29,18 @@ pub fn is_constant_time_in_inputs<'p>(
 ///
 /// `args`: for each function parameter, an `AbstractData` describing whether the
 /// parameter is secret data itself, public data, a public pointer to secret data
-/// (and if so how much), etc; or `None` to use the default based on the LLVM
-/// parameter type.
+/// (and if so how much), etc; or `AbstractData::default()` to use the default
+/// based on the LLVM parameter type and/or the struct descriptions in `sd`.
 ///
 /// Other arguments are the same as for `is_constant_time_in_inputs()` above.
 pub fn is_constant_time<'p>(
     funcname: &str,
     project: &'p Project,
     args: impl IntoIterator<Item = AbstractData>,
+    sd: &StructDescriptions,
     config: Config<'p, secret::Backend>
 ) -> bool {
-    check_for_ct_violation(funcname, project, args, config).is_none()
+    check_for_ct_violation(funcname, project, args, sd, config).is_none()
 }
 
 /// Checks whether a function is "constant-time" in the secrets identified by the
@@ -48,8 +49,8 @@ pub fn is_constant_time<'p>(
 ///
 /// `args`: for each function parameter, an `AbstractData` describing whether the
 /// parameter is secret data itself, public data, a public pointer to secret data
-/// (and if so how much), etc; or `None` to use the default based on the LLVM
-/// parameter type.
+/// (and if so how much), etc; or `AbstractData::default()` to use the default
+/// based on the LLVM parameter type and/or the struct descriptions in `sd`.
 ///
 /// Other arguments are the same as for `is_constant_time_in_inputs()` above.
 ///
@@ -60,6 +61,7 @@ pub fn check_for_ct_violation<'p>(
     funcname: &str,
     project: &'p Project,
     args: impl IntoIterator<Item = AbstractData>,
+    sd: &StructDescriptions,
     mut config: Config<'p, secret::Backend>
 ) -> Option<String> {
     if !config.function_hooks.is_hooked("hook_uninitialized_function_pointer") {
@@ -72,7 +74,7 @@ pub fn check_for_ct_violation<'p>(
     debug!("Allocating memory for function parameters");
     let params = em.state().cur_loc.func.parameters.iter();
     for (param, arg) in params.zip(args.into_iter()) {
-        allocation::allocate_arg(em.mut_state(), &param, arg).unwrap();
+        allocation::allocate_arg(em.mut_state(), &param, arg, sd).unwrap();
     }
     debug!("Done allocating memory for function parameters");
 

@@ -66,8 +66,8 @@ fn ct_onearg() {
         AbstractData::sec_i32(),
         AbstractData::pub_i32(AbstractValue::Unconstrained),
     );
-    assert!(is_constant_time("ct_onearg", &project, publicx_secrety, Config::default()));
-    assert!(!is_constant_time("ct_onearg", &project, secretx_publicy, Config::default()));
+    assert!(is_constant_time("ct_onearg", &project, publicx_secrety, &StructDescriptions::new(), Config::default()));
+    assert!(!is_constant_time("ct_onearg", &project, secretx_publicy, &StructDescriptions::new(), Config::default()));
 }
 
 #[test]
@@ -77,7 +77,7 @@ fn ct_secrets() {
     let arg = iterator_length_one(
         AbstractData::pub_pointer_to(AbstractData::array_of(AbstractData::sec_i32(), 100)),
     );
-    assert!(is_constant_time("ct_secrets", &project, arg, Config::default()));
+    assert!(is_constant_time("ct_secrets", &project, arg, &StructDescriptions::new(), Config::default()));
 }
 
 #[test]
@@ -87,14 +87,14 @@ fn notct_secrets() {
     let arg = iterator_length_one(
         AbstractData::pub_pointer_to(AbstractData::array_of(AbstractData::sec_i32(), 100)),
     );
-    assert!(!is_constant_time("notct_secrets", &project, arg, Config::default()));
+    assert!(!is_constant_time("notct_secrets", &project, arg, &StructDescriptions::new(), Config::default()));
 }
 
-fn ptr_to_struct_partially_secret() -> AbstractData {
-    AbstractData::pub_pointer_to(AbstractData::struct_of(vec![
+fn struct_partially_secret() -> AbstractData {
+    AbstractData::struct_of(vec![
         AbstractData::pub_i32(AbstractValue::Unconstrained),
         AbstractData::sec_i32(),
-    ]))
+    ])
 }
 
 #[test]
@@ -103,15 +103,16 @@ fn ct_struct() {
     let project = get_project();
     let args = iterator_length_two(
         AbstractData::pub_pointer_to(AbstractData::array_of(AbstractData::pub_i32(AbstractValue::Unconstrained), 100)),
-        ptr_to_struct_partially_secret(),
+        AbstractData::pub_pointer_to(struct_partially_secret()),
     );
-    assert!(is_constant_time("ct_struct", &project, args, Config::default()));
-    // now check again, using unspecified()
+    assert!(is_constant_time("ct_struct", &project, args, &StructDescriptions::new(), Config::default()));
+    // now check again, using `default()` and `StructDescriptions`
     let args = iterator_length_two(
-        AbstractData::unspecified(),
-        ptr_to_struct_partially_secret(),
+        AbstractData::default(),
+        AbstractData::default(),
     );
-    assert!(is_constant_time("ct_struct", &project, args, Config::default()));
+    let sd = iterator_length_one(("struct.PartiallySecret".to_owned(), struct_partially_secret())).into_iter().collect();
+    assert!(is_constant_time("ct_struct", &project, args, &sd, Config::default()));
 }
 
 #[test]
@@ -120,15 +121,16 @@ fn notct_struct() {
     let project = get_project();
     let args = iterator_length_two(
         AbstractData::pub_pointer_to(AbstractData::array_of(AbstractData::pub_i32(AbstractValue::Unconstrained), 100)),
-        ptr_to_struct_partially_secret(),
+        AbstractData::pub_pointer_to(struct_partially_secret()),
     );
-    assert!(!is_constant_time("notct_struct", &project, args, Config::default()));
-    // now check again, using unspecified()
+    assert!(!is_constant_time("notct_struct", &project, args, &StructDescriptions::new(), Config::default()));
+    // now check again, using `default()` and `StructDescriptions`
     let args = iterator_length_two(
-        AbstractData::unspecified(),
-        ptr_to_struct_partially_secret(),
+        AbstractData::default(),
+        AbstractData::default(),
     );
-    assert!(!is_constant_time("notct_struct", &project, args, Config::default()));
+    let sd = iterator_length_one(("struct.PartiallySecret".to_owned(), struct_partially_secret())).into_iter().collect();
+    assert!(!is_constant_time("notct_struct", &project, args, &sd, Config::default()));
 }
 
 fn ptr_to_ptr_to_secrets() -> AbstractData {
@@ -142,12 +144,12 @@ fn ptr_to_ptr_to_secrets() -> AbstractData {
 fn ct_doubleptr() {
     init_logging();
     let project = get_project();
-    assert!(is_constant_time("ct_doubleptr", &project, iterator_length_one(ptr_to_ptr_to_secrets()), Config::default()));
+    assert!(is_constant_time("ct_doubleptr", &project, iterator_length_one(ptr_to_ptr_to_secrets()), &StructDescriptions::new(), Config::default()));
 }
 
 #[test]
 fn notct_doubleptr() {
     init_logging();
     let project = get_project();
-    assert!(!is_constant_time("notct_doubleptr", &project, iterator_length_one(ptr_to_ptr_to_secrets()), Config::default()));
+    assert!(!is_constant_time("notct_doubleptr", &project, iterator_length_one(ptr_to_ptr_to_secrets()), &StructDescriptions::new(), Config::default()));
 }
