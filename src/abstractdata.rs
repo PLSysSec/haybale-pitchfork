@@ -371,7 +371,7 @@ impl UnderspecifiedAbstractData {
                     }
                     CompleteAbstractData::Array { element_type: Box::new(element_type.to_complete_rec(&**llvm_element_type, sd, unspecified_named_structs)), num_elements }
                 },
-                _ => panic!("Type mismatch: AbstractData::Array but LLVM type is {:?}", ty),
+                _ => panic!("Type mismatch: AbstractData::Array with {} elements, but LLVM type is {:?}", num_elements, ty),
             }
             Self::Struct(v) => match ty {
                 Type::NamedStructType { ty, .. } => Self::Struct(v).to_complete_rec(
@@ -394,7 +394,7 @@ impl UnderspecifiedAbstractData {
                     // auto-unwrap LLVM type if it is array or vector of one element
                     Self::Struct(v).to_complete_rec(&**element_type, sd, unspecified_named_structs)
                 },
-                _ => panic!("Type mismatch: AbstractData::Struct but LLVM type is {:?}", ty),
+                _ => panic!("Type mismatch: AbstractData::Struct with {} elements, but LLVM type is {:?}", v.len(), ty),
             },
             Self::Unspecified => match ty {
                 Type::IntegerType { .. } =>
