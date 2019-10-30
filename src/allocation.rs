@@ -222,8 +222,8 @@ pub fn initialize_data_in_memory(state: &mut State<'_, secret::Backend>, addr: &
                 },
             }
         },
-        CompleteAbstractData::Struct(elements) => {
-            debug!("memory contents are marked as a struct");
+        CompleteAbstractData::Struct { name, elements } => {
+            debug!("memory contents are marked as a struct ({})", name);
             let mut cur_addr = addr.clone();
             let element_types = match ty {
                 Type::StructType { element_types, .. } => element_types.clone(),

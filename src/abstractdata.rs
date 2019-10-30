@@ -23,7 +23,7 @@ pub enum CompleteAbstractData {
     Array { element_type: Box<Self>, num_elements: usize },
 
     /// A (first-class) structure of values
-    Struct(Vec<Self>),
+    Struct { name: String, elements: Vec<Self> },
 
     /// A (public) pointer to something - another value, an array, etc
     PublicPointerTo(Box<Self>),
@@ -114,9 +114,11 @@ impl CompleteAbstractData {
         Self::Array { element_type: Box::new(element_type), num_elements }
     }
 
-    /// A (first-class) structure of values
-    pub fn struct_of(elements: impl IntoIterator<Item = Self>) -> Self {
-        Self::Struct(elements.into_iter().collect())
+    /// A (first-class) structure of values.  Name used only for debugging purposes, need not match the (mangled) LLVM struct name.
+    ///
+    /// (`_struct` used instead of `struct` to avoid collision with the Rust keyword)
+    pub fn _struct(name: impl Into<String>, elements: impl IntoIterator<Item = Self>) -> Self {
+        Self::Struct { name: name.into(), elements: elements.into_iter().collect() }
     }
 
     /// A (public) pointer which may point anywhere
@@ -133,7 +135,7 @@ impl CompleteAbstractData {
         match self {
             Self::PublicValue { bits, .. } => *bits,
             Self::Array { element_type, num_elements } => element_type.size_in_bits() * num_elements,
-            Self::Struct(elements) => elements.iter().map(Self::size_in_bits).sum(),
+            Self::Struct { elements, .. } => elements.iter().map(Self::size_in_bits).sum(),
             Self::PublicPointerTo(_) => Self::POINTER_SIZE_BITS,
             Self::PublicPointerToFunction(_) => Self::POINTER_SIZE_BITS,
             Self::PublicPointerToHook(_) => Self::POINTER_SIZE_BITS,
@@ -146,7 +148,7 @@ impl CompleteAbstractData {
     /// The `CompleteAbstractData` must be a `Struct` or `Array`.
     pub fn field_size_in_bits(&self, n: usize) -> usize {
         match self {
-            Self::Struct(elements) => Self::size_in_bits(&elements[n]),
+            Self::Struct { elements, .. } => Self::size_in_bits(&elements[n]),
             Self::Array { element_type, .. } => Self::size_in_bits(element_type),
             _ => panic!("field_size_in_bits called on {:?}", self),
         }
@@ -156,7 +158,7 @@ impl CompleteAbstractData {
     /// The `CompleteAbstractData` must be a `Struct` or `Array`.
     pub fn offset_in_bits(&self, n: usize) -> usize {
         match self {
-            Self::Struct(elements) => elements.iter().take(n).map(Self::size_in_bits).sum(),
+            Self::Struct { elements, .. } => elements.iter().take(n).map(Self::size_in_bits).sum(),
             Self::Array { element_type, .. } => element_type.size_in_bits() * n,
             _ => panic!("offset_in_bits called on {:?}", self),
         }
@@ -194,7 +196,7 @@ pub(crate) enum UnderspecifiedAbstractData {
 
     /// a struct with underspecified fields
     /// (for instance, some unspecified and some fully-specified fields)
-    Struct(Vec<AbstractData>),
+    Struct { name: String, elements: Vec<AbstractData> },
 }
 
 impl AbstractData {
@@ -269,8 +271,10 @@ impl AbstractData {
     }
 
     /// A (first-class) structure of values
-    pub fn struct_of(elements: impl IntoIterator<Item = Self>) -> Self {
-        Self(UnderspecifiedAbstractData::Struct(elements.into_iter().collect()))
+    ///
+    /// (`_struct` used instead of `struct` to avoid collision with the Rust keyword)
+    pub fn _struct(name: impl Into<String>, elements: impl IntoIterator<Item = Self>) -> Self {
+        Self(UnderspecifiedAbstractData::Struct { name: name.into(), elements: elements.into_iter().collect() })
     }
 
     /// Just use the default structure based on the LLVM type and/or the `StructDescriptions`.
@@ -373,8 +377,8 @@ impl UnderspecifiedAbstractData {
                 },
                 _ => panic!("Type mismatch: AbstractData::Array with {} elements, but LLVM type is {:?}", num_elements, ty),
             }
-            Self::Struct(v) => match ty {
-                Type::NamedStructType { ty, .. } => Self::Struct(v).to_complete_rec(
+            Self::Struct { elements, name } => match ty {
+                Type::NamedStructType { ty, .. } => Self::Struct { elements, name }.to_complete_rec(
                     &ty.as_ref()
                         .expect("Can't convert to complete with an opaque struct type")
                         .upgrade()
@@ -384,17 +388,17 @@ impl UnderspecifiedAbstractData {
                     sd,
                     unspecified_named_structs,
                 ),
-                Type::StructType { element_types, .. } => CompleteAbstractData::Struct(
-                    v.into_iter()
+                Type::StructType { element_types, .. } => CompleteAbstractData::Struct { name, elements:
+                    elements.into_iter()
                     .zip(element_types)
                     .map(|(el_data, el_type)| el_data.to_complete_rec(el_type, sd, unspecified_named_structs.clone()))
                     .collect()
-                ),
+                },
                 Type::ArrayType { num_elements: 1, element_type } | Type::VectorType { num_elements: 1, element_type } => {
                     // auto-unwrap LLVM type if it is array or vector of one element
-                    Self::Struct(v).to_complete_rec(&**element_type, sd, unspecified_named_structs)
+                    Self::Struct { elements, name }.to_complete_rec(&**element_type, sd, unspecified_named_structs)
                 },
-                _ => panic!("Type mismatch: AbstractData::Struct with {} elements, but LLVM type is {:?}", v.len(), ty),
+                _ => panic!("Type mismatch: AbstractData::Struct {}, but LLVM type is {:?}", name, ty),
             },
             Self::Unspecified => match ty {
                 Type::IntegerType { .. } =>
@@ -431,11 +435,11 @@ impl UnderspecifiedAbstractData {
                         },
                     }
                 },
-                Type::StructType { element_types, .. } => CompleteAbstractData::Struct(
+                Type::StructType { element_types, .. } => CompleteAbstractData::Struct { name: "unspecified_struct".to_owned(), elements:
                     element_types.iter()
                     .map(|el_type| Self::Unspecified.to_complete_rec(el_type, sd, unspecified_named_structs.clone()))
                     .collect()
-                ),
+                },
                 _ => unimplemented!("AbstractData::to_complete with {:?}", ty),
             },
         }

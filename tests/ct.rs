@@ -91,7 +91,7 @@ fn notct_secrets() {
 }
 
 fn struct_partially_secret() -> AbstractData {
-    AbstractData::struct_of(vec![
+    AbstractData::_struct("PartiallySecret", vec![
         AbstractData::pub_i32(AbstractValue::Unconstrained),
         AbstractData::sec_i32(),
     ])
