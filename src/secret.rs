@@ -388,7 +388,7 @@ impl haybale::backend::Memory for Memory {
                 // `get_possible_solutions_for_bv()` check.
                 let rc: Rc<Btor> = self.btor.clone().into();
                 let all_zeroes = boolector::BV::zero(rc.clone(), shadow_cell.get_width());
-                if bvs_must_be_equal(&rc, &shadow_cell, &all_zeroes)?.ok_or(Error::Unsat)? {
+                if bvs_must_be_equal(&rc, &shadow_cell, &all_zeroes)? {
                     // the bits are all public
                     haybale::backend::Memory::read(&self.mem, index, bits).map(BV::Public)
                 } else {
