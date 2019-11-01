@@ -348,10 +348,20 @@ impl haybale::backend::BV for BV {
 pub struct Memory {
     btor: BtorRef,
     /// This memory holds the actual data
-    mem: haybale::memory::Memory,
+    mem: haybale::simple_memory::Memory,
     /// This memory is a bitmap, with each bit indicating if the corresponding bit of `mem` is secret or not (1 for secret, 0 for public)
-    shadow_mem: haybale::memory::Memory,
+    shadow_mem: haybale::simple_memory::Memory,
 }
+// note on the above: we use `haybale::simple_memory` over `haybale::memory`
+// because, at least in one relevant case, it can speed up an analysis from
+// the order of hours to under a minute.
+//
+// The speedup is due to better ability to get "true constants" from memory
+// reads, and thus avoiding painful model generation calls, e.g. when needing to
+// resolve constant function pointers.
+//
+// A more general performance comparison across a wide variety of typical
+// workloads is probably called for.
 
 impl haybale::backend::Memory for Memory {
     type SolverRef = BtorRef;
