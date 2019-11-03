@@ -1,13 +1,13 @@
 use crate::abstractdata::*;
 use crate::secret;
-use haybale::{layout, State};
+use haybale::{layout, Project, State};
 use haybale::backend::*;
 use haybale::Result;
 use llvm_ir::*;
 use log::debug;
 use std::sync::{Arc, RwLock};
 
-pub fn allocate_arg<'p>(state: &mut State<'p, secret::Backend>, param: &'p function::Parameter, arg: AbstractData, sd: &StructDescriptions) -> Result<()> {
+pub fn allocate_arg<'p>(proj: &'p Project, state: &mut State<'p, secret::Backend>, param: &'p function::Parameter, arg: AbstractData, sd: &StructDescriptions) -> Result<()> {
     debug!("Allocating function parameter {:?}", &param.name);
     let arg = arg.to_complete(&param.ty, sd);
     let arg_size = arg.size_in_bits();
@@ -46,7 +46,7 @@ pub fn allocate_arg<'p>(state: &mut State<'p, secret::Backend>, param: &'p funct
                 Type::PointerType { pointee_type, .. } => pointee_type,
                 ty => panic!("Mismatch for parameter {:?}: CompleteAbstractData specifies a pointer but parameter type is {:?}", &param.name, ty),
             };
-            initialize_data_in_memory(state, &ptr, &*pointee, Some(pointee_ty))
+            initialize_data_in_memory(proj, state, &ptr, &*pointee, Some(pointee_ty))
         },
         CompleteAbstractData::PublicPointerToFunction(funcname) => {
             debug!("Parameter is marked as a public pointer to the function {:?}", funcname);
@@ -83,7 +83,7 @@ pub fn allocate_arg<'p>(state: &mut State<'p, secret::Backend>, param: &'p funct
         },
         CompleteAbstractData::Array { .. } => unimplemented!("Array passed by value"),
         CompleteAbstractData::Struct { .. } => unimplemented!("Struct passed by value"),
-        CompleteAbstractData::VoidOverride(_) => unimplemented!("VoidOverride used as an argument directly.  You probably meant to use a pointer to a VoidOverride"),
+        CompleteAbstractData::VoidOverride { .. } => unimplemented!("VoidOverride used as an argument directly.  You probably meant to use a pointer to a VoidOverride"),
     }
 }
 
@@ -92,16 +92,16 @@ pub fn allocate_arg<'p>(state: &mut State<'p, secret::Backend>, param: &'p funct
 /// `ty` should be the type of the pointed-to object, not the type of `addr`.
 /// It is used only for type-checking, to ensure that the `CompleteAbstractData` actually matches the intended LLVM type.
 /// Setting `ty` to `None` disables this type-checking.
-pub fn initialize_data_in_memory(state: &mut State<'_, secret::Backend>, addr: &secret::BV, data: &CompleteAbstractData, ty: Option<&Type>) -> Result<()> {
+pub fn initialize_data_in_memory(proj: &Project, state: &mut State<'_, secret::Backend>, addr: &secret::BV, data: &CompleteAbstractData, ty: Option<&Type>) -> Result<()> {
     if let Some(Type::ArrayType { num_elements: 1, element_type }) | Some(Type::VectorType { num_elements: 1, element_type }) = ty {
         match data {
             CompleteAbstractData::Array { num_elements: 1, element_type: element_abstractdata } => {
                 // both LLVM and CAD type are array-of-one-element.  Unwrap and call recursively
-                return initialize_data_in_memory(state, addr, element_abstractdata, Some(element_type));
+                return initialize_data_in_memory(proj, state, addr, element_abstractdata, Some(element_type));
             },
             data => {
                 // LLVM type is array-of-one-element but CAD type is not.  Unwrap the LLVM type and call recursively
-                return initialize_data_in_memory(state, addr, data, Some(element_type));
+                return initialize_data_in_memory(proj, state, addr, data, Some(element_type));
             },
         }
     };
@@ -151,7 +151,7 @@ pub fn initialize_data_in_memory(state: &mut State<'_, secret::Backend>, addr: &
                 Type::PointerType { pointee_type, .. } => &**pointee_type,
                 _ => panic!("Type mismatch: CompleteAbstractData specifies a pointer, but found type {:?}", ty),
             });
-            initialize_data_in_memory(state, &inner_ptr, &**pointee, pointee_ty)
+            initialize_data_in_memory(proj, state, &inner_ptr, &**pointee, pointee_ty)
         },
         CompleteAbstractData::PublicPointerToFunction(funcname) => {
             debug!("memory contents are marked as a public pointer to the function {:?}", funcname);
@@ -217,7 +217,7 @@ pub fn initialize_data_in_memory(state: &mut State<'_, secret::Backend>, addr: &
                     // special-case this, as we can initialize with one big write
                     let array_size_bits = element_size_bits * *num_elements;
                     debug!("initializing the entire array as {} secret bits", array_size_bits);
-                    initialize_data_in_memory(state, &addr, &CompleteAbstractData::Secret { bits: array_size_bits }, ty)
+                    initialize_data_in_memory(proj, state, &addr, &CompleteAbstractData::Secret { bits: array_size_bits }, ty)
                 },
                 CompleteAbstractData::PublicValue { value: AbstractValue::Unconstrained, .. } => {
                     // special-case this, as no initialization is necessary for the entire array
@@ -232,7 +232,7 @@ pub fn initialize_data_in_memory(state: &mut State<'_, secret::Backend>, addr: &
                     let element_size_bytes = element_size_bits / 8;
                     for i in 0 .. *num_elements {
                         debug!("initializing element {} of the array", i);
-                        initialize_data_in_memory(state, &addr.add(&secret::BV::from_u64(state.solver.clone(), (i*element_size_bytes) as u64, addr.get_width())), element_abstractdata, element_type)?;
+                        initialize_data_in_memory(proj, state, &addr.add(&secret::BV::from_u64(state.solver.clone(), (i*element_size_bytes) as u64, addr.get_width())), element_abstractdata, element_type)?;
                     }
                     debug!("done initializing the array at {:?}", addr);
                     Ok(())
@@ -271,20 +271,28 @@ pub fn initialize_data_in_memory(state: &mut State<'_, secret::Backend>, addr: &
                 }
                 let element_size_bytes = element_size_bits / 8;
                 debug!("initializing element {} of the struct; element's address is {:?}", element_idx, &cur_addr);
-                initialize_data_in_memory(state, &cur_addr, element, element_ty.as_ref())?;
+                initialize_data_in_memory(proj, state, &cur_addr, element, element_ty.as_ref())?;
                 cur_addr = cur_addr.add(&secret::BV::from_u64(state.solver.clone(), element_size_bytes as u64, addr.get_width()));
             }
             debug!("done initializing the struct at {:?}", addr);
             Ok(())
         }
-        CompleteAbstractData::VoidOverride(data) => {
+        CompleteAbstractData::VoidOverride { llvm_struct_name, data } => {
             // first check that the type we're overriding is `i8`: LLVM seems to use `i8*` when C uses `void*`
             match ty {
                 Some(Type::IntegerType { bits: 8 }) => {},
                 Some(ty) => panic!("attempt to use VoidOverride to override LLVM type {:?} rather than i8", ty),
                 None => {},  // could be a nested VoidOverride, for instance
             }
-            initialize_data_in_memory(state, addr, &data, None)
+            match llvm_struct_name {
+                None => initialize_data_in_memory(proj, state, addr, &data, None),
+                Some(llvm_struct_name) => {
+                    let (llvm_ty, _) = proj.get_named_struct_type_by_name(&llvm_struct_name)
+                        .unwrap_or_else(|| panic!("VoidOverride: llvm_struct_name {:?} not found in Project", llvm_struct_name));
+                    let arc = llvm_ty.as_ref().unwrap_or_else(|| panic!("VoidOverride: llvm_struct_name {:?} is an opaque type", llvm_struct_name));
+                    initialize_data_in_memory(proj, state, addr, &data, Some(&arc.read().unwrap()))
+                }
+            }
         },
     }
 }

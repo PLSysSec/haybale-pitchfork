@@ -46,9 +46,13 @@ pub enum CompleteAbstractData {
     /// within Pitchfork, we may want to specify some type other than `i8*` for
     /// the purposes of allocating and analyzing the data behind the `void*`.
     ///
-    /// This says to use the indicated `CompleteAbstractData` even though the LLVM
+    /// This says to use the provided `CompleteAbstractData` even though the LLVM
     /// type is `i8`.
-    VoidOverride(Box<Self>),
+    ///
+    /// If the optional `llvm_struct_name` is included, it will lookup that struct's
+    /// type and check against that.  Otherwise, no typechecking will be performed
+    /// and the provided `CompleteAbstractData` will be assumed correct.
+    VoidOverride { llvm_struct_name: Option<String>, data: Box<Self> },
 }
 
 impl CompleteAbstractData {
@@ -138,10 +142,14 @@ impl CompleteAbstractData {
     /// within Pitchfork, we may want to specify some type other than `i8*` for
     /// the purposes of allocating and analyzing the data behind the `void*`.
     ///
-    /// This says to use the indicated `CompleteAbstractData` even though the LLVM
+    /// This says to use the provided `CompleteAbstractData` even though the LLVM
     /// type is `i8`.
-    pub fn void_override(data: Self) -> Self {
-        Self::VoidOverride(Box::new(data))
+    ///
+    /// If the optional `llvm_struct_name` is included, it will lookup that struct's
+    /// type and check against that.  Otherwise, no typechecking will be performed
+    /// and the provided `CompleteAbstractData` will be assumed correct.
+    pub fn void_override(llvm_struct_name: Option<&str>, data: Self) -> Self {
+        Self::VoidOverride { llvm_struct_name: llvm_struct_name.map(Into::into), data: Box::new(data) }
     }
 }
 
@@ -159,7 +167,7 @@ impl CompleteAbstractData {
             Self::PublicPointerToHook(_) => Self::POINTER_SIZE_BITS,
             Self::PublicPointerToUnconstrainedPublic => Self::POINTER_SIZE_BITS,
             Self::Secret { bits } => *bits,
-            Self::VoidOverride(d) => d.size_in_bits(),
+            Self::VoidOverride { data, .. } => data.size_in_bits(),
         }
     }
 
@@ -169,7 +177,7 @@ impl CompleteAbstractData {
         match self {
             Self::Struct { elements, .. } => Self::size_in_bits(&elements[n]),
             Self::Array { element_type, .. } => Self::size_in_bits(element_type),
-            Self::VoidOverride(d) => d.field_size_in_bits(n),
+            Self::VoidOverride { data, .. } => data.field_size_in_bits(n),
             _ => panic!("field_size_in_bits called on {:?}", self),
         }
     }
@@ -180,7 +188,7 @@ impl CompleteAbstractData {
         match self {
             Self::Struct { elements, .. } => elements.iter().take(n).map(Self::size_in_bits).sum(),
             Self::Array { element_type, .. } => element_type.size_in_bits() * n,
-            Self::VoidOverride(d) => d.offset_in_bits(n),
+            Self::VoidOverride { data, .. } => data.offset_in_bits(n),
             _ => panic!("offset_in_bits called on {:?}", self),
         }
     }
@@ -220,7 +228,13 @@ pub(crate) enum UnderspecifiedAbstractData {
     Struct { name: String, elements: Vec<AbstractData> },
 
     /// See notes on [`CompleteAbstractData::VoidOverride`](enum.CompleteAbstractData.html).
-    VoidOverride(Box<AbstractData>),
+    ///
+    /// If the optional `llvm_struct_name` is included, it will lookup that
+    /// struct's type and use that both for any underspecified elements in the
+    /// `AbstractData`, and for sanity typechecking. Otherwise, the
+    /// `AbstractData` must be fully-specified, and no sanity typechecking will
+    /// be performed (the `AbstractData` will be assumed correct).
+    VoidOverride { llvm_struct_name: Option<String>, data: Box<AbstractData> },
 }
 
 impl AbstractData {
@@ -318,8 +332,14 @@ impl AbstractData {
     /// Note that the `AbstractData` here must actually be fully specified,
     /// perhaps with the help of `StructDescriptions`. If it's not, `to_complete`
     /// will panic.
-    pub fn void_override(data: AbstractData) -> Self {
-        Self(UnderspecifiedAbstractData::VoidOverride(Box::new(data)))
+    ///
+    /// If the optional `llvm_struct_name` is included, it will lookup that
+    /// struct's type and use that both for any underspecified elements in the
+    /// `AbstractData`, and for sanity typechecking. Otherwise, the
+    /// `AbstractData` must be fully-specified, and no sanity typechecking will
+    /// be performed (the `AbstractData` will be assumed correct).
+    pub fn void_override(llvm_struct_name: Option<&str>, data: AbstractData) -> Self {
+        Self(UnderspecifiedAbstractData::VoidOverride { llvm_struct_name: llvm_struct_name.map(Into::into), data: Box::new(data) })
     }
 }
 
@@ -393,7 +413,8 @@ impl UnderspecifiedAbstractData {
     fn to_complete_rec<'a>(self, ty: Option<&'a Type>, sd: &StructDescriptions, mut ctx: ToCompleteContext<'a>) -> CompleteAbstractData {
         match self {
             Self::Complete(abstractdata) => abstractdata,
-            Self::VoidOverride(abstractdata) => CompleteAbstractData::VoidOverride(Box::new(abstractdata.to_complete_rec(None, sd, ctx))),
+            Self::VoidOverride { llvm_struct_name, data } =>
+                CompleteAbstractData::VoidOverride { llvm_struct_name, data: Box::new(data.to_complete_rec(None, sd, ctx)) },
             Self::PublicPointerTo(ad) => match ty {
                 Some(Type::PointerType { pointee_type, .. }) =>
                     CompleteAbstractData::PublicPointerTo(Box::new(match &ad.0 {

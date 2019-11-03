@@ -160,7 +160,7 @@ fn ct_struct_voidptr() {
     let project = get_project();
     let args = iterator_length_two(
         AbstractData::pub_pointer_to(AbstractData::array_of(AbstractData::pub_i32(AbstractValue::Unconstrained), 100)),
-        AbstractData::pub_pointer_to(AbstractData::void_override(struct_partially_secret())),
+        AbstractData::pub_pointer_to(AbstractData::void_override(None, struct_partially_secret())),
     );
     assert!(is_constant_time("ct_struct_voidptr", &project, args, &StructDescriptions::new(), Config::default()));
 }
@@ -171,7 +171,7 @@ fn notct_struct_voidptr() {
     let project = get_project();
     let args = iterator_length_two(
         AbstractData::pub_pointer_to(AbstractData::array_of(AbstractData::pub_i32(AbstractValue::Unconstrained), 100)),
-        AbstractData::pub_pointer_to(AbstractData::void_override(struct_partially_secret())),
+        AbstractData::pub_pointer_to(AbstractData::void_override(None, struct_partially_secret())),
     );
     assert!(!is_constant_time("notct_struct_voidptr", &project, args, &StructDescriptions::new(), Config::default()));
 }
