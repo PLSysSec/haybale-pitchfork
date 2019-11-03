@@ -99,6 +99,7 @@ pub fn check_for_ct_violation<'p>(
 }
 
 fn hook_uninitialized_function_pointer<B: Backend>(
+    _proj: &Project,
     _state: &mut State<B>,
     _call: &instruction::Call,
 ) -> Result<ReturnValue<B::BV>> {
