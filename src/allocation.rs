@@ -9,7 +9,7 @@ use std::sync::{Arc, RwLock};
 
 pub fn allocate_arg<'p>(proj: &'p Project, state: &mut State<'p, secret::Backend>, param: &'p function::Parameter, arg: AbstractData, sd: &StructDescriptions) -> Result<()> {
     debug!("Allocating function parameter {:?}", &param.name);
-    let arg = arg.to_complete(&param.ty, sd);
+    let arg = arg.to_complete(&param.ty, proj, sd);
     let arg_size = arg.size_in_bits();
     let param_size = layout::size(&param.ty);
     assert_eq!(arg_size, param_size, "Parameter size mismatch for parameter {:?}: parameter is {} bits but CompleteAbstractData is {} bits", &param.name, param_size, arg_size);
