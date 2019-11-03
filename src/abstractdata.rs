@@ -467,8 +467,12 @@ impl UnderspecifiedAbstractData {
             Self::Array { element_type, num_elements } => match ty {
                 Some(Type::ArrayType { element_type: llvm_element_type, num_elements: llvm_num_elements })
                 | Some(Type::VectorType { element_type: llvm_element_type, num_elements: llvm_num_elements }) => {
-                    if *llvm_num_elements != 0 {
-                        assert_eq!(num_elements, *llvm_num_elements, "Type mismatch: AbstractData specifies an array with {} elements, but found an array with {} elements", num_elements, llvm_num_elements);
+                    if *llvm_num_elements != 0 && *llvm_num_elements != num_elements {
+                        eprintln!();
+                        for w in ctx.within_structs.iter() {
+                            eprintln!("within struct {}:", w);
+                        }
+                        panic!("Type mismatch: AbstractData specifies an array with {} elements, but found an array with {} elements", num_elements, llvm_num_elements);
                     }
                     CompleteAbstractData::Array { element_type: Box::new(element_type.to_complete_rec(Some(&**llvm_element_type), ctx.clone())), num_elements }
                 },
@@ -548,6 +552,10 @@ impl UnderspecifiedAbstractData {
                             if ctx.unspecified_named_structs.insert(name) {
                                 self.to_complete_rec(Some(inner_ty), ctx)
                             } else {
+                                eprintln!();
+                                for w in ctx.within_structs.iter() {
+                                    eprintln!("within struct {}:", w);
+                                }
                                 panic!("AbstractData::default() applied to recursive struct {:?}", name)
                             }
                         },
