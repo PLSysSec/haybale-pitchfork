@@ -213,6 +213,34 @@ define i32 @notct_doubleptr(i32** nocapture readonly) local_unnamed_addr #3 {
   ret i32 %17
 }
 
+; Function Attrs: norecurse nounwind readonly ssp uwtable
+define i32 @ct_struct_voidptr(i32* nocapture readonly, i8* nocapture readonly) local_unnamed_addr #3 {
+  %3 = bitcast i8* %1 to i32*
+  %4 = load i32, i32* %3, align 4, !tbaa !7
+  %5 = sext i32 %4 to i64
+  %6 = getelementptr inbounds i32, i32* %0, i64 %5
+  %7 = load i32, i32* %6, align 4, !tbaa !3
+  %8 = getelementptr inbounds i8, i8* %1, i64 4
+  %9 = bitcast i8* %8 to i32*
+  %10 = load i32, i32* %9, align 4, !tbaa !9
+  %11 = add nsw i32 %10, %7
+  ret i32 %11
+}
+
+; Function Attrs: norecurse nounwind readonly ssp uwtable
+define i32 @notct_struct_voidptr(i32* nocapture readonly, i8* nocapture readonly) local_unnamed_addr #3 {
+  %3 = getelementptr inbounds i8, i8* %1, i64 4
+  %4 = bitcast i8* %3 to i32*
+  %5 = load i32, i32* %4, align 4, !tbaa !9
+  %6 = sext i32 %5 to i64
+  %7 = getelementptr inbounds i32, i32* %0, i64 %6
+  %8 = load i32, i32* %7, align 4, !tbaa !3
+  %9 = bitcast i8* %1 to i32*
+  %10 = load i32, i32* %9, align 4, !tbaa !7
+  %11 = add nsw i32 %10, %8
+  ret i32 %11
+}
+
 attributes #0 = { norecurse nounwind readnone ssp uwtable "correctly-rounded-divide-sqrt-fp-math"="false" "disable-tail-calls"="false" "less-precise-fpmad"="false" "min-legal-vector-width"="0" "no-frame-pointer-elim"="true" "no-frame-pointer-elim-non-leaf" "no-infs-fp-math"="false" "no-jump-tables"="false" "no-nans-fp-math"="false" "no-signed-zeros-fp-math"="false" "no-trapping-math"="false" "stack-protector-buffer-size"="8" "target-cpu"="penryn" "target-features"="+cx16,+fxsr,+mmx,+sahf,+sse,+sse2,+sse3,+sse4.1,+ssse3,+x87" "unsafe-fp-math"="false" "use-soft-float"="false" }
 attributes #1 = { nounwind ssp uwtable "correctly-rounded-divide-sqrt-fp-math"="false" "disable-tail-calls"="false" "less-precise-fpmad"="false" "min-legal-vector-width"="0" "no-frame-pointer-elim"="true" "no-frame-pointer-elim-non-leaf" "no-infs-fp-math"="false" "no-jump-tables"="false" "no-nans-fp-math"="false" "no-signed-zeros-fp-math"="false" "no-trapping-math"="false" "stack-protector-buffer-size"="8" "target-cpu"="penryn" "target-features"="+cx16,+fxsr,+mmx,+sahf,+sse,+sse2,+sse3,+sse4.1,+ssse3,+x87" "unsafe-fp-math"="false" "use-soft-float"="false" }
 attributes #2 = { argmemonly nounwind }

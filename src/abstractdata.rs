@@ -11,9 +11,9 @@ use std::sync::{Arc, RwLock};
 /// must be a complete description of the data structure.
 #[derive(PartialEq, Eq, Clone, Debug)]
 pub enum CompleteAbstractData {
-    /// A public value, of the given size in bits. If `value` is `Some`, then it
-    /// is the actual concrete value; otherwise (if `value` is `None`) the value
-    /// is unconstrained.
+    /// A public value, of the given size in bits. The `AbstractValue` is used to
+    /// indicate whether the value should have a particular concrete value, be
+    /// unconstrained, etc.
     ///
     /// This may be used for either a non-pointer value, or for a pointer value
     /// if you want to specify the exact numerical value of the pointer (e.g. NULL).
@@ -41,6 +41,14 @@ pub enum CompleteAbstractData {
 
     /// A secret value (pointer or non-pointer, doesn't matter) of the given size in bits
     Secret { bits: usize },
+
+    /// When C code uses `void*`, this often becomes `i8*` in LLVM. However,
+    /// within Pitchfork, we may want to specify some type other than `i8*` for
+    /// the purposes of allocating and analyzing the data behind the `void*`.
+    ///
+    /// This says to use the indicated `CompleteAbstractData` even though the LLVM
+    /// type is `i8`.
+    VoidOverride(Box<Self>),
 }
 
 impl CompleteAbstractData {
@@ -125,6 +133,16 @@ impl CompleteAbstractData {
     pub fn unconstrained_pointer() -> Self {
         Self::PublicPointerToUnconstrainedPublic
     }
+
+    /// When C code uses `void*`, this often becomes `i8*` in LLVM. However,
+    /// within Pitchfork, we may want to specify some type other than `i8*` for
+    /// the purposes of allocating and analyzing the data behind the `void*`.
+    ///
+    /// This says to use the indicated `CompleteAbstractData` even though the LLVM
+    /// type is `i8`.
+    pub fn void_override(data: Self) -> Self {
+        Self::VoidOverride(Box::new(data))
+    }
 }
 
 impl CompleteAbstractData {
@@ -141,6 +159,7 @@ impl CompleteAbstractData {
             Self::PublicPointerToHook(_) => Self::POINTER_SIZE_BITS,
             Self::PublicPointerToUnconstrainedPublic => Self::POINTER_SIZE_BITS,
             Self::Secret { bits } => *bits,
+            Self::VoidOverride(d) => d.size_in_bits(),
         }
     }
 
@@ -150,6 +169,7 @@ impl CompleteAbstractData {
         match self {
             Self::Struct { elements, .. } => Self::size_in_bits(&elements[n]),
             Self::Array { element_type, .. } => Self::size_in_bits(element_type),
+            Self::VoidOverride(d) => d.field_size_in_bits(n),
             _ => panic!("field_size_in_bits called on {:?}", self),
         }
     }
@@ -160,6 +180,7 @@ impl CompleteAbstractData {
         match self {
             Self::Struct { elements, .. } => elements.iter().take(n).map(Self::size_in_bits).sum(),
             Self::Array { element_type, .. } => element_type.size_in_bits() * n,
+            Self::VoidOverride(d) => d.offset_in_bits(n),
             _ => panic!("offset_in_bits called on {:?}", self),
         }
     }
@@ -197,6 +218,9 @@ pub(crate) enum UnderspecifiedAbstractData {
     /// a struct with underspecified fields
     /// (for instance, some unspecified and some fully-specified fields)
     Struct { name: String, elements: Vec<AbstractData> },
+
+    /// See notes on [`CompleteAbstractData::VoidOverride`](enum.CompleteAbstractData.html).
+    VoidOverride(Box<AbstractData>),
 }
 
 impl AbstractData {
@@ -288,6 +312,15 @@ impl AbstractData {
     pub fn unconstrained_pointer() -> Self {
         Self(UnderspecifiedAbstractData::Complete(CompleteAbstractData::PublicPointerToUnconstrainedPublic))
     }
+
+    /// See notes on [`CompleteAbstractData::void_override`](enum.CompleteAbstractData.html#method.void_override).
+    ///
+    /// Note that the `AbstractData` here must actually be fully specified,
+    /// perhaps with the help of `StructDescriptions`. If it's not, `to_complete`
+    /// will panic.
+    pub fn void_override(data: AbstractData) -> Self {
+        Self(UnderspecifiedAbstractData::VoidOverride(Box::new(data)))
+    }
 }
 
 /// A map from struct name to an `AbstractData` description of the struct
@@ -321,7 +354,7 @@ impl AbstractData {
         self.0.to_complete(ty, sd)
     }
 
-    fn to_complete_rec<'a>(self, ty: &'a Type, sd: &StructDescriptions, ctx: ToCompleteContext<'a>) -> CompleteAbstractData {
+    fn to_complete_rec<'a>(self, ty: Option<&'a Type>, sd: &StructDescriptions, ctx: ToCompleteContext<'a>) -> CompleteAbstractData {
         self.0.to_complete_rec(ty, sd, ctx)
     }
 }
@@ -353,38 +386,40 @@ impl<'a> ToCompleteContext<'a> {
 impl UnderspecifiedAbstractData {
     /// See method description on [`AbstractData::to_complete`](enum.AbstractData.html#method.to_complete)
     pub fn to_complete(self, ty: &Type, sd: &StructDescriptions) -> CompleteAbstractData {
-        self.to_complete_rec(ty, sd, ToCompleteContext::new())
+        self.to_complete_rec(Some(ty), sd, ToCompleteContext::new())
     }
 
-    /// See method description on [`AbstractData::to_complete_rec`](enum.AbstractData.html#method.to_complete_rec)
-    fn to_complete_rec<'a>(self, ty: &'a Type, sd: &StructDescriptions, mut ctx: ToCompleteContext<'a>) -> CompleteAbstractData {
+    /// If `ty` is `None`, this indicates that we are explicitly overriding the LLVM type via `VoidOverride`
+    fn to_complete_rec<'a>(self, ty: Option<&'a Type>, sd: &StructDescriptions, mut ctx: ToCompleteContext<'a>) -> CompleteAbstractData {
         match self {
             Self::Complete(abstractdata) => abstractdata,
+            Self::VoidOverride(abstractdata) => CompleteAbstractData::VoidOverride(Box::new(abstractdata.to_complete_rec(None, sd, ctx))),
             Self::PublicPointerTo(ad) => match ty {
-                Type::PointerType { pointee_type, .. } =>
+                Some(Type::PointerType { pointee_type, .. }) =>
                     CompleteAbstractData::PublicPointerTo(Box::new(match &ad.0 {
                         Self::Array { num_elements, .. } => {
                             // AbstractData is pointer-to-array, but LLVM type may be pointer-to-scalar
                             match &**pointee_type {
                                 ty@Type::ArrayType { .. } | ty@Type::VectorType { .. } => {
-                                    ad.to_complete_rec(ty, sd, ctx)  // LLVM type is array or vector as well, it matches
+                                    ad.to_complete_rec(Some(ty), sd, ctx)  // LLVM type is array or vector as well, it matches
                                 },
                                 ty => {
                                     // LLVM type is scalar, but AbstractData is array, so it's actually pointer-to-array
                                     let num_elements = *num_elements;
-                                    ad.to_complete_rec(&Type::ArrayType { element_type: Box::new(ty.clone()), num_elements }, sd, ctx)
+                                    ad.to_complete_rec(Some(&Type::ArrayType { element_type: Box::new(ty.clone()), num_elements }), sd, ctx)
                                 },
                             }
                         },
                         _ => {
                             // AbstractData is pointer-to-something-else, just let the recursive call handle it
-                            ad.to_complete_rec(&**pointee_type, sd, ctx)
+                            ad.to_complete_rec(Some(&**pointee_type), sd, ctx)
                         },
                     })),
-                Type::ArrayType { num_elements: 1, element_type } | Type::VectorType { num_elements: 1, element_type } => {
+                Some(Type::ArrayType { num_elements: 1, element_type }) | Some(Type::VectorType { num_elements: 1, element_type }) => {
                     // auto-unwrap LLVM type if it is array or vector of one element
-                    Self::PublicPointerTo(ad).to_complete_rec(&**element_type, sd, ctx)
+                    Self::PublicPointerTo(ad).to_complete_rec(Some(&**element_type), sd, ctx)
                 },
+                None => ad.to_complete_rec(None, sd, ctx),
                 _ => {
                     eprintln!();
                     for w in ctx.within_structs.iter() {
@@ -394,13 +429,14 @@ impl UnderspecifiedAbstractData {
                 },
             },
             Self::Array { element_type, num_elements } => match ty {
-                Type::ArrayType { element_type: llvm_element_type, num_elements: llvm_num_elements }
-                | Type::VectorType { element_type: llvm_element_type, num_elements: llvm_num_elements } => {
+                Some(Type::ArrayType { element_type: llvm_element_type, num_elements: llvm_num_elements })
+                | Some(Type::VectorType { element_type: llvm_element_type, num_elements: llvm_num_elements }) => {
                     if *llvm_num_elements != 0 {
                         assert_eq!(num_elements, *llvm_num_elements, "Type mismatch: AbstractData specifies an array with {} elements, but found an array with {} elements", num_elements, llvm_num_elements);
                     }
-                    CompleteAbstractData::Array { element_type: Box::new(element_type.to_complete_rec(&**llvm_element_type, sd, ctx.clone())), num_elements }
+                    CompleteAbstractData::Array { element_type: Box::new(element_type.to_complete_rec(Some(&**llvm_element_type), sd, ctx.clone())), num_elements }
                 },
+                None => CompleteAbstractData::Array { element_type: Box::new(element_type.to_complete_rec(None, sd, ctx.clone())), num_elements },
                 _ => {
                     eprintln!();
                     for w in ctx.within_structs.iter() {
@@ -410,29 +446,35 @@ impl UnderspecifiedAbstractData {
                 },
             }
             Self::Struct { elements, name } => match ty {
-                Type::NamedStructType { ty, .. } => Self::Struct { elements, name }.to_complete_rec(
-                    &ty.as_ref()
+                Some(Type::NamedStructType { ty, .. }) => Self::Struct { elements, name }.to_complete_rec(
+                    Some(&ty.as_ref()
                         .expect("Can't convert to complete with an opaque struct type")
                         .upgrade()
                         .expect("Failed to upgrade weak reference")
                         .read()
-                        .unwrap(),
+                        .unwrap()),
                     sd,
                     ctx,
                 ),
-                Type::StructType { element_types, .. } => {
+                Some(Type::StructType { element_types, .. }) => {
                     ctx.within_structs.push(name.clone());
                     CompleteAbstractData::Struct { name, elements:
                         elements.into_iter()
                         .zip(element_types)
-                        .map(|(el_data, el_type)| el_data.to_complete_rec(el_type, sd, ctx.clone()))
+                        .map(|(el_data, el_type)| el_data.to_complete_rec(Some(el_type), sd, ctx.clone()))
                         .collect()
                     }
                 },
-                Type::ArrayType { num_elements: 1, element_type } | Type::VectorType { num_elements: 1, element_type } => {
+                Some(Type::ArrayType { num_elements: 1, element_type }) | Some(Type::VectorType { num_elements: 1, element_type }) => {
                     // auto-unwrap LLVM type if it is array or vector of one element
-                    Self::Struct { elements, name }.to_complete_rec(&**element_type, sd, ctx.clone())
+                    Self::Struct { elements, name }.to_complete_rec(Some(&**element_type), sd, ctx.clone())
                 },
+                None => {
+                    ctx.within_structs.push(name.clone());
+                    CompleteAbstractData::Struct { name, elements:
+                        elements.into_iter().map(|el_data| el_data.to_complete_rec(None, sd, ctx.clone())).collect()
+                    }
+                }
                 _ => {
                     eprintln!();
                     for w in ctx.within_structs.iter() {
@@ -441,8 +483,8 @@ impl UnderspecifiedAbstractData {
                     panic!("Type mismatch: AbstractData::Struct {}, but LLVM type is {:?}", name, ty);
                 },
             },
-            Self::Unspecified => match ty {
-                Type::IntegerType { .. } =>
+            Self::Unspecified => match ty.expect("void_override requires a fully-specified structure") {
+                ty@Type::IntegerType { .. } =>
                     CompleteAbstractData::PublicValue { bits: layout::size(ty), value: AbstractValue::Unconstrained },
                 Type::PointerType { pointee_type, .. } => match &**pointee_type {
                     Type::FuncType { .. } =>
@@ -452,11 +494,11 @@ impl UnderspecifiedAbstractData {
                             element_type: Box::new(CompleteAbstractData::PublicValue { bits: *bits as usize, value: AbstractValue::Unconstrained}),
                             num_elements: AbstractData::DEFAULT_ARRAY_LENGTH,
                         })),
-                    ty => CompleteAbstractData::PublicPointerTo(Box::new(Self::Unspecified.to_complete_rec(ty, sd, ctx))),
+                    ty => CompleteAbstractData::PublicPointerTo(Box::new(Self::Unspecified.to_complete_rec(Some(ty), sd, ctx))),
                 },
                 Type::VectorType { element_type, num_elements } | Type::ArrayType { element_type, num_elements } =>
                     CompleteAbstractData::Array {
-                        element_type: Box::new(Self::Unspecified.to_complete_rec(element_type, sd, ctx)),
+                        element_type: Box::new(Self::Unspecified.to_complete_rec(Some(element_type), sd, ctx)),
                         num_elements: if *num_elements == 0 { AbstractData::DEFAULT_ARRAY_LENGTH } else { *num_elements },
                     },
                 Type::NamedStructType { ty, name } => {
@@ -466,10 +508,10 @@ impl UnderspecifiedAbstractData {
                         .expect("Failed to upgrade weak reference");
                     let inner_ty: &Type = &arc.read().unwrap();
                     match sd.get(name) {
-                        Some(abstractdata) => abstractdata.clone().to_complete_rec(inner_ty, sd, ctx),
+                        Some(abstractdata) => abstractdata.clone().to_complete_rec(Some(inner_ty), sd, ctx),
                         None => {
                             if ctx.unspecified_named_structs.insert(name) {
-                                self.to_complete_rec(inner_ty, sd, ctx)
+                                self.to_complete_rec(Some(inner_ty), sd, ctx)
                             } else {
                                 panic!("AbstractData::default() applied to recursive struct {:?}", name)
                             }
@@ -478,7 +520,7 @@ impl UnderspecifiedAbstractData {
                 },
                 Type::StructType { element_types, .. } => CompleteAbstractData::Struct { name: "unspecified_struct".to_owned(), elements:
                     element_types.iter()
-                    .map(|el_type| Self::Unspecified.to_complete_rec(el_type, sd, ctx.clone()))
+                    .map(|el_type| Self::Unspecified.to_complete_rec(Some(el_type), sd, ctx.clone()))
                     .collect()
                 },
                 _ => unimplemented!("AbstractData::to_complete with {:?}", ty),

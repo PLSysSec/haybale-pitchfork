@@ -140,6 +140,7 @@ dependencies = [
  "boolector 0.1.1",
  "env_logger 0.6.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "haybale 0.1.0",
+ "itertools 0.8.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "llvm-ir 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "log 0.4.8 (registry+https://github.com/rust-lang/crates.io-index)",
 ]

@@ -89,3 +89,15 @@ int notct_doubleptr(int** secretarrs) {
     return secretarrs[2][22] / 5;
   }
 }
+
+// void pointer, casted to struct pointer, constant-time
+int ct_struct_voidptr(int* publicarr, void* voidptr) {
+  struct PartiallySecret* ps = (struct PartiallySecret*) voidptr;
+  return publicarr[ps->notsecret] + ps->secret;
+}
+
+// void pointer, casted to struct pointer, not constant-time
+int notct_struct_voidptr(int* publicarr, void* voidptr) {
+  struct PartiallySecret* ps = (struct PartiallySecret*) voidptr;
+  return publicarr[ps->secret] + ps->notsecret;
+}
