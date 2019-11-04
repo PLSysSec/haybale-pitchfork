@@ -547,9 +547,13 @@ impl UnderspecifiedAbstractData {
                         .expect("Failed to upgrade weak reference");
                     let inner_ty: &Type = &arc.read().unwrap();
                     match ctx.sd.get(name) {
-                        Some(abstractdata) => abstractdata.clone().to_complete_rec(Some(inner_ty), ctx),
+                        Some(abstractdata) => {
+                            ctx.within_structs.push(name.clone());
+                            abstractdata.clone().to_complete_rec(Some(inner_ty), ctx)
+                        },
                         None => {
                             if ctx.unspecified_named_structs.insert(name) {
+                                ctx.within_structs.push(name.clone());
                                 self.to_complete_rec(Some(inner_ty), ctx)
                             } else {
                                 eprintln!();
