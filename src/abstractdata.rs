@@ -34,10 +34,26 @@ pub enum CompleteAbstractData {
     /// A (public) pointer to the _hook_ registered for the given name
     PublicPointerToHook(String),
 
-    /// A (public) pointer to unconstrained public data, which could be a public
-    /// value, an array (of unconstrained size) of public values, or a public
-    /// data structure
-    PublicPointerToUnconstrainedPublic,
+    /// A (public) pointer to this struct's parent. E.g., in the C code
+    /// ```c
+    /// struct Foo {
+    ///     int x;
+    ///     Bar* bar1;
+    ///     Bar* bar2;
+    ///     ...
+    /// };
+    ///
+    /// struct Bar {
+    ///     int y;
+    ///     Foo* parent;  // pointer to the Foo containing this Bar
+    /// };
+    /// ```
+    /// you could use this for `Foo* parent` to indicate it should point to the
+    /// `Foo` containing this `Bar`.
+    PublicPointerToParent,
+
+    /// A (public) pointer which may point anywhere
+    PublicUnconstrainedPointer,
 
     /// A secret value (pointer or non-pointer, doesn't matter) of the given size in bits
     Secret { bits: usize },
@@ -121,6 +137,12 @@ impl CompleteAbstractData {
         Self::PublicPointerToHook(funcname.into())
     }
 
+    /// a (public) pointer to this struct's parent; see comments on
+    /// `CompleteAbstractData::PublicPointerToParent`
+    pub fn pub_pointer_to_parent() -> Self {
+        Self::PublicPointerToParent
+    }
+
     /// A (first-class) array of values
     pub fn array_of(element_type: Self, num_elements: usize) -> Self {
         Self::Array { element_type: Box::new(element_type), num_elements }
@@ -135,7 +157,7 @@ impl CompleteAbstractData {
 
     /// A (public) pointer which may point anywhere
     pub fn unconstrained_pointer() -> Self {
-        Self::PublicPointerToUnconstrainedPublic
+        Self::PublicUnconstrainedPointer
     }
 
     /// When C code uses `void*`, this often becomes `i8*` in LLVM. However,
@@ -165,7 +187,8 @@ impl CompleteAbstractData {
             Self::PublicPointerTo(_) => Self::POINTER_SIZE_BITS,
             Self::PublicPointerToFunction(_) => Self::POINTER_SIZE_BITS,
             Self::PublicPointerToHook(_) => Self::POINTER_SIZE_BITS,
-            Self::PublicPointerToUnconstrainedPublic => Self::POINTER_SIZE_BITS,
+            Self::PublicPointerToParent => Self::POINTER_SIZE_BITS,
+            Self::PublicUnconstrainedPointer => Self::POINTER_SIZE_BITS,
             Self::Secret { bits } => *bits,
             Self::VoidOverride { data, .. } => data.size_in_bits(),
         }
@@ -303,6 +326,26 @@ impl AbstractData {
         Self(UnderspecifiedAbstractData::Complete(CompleteAbstractData::PublicPointerToHook(funcname.into())))
     }
 
+    /// A (public) pointer to this struct's parent. E.g., in the C code
+    /// ```c
+    /// struct Foo {
+    ///     int x;
+    ///     Bar* bar1;
+    ///     Bar* bar2;
+    ///     ...
+    /// };
+    ///
+    /// struct Bar {
+    ///     int y;
+    ///     Foo* parent;  // pointer to the Foo containing this Bar
+    /// };
+    /// ```
+    /// you could use this for `Foo* parent` to indicate it should point to the
+    /// `Foo` containing this `Bar`.
+    pub fn pub_pointer_to_parent() -> Self {
+        Self(UnderspecifiedAbstractData::Complete(CompleteAbstractData::PublicPointerToParent))
+    }
+
     /// A (first-class) array of values
     pub fn array_of(element_type: Self, num_elements: usize) -> Self {
         Self(UnderspecifiedAbstractData::Array { element_type: Box::new(element_type), num_elements })
@@ -324,7 +367,7 @@ impl AbstractData {
 
     /// A (public) pointer which may point anywhere
     pub fn unconstrained_pointer() -> Self {
-        Self(UnderspecifiedAbstractData::Complete(CompleteAbstractData::PublicPointerToUnconstrainedPublic))
+        Self(UnderspecifiedAbstractData::Complete(CompleteAbstractData::PublicUnconstrainedPointer))
     }
 
     /// See notes on [`CompleteAbstractData::void_override`](enum.CompleteAbstractData.html#method.void_override).

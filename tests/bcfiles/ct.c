@@ -101,3 +101,20 @@ int notct_struct_voidptr(int* publicarr, void* voidptr) {
   struct PartiallySecret* ps = (struct PartiallySecret*) voidptr;
   return publicarr[ps->secret] + ps->notsecret;
 }
+
+struct Child;  // forward declaration
+
+struct Parent {
+  int x;
+  struct Child* child1;
+  struct Child* child2;
+};
+
+struct Child {
+  int y;
+  struct Parent* parent;
+};
+
+int indirectly_recursive_struct(int* publicarr, struct Parent* parent) {
+  return publicarr[parent->child2->parent->x];
+}

@@ -4,6 +4,8 @@ target datalayout = "e-m:o-i64:64-f80:128-n8:16:32:64-S128"
 target triple = "x86_64-apple-macosx10.14.0"
 
 %struct.PartiallySecret = type { i32, i32 }
+%struct.Parent = type { i32, %struct.Child*, %struct.Child* }
+%struct.Child = type { i32, %struct.Parent* }
 
 @__const.notct_onepath.z = private unnamed_addr constant [3 x i32] [i32 0, i32 2, i32 300], align 4
 
@@ -241,6 +243,20 @@ define i32 @notct_struct_voidptr(i32* nocapture readonly, i8* nocapture readonly
   ret i32 %11
 }
 
+; Function Attrs: norecurse nounwind readonly ssp uwtable
+define i32 @indirectly_recursive_struct(i32* nocapture readonly, %struct.Parent* nocapture readonly) local_unnamed_addr #3 {
+  %3 = getelementptr inbounds %struct.Parent, %struct.Parent* %1, i64 0, i32 2
+  %4 = load %struct.Child*, %struct.Child** %3, align 8, !tbaa !12
+  %5 = getelementptr inbounds %struct.Child, %struct.Child* %4, i64 0, i32 1
+  %6 = load %struct.Parent*, %struct.Parent** %5, align 8, !tbaa !14
+  %7 = getelementptr inbounds %struct.Parent, %struct.Parent* %6, i64 0, i32 0
+  %8 = load i32, i32* %7, align 8, !tbaa !16
+  %9 = sext i32 %8 to i64
+  %10 = getelementptr inbounds i32, i32* %0, i64 %9
+  %11 = load i32, i32* %10, align 4, !tbaa !3
+  ret i32 %11
+}
+
 attributes #0 = { norecurse nounwind readnone ssp uwtable "correctly-rounded-divide-sqrt-fp-math"="false" "disable-tail-calls"="false" "less-precise-fpmad"="false" "min-legal-vector-width"="0" "no-frame-pointer-elim"="true" "no-frame-pointer-elim-non-leaf" "no-infs-fp-math"="false" "no-jump-tables"="false" "no-nans-fp-math"="false" "no-signed-zeros-fp-math"="false" "no-trapping-math"="false" "stack-protector-buffer-size"="8" "target-cpu"="penryn" "target-features"="+cx16,+fxsr,+mmx,+sahf,+sse,+sse2,+sse3,+sse4.1,+ssse3,+x87" "unsafe-fp-math"="false" "use-soft-float"="false" }
 attributes #1 = { nounwind ssp uwtable "correctly-rounded-divide-sqrt-fp-math"="false" "disable-tail-calls"="false" "less-precise-fpmad"="false" "min-legal-vector-width"="0" "no-frame-pointer-elim"="true" "no-frame-pointer-elim-non-leaf" "no-infs-fp-math"="false" "no-jump-tables"="false" "no-nans-fp-math"="false" "no-signed-zeros-fp-math"="false" "no-trapping-math"="false" "stack-protector-buffer-size"="8" "target-cpu"="penryn" "target-features"="+cx16,+fxsr,+mmx,+sahf,+sse,+sse2,+sse3,+sse4.1,+ssse3,+x87" "unsafe-fp-math"="false" "use-soft-float"="false" }
 attributes #2 = { argmemonly nounwind }
@@ -262,3 +278,8 @@ attributes #4 = { nounwind }
 !9 = !{!8, !4, i64 4}
 !10 = !{!11, !11, i64 0}
 !11 = !{!"any pointer", !5, i64 0}
+!12 = !{!13, !11, i64 16}
+!13 = !{!"Parent", !4, i64 0, !11, i64 8, !11, i64 16}
+!14 = !{!15, !11, i64 8}
+!15 = !{!"Child", !4, i64 0, !11, i64 8}
+!16 = !{!13, !4, i64 0}
