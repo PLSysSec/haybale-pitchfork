@@ -19,9 +19,7 @@ pub fn is_constant_time_in_inputs<'p>(
     project: &'p Project,
     config: Config<'p, secret::Backend>
 ) -> bool {
-    let (func, _) = project.get_func_by_name(funcname).expect("Failed to find function");
-    let args = func.parameters.iter().map(|p| AbstractData::sec_integer(layout::size(&p.ty)));
-    is_constant_time(funcname, project, args, &StructDescriptions::new(), config)
+    check_for_ct_violation_in_inputs(funcname, project, config).is_none()
 }
 
 /// Is a function "constant-time" in the secrets identified by the `args` data
@@ -42,6 +40,25 @@ pub fn is_constant_time<'p>(
     config: Config<'p, secret::Backend>
 ) -> bool {
     check_for_ct_violation(funcname, project, args, sd, config).is_none()
+}
+
+/// Checks whether a function is "constant-time" in its inputs. That is, does the
+/// function ever make branching decisions, or perform address calculations, based
+/// on its inputs.
+///
+/// For argument descriptions, see `is_constant_time_in_inputs()`.
+///
+/// If the function is constant-time, this returns `None`. Otherwise, it returns
+/// a `String` describing the violation. (If there is more than one violation,
+/// this will simply return the first violation it finds.)
+pub fn check_for_ct_violation_in_inputs<'p>(
+    funcname: &str,
+    project: &'p Project,
+    config: Config<'p, secret::Backend>
+) -> Option<String> {
+    let (func, _) = project.get_func_by_name(funcname).expect("Failed to find function");
+    let args = func.parameters.iter().map(|p| AbstractData::sec_integer(layout::size(&p.ty)));
+    check_for_ct_violation(funcname, project, args, &StructDescriptions::new(), config)
 }
 
 /// Checks whether a function is "constant-time" in the secrets identified by the

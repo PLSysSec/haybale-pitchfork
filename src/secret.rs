@@ -368,19 +368,19 @@ impl haybale::backend::Memory for Memory {
     type Index = BV;
     type Value = BV;
 
-    fn new_uninitialized(btor: BtorRef, name: Option<&str>) -> Self {
+    fn new_uninitialized(btor: BtorRef, null_detection: bool, name: Option<&str>) -> Self {
         assert_ne!(name, Some("shadow_mem"), "can't use {:?} as a name for a secret::Memory, as we reserve that name", name);
         Self {
-            mem: haybale::backend::Memory::new_uninitialized(btor.0.clone(), name),
-            shadow_mem: haybale::backend::Memory::new_zero_initialized(btor.0.clone(), Some("shadow_mem")), // shadow bits are zero-initialized (all public) even though the memory contents are uninitialized
+            mem: haybale::backend::Memory::new_uninitialized(btor.0.clone(), null_detection, name),
+            shadow_mem: haybale::backend::Memory::new_zero_initialized(btor.0.clone(), null_detection, Some("shadow_mem")), // shadow bits are zero-initialized (all public) even though the memory contents are uninitialized
             btor,  // out of order so it can be used above but moved in here
         }
     }
-    fn new_zero_initialized(btor: BtorRef, name: Option<&str>) -> Self {
+    fn new_zero_initialized(btor: BtorRef, null_detection: bool, name: Option<&str>) -> Self {
         assert_ne!(name, Some("shadow_mem"), "can't use {:?} as a name for a secret::Memory, as we reserve that name", name);
         Self {
-            mem: haybale::backend::Memory::new_zero_initialized(btor.0.clone(), name),
-            shadow_mem: haybale::backend::Memory::new_zero_initialized(btor.0.clone(), Some("shadow_mem")), // initialize to all public zeroes
+            mem: haybale::backend::Memory::new_zero_initialized(btor.0.clone(), null_detection, name),
+            shadow_mem: haybale::backend::Memory::new_zero_initialized(btor.0.clone(), null_detection, Some("shadow_mem")), // initialize to all public zeroes
             btor,  // out of order so it can be used above but moved in here
         }
     }
@@ -444,6 +444,9 @@ impl haybale::backend::Memory for Memory {
                 Err(Error::OtherError("Constant-time violation: memory write on an address which can be influenced by secret data".to_owned()))
             },
         }
+    }
+    fn get_solver(&self) -> BtorRef {
+        self.btor.clone()
     }
     fn change_solver(&mut self, new_solver: BtorRef) {
         self.mem.change_solver(new_solver.0.clone());
