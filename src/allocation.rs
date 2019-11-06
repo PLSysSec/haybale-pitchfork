@@ -289,7 +289,7 @@ pub fn initialize_data_in_memory(
                             ty => panic!("NamedStructType referred to type {:?} which is not a StructType variant", ty),
                         }
                     }
-                    _ => panic!("Type mismatch: CompleteAbstractData specifies a struct, but found type {:?}", ty),
+                    _ => panic!("Type mismatch: CompleteAbstractData specifies a struct named {}, but found type {:?}", name, ty),
                 },
                 None => itertools::repeat_n(None, elements.len()).collect(),
             };
@@ -305,13 +305,13 @@ pub fn initialize_data_in_memory(
                     panic!("Struct element size is not a multiple of 8 bits: {}", element_size_bits);
                 }
                 let element_size_bytes = element_size_bits / 8;
-                debug!("initializing element {} of the struct; element's address is {:?}", element_idx, &cur_addr);
+                debug!("initializing element {} of struct {}; element's address is {:?}", element_idx, name, &cur_addr);
                 let new_cur_struct = ty.map(|ty| (addr, ty));
                 let new_parent = cur_struct;
                 initialize_data_in_memory(proj, state, &cur_addr, element, element_ty.as_ref(), new_cur_struct, new_parent)?;
                 cur_addr = cur_addr.add(&secret::BV::from_u64(state.solver.clone(), element_size_bytes as u64, addr.get_width()));
             }
-            debug!("done initializing the struct at {:?}", addr);
+            debug!("done initializing struct {} at {:?}", name, addr);
             Ok(())
         }
         CompleteAbstractData::VoidOverride { llvm_struct_name, data } => {
