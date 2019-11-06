@@ -201,15 +201,31 @@ pub fn initialize_data_in_memory(
             match parent {
                 None => panic!("Pointer-to-parent used but there is no immediate parent"),
                 Some((parent_ptr, parent_ty)) => {
+                    // first typecheck: is this actually a pointer to the correct parent type
                     match ty {
                         Some(Type::PointerType { pointee_type, .. }) => {
-                            if &**pointee_type != parent_ty {
-                                panic!("Type mismatch: CompleteAbstractData specifies pointer-to-parent, but found pointer to a different type.\n  Parent type: {:?}\n  Found type: {:?}\n", parent_ty, pointee_type);
+                            let pointee_ty = &**pointee_type;
+                            if pointee_ty == parent_ty {
+                                // typecheck passes, do nothing
+                            } else if let Type::NamedStructType { name, ty } = pointee_ty {
+                                // LLVM type is pointer to a named struct type, try unwrapping it and see if that makes the types equal
+                                let ty: Arc<RwLock<Type>> = ty
+                                    .as_ref()
+                                    .expect("CompleteAbstractData specifies pointer-to-parent, but found pointer to an opaque struct type")
+                                    .upgrade()
+                                    .expect("Failed to upgrade weak reference");
+                                let actual_ty: &Type = &ty.read().unwrap();
+                                if actual_ty == parent_ty {
+                                    // typecheck passes, do nothing
+                                } else {
+                                    panic!("Type mismatch: CompleteAbstractData specifies pointer-to-parent, but found pointer to a different type.\n  Parent type: {:?}?n  Found type: struct named {:?}: {:?}\n", parent_ty, name, actual_ty);
+                                }
                             }
                         },
                         Some(_) => panic!("Type mismatch: CompleteAbstractData specifies a pointer, but found type {:?}", ty),
                         None => {},
                     };
+                    // typecheck passed, write the pointer
                     debug!("setting the memory contents equal to {:?}", parent_ptr);
                     state.write(&addr, parent_ptr.clone())
                 },
