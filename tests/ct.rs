@@ -19,6 +19,10 @@ fn iterator_length_two<I>(a: I, b: I) -> impl IntoIterator<Item = I> {
     std::iter::once(a).chain(std::iter::once(b))
 }
 
+fn iterator_length_three<I>(a: I, b: I, c: I) -> impl IntoIterator<Item = I> {
+    std::iter::once(a).chain(std::iter::once(b)).chain(std::iter::once(c))
+}
+
 fn assert_no_ct_violation(violation: Option<String>) {
     assert!(violation.is_none(), "{}", violation.unwrap());
 }
@@ -240,5 +244,49 @@ fn indirectly_recursive_struct() {
     );
     let sd = iterator_length_one(("struct.Child".to_owned(), struct_child())).into_iter().collect();
     let violation = check_for_ct_violation("indirectly_recursive_struct", &project, args, &sd, Config::default());
+    assert_is_ct_violation(violation);
+}
+
+#[test]
+fn related_args() {
+    init_logging();
+    let project = get_project();
+    let args = iterator_length_three(
+        AbstractData::pub_i32(AbstractValue::named("length", AbstractValue::Range(0, 20))),
+        AbstractData::pub_i32(AbstractValue::UnsignedLessThan("length".to_owned())),
+        AbstractData::sec_i32(),
+    );
+    let violation = check_for_ct_violation("related_args", &project, args, &StructDescriptions::new(), Config::default());
+    assert_no_ct_violation(violation);
+
+    // but if we don't have the constraint, then there should be a violation
+    let args = iterator_length_three(
+        AbstractData::pub_i32(AbstractValue::Range(0, 20)),
+        AbstractData::default(),
+        AbstractData::sec_i32(),
+    );
+    let violation = check_for_ct_violation("related_args", &project, args, &StructDescriptions::new(), Config::default());
+    assert_is_ct_violation(violation);
+}
+
+#[test]
+fn struct_related_fields() {
+    init_logging();
+    let project = get_project();
+    let args = iterator_length_one(AbstractData::pub_pointer_to(AbstractData::_struct("StructWithRelatedFields", vec![
+        AbstractData::pub_i32(AbstractValue::named("length", AbstractValue::Range(0, 20))),
+        AbstractData::pub_i32(AbstractValue::UnsignedLessThan("length".to_owned())),
+        AbstractData::sec_i32(),
+    ])));
+    let violation = check_for_ct_violation("struct_related_fields", &project, args, &StructDescriptions::new(), Config::default());
+    assert_no_ct_violation(violation);
+
+    // but if we don't have the constraint, then there should be a violation
+    let args = iterator_length_one(AbstractData::pub_pointer_to(AbstractData::_struct("StructWithRelatedFields", vec![
+        AbstractData::pub_i32(AbstractValue::Range(0, 20)),
+        AbstractData::default(),
+        AbstractData::sec_i32(),
+    ])));
+    let violation = check_for_ct_violation("struct_related_fields", &project, args, &StructDescriptions::new(), Config::default());
     assert_is_ct_violation(violation);
 }

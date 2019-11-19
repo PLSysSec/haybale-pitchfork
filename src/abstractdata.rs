@@ -627,4 +627,28 @@ pub enum AbstractValue {
     Range(u64, u64),
     /// Any value whatsoever
     Unconstrained,
+    /// A value with a (unique) name, so that it can be referenced in a `Equal`, `SignedLessThan`, `SignedGreaterThan`, etc
+    Named {
+        name: String,
+        value: Box<AbstractValue>,
+    },
+    /// A value equal to the value with the given name
+    EqualTo(String),
+    /// A value signed-less-than the value with the given name
+    SignedLessThan(String),
+    /// A value signed-greater-than the value with the given name
+    SignedGreaterThan(String),
+    /// A value unsigned-less-than the value with the given name
+    UnsignedLessThan(String),
+    /// A value unsigned-greater-than the value with the given name
+    UnsignedGreaterThan(String),
+}
+
+impl AbstractValue {
+    pub fn named(name: &str, value: AbstractValue) -> Self {
+        Self::Named {
+            name: name.to_owned(),
+            value: Box::new(value),
+        }
+    }
 }

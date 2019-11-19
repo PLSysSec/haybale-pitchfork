@@ -118,3 +118,34 @@ struct Child {
 int indirectly_recursive_struct(int* publicarr, struct Parent* parent) {
   return publicarr[parent->child2->parent->x];
 }
+
+// x and length are public, this function is constant-time if x <= length and not if x > length
+int related_args(unsigned length, unsigned x, int secret) {
+  int arr[20];  // first `length` bytes are public, rest are secret
+  for (unsigned i = length; i < 20; i++) {
+    arr[i] = secret;
+  }
+  if (arr[x]) {
+    return arr[0] * 33 + length + x;
+  } else {
+    return 1;
+  }
+}
+
+struct StructWithRelatedFields {
+  unsigned length;
+  unsigned x;
+  int secret;
+};
+
+int struct_related_fields(struct StructWithRelatedFields* s) {
+  int arr[20];  // first `length` bytes are public, rest are secret
+  for (unsigned i = s->length; i < 20; i++) {
+    arr[i] = s->secret;
+  }
+  if (arr[s->x]) {
+    return arr[0] * 33 + s->length + s->x;
+  } else {
+    return 1;
+  }
+}
