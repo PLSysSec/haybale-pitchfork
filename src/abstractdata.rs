@@ -529,17 +529,29 @@ impl UnderspecifiedAbstractData {
                 },
             }
             Self::Struct { elements, name } => match ty {
-                Some(Type::NamedStructType { ty, .. }) => Self::Struct { elements, name }.to_complete_rec(
-                    Some(&ty.as_ref()
-                        .expect("Can't convert to complete with an opaque struct type")
-                        .upgrade()
-                        .expect("Failed to upgrade weak reference")
-                        .read()
-                        .unwrap()),
-                    ctx,
-                ),
+                Some(Type::NamedStructType { name: llvm_struct_name, ty }) => {
+                    let arc: Arc<RwLock<Type>> = match &ty.as_ref() {
+                        Some(ty) => ty.upgrade().expect("Failed to upgrade weak reference"),
+                        None => {
+                            // This is an opaque struct definition. Try to find a non-opaque definition for the same struct.
+                            let (ty, _) = ctx.proj.get_named_struct_type_by_name(&llvm_struct_name).unwrap_or_else(|| panic!("Struct name {:?} (LLVM name {:?}) not found in the project", name, llvm_struct_name));
+                            ty.as_ref()
+                                .unwrap_or_else(|| panic!("Can't convert struct named {:?} (LLVM name {:?}) to complete: it has only opaque definitions in this project", name, llvm_struct_name))
+                                .clone()
+                        },
+                    };
+                    let actual_ty: &Type = &arc.read().unwrap();
+                    Self::Struct { elements, name }.to_complete_rec(Some(actual_ty), ctx)
+                },
                 Some(Type::StructType { element_types, .. }) => {
                     ctx.within_structs.push(name.clone());
+                    if elements.len() != element_types.len() {
+                        eprintln!();
+                        for w in ctx.within_structs.iter() {
+                            eprintln!("within struct {}:", w);
+                        }
+                        panic!("Type mismatch: AbstractData::Struct with {} elements, but LLVM type has {} elements", elements.len(), element_types.len());
+                    }
                     CompleteAbstractData::Struct { name, elements:
                         elements.into_iter()
                         .zip(element_types)
@@ -584,10 +596,16 @@ impl UnderspecifiedAbstractData {
                         num_elements: if *num_elements == 0 { AbstractData::DEFAULT_ARRAY_LENGTH } else { *num_elements },
                     },
                 Type::NamedStructType { ty, name } => {
-                    let arc: Arc<RwLock<Type>> = ty.as_ref()
-                        .unwrap_or_else(|| panic!("Can't convert to complete with an opaque struct type {:?}", name))
-                        .upgrade()
-                        .expect("Failed to upgrade weak reference");
+                    let arc: Arc<RwLock<Type>> = match &ty.as_ref() {
+                        Some(ty) => ty.upgrade().expect("Failed to upgrade weak reference"),
+                        None => {
+                            // This is an opaque struct definition. Try to find a non-opaque definition for the same struct.
+                            let (ty, _) = ctx.proj.get_named_struct_type_by_name(&name).unwrap_or_else(|| panic!("Struct name {:?} not found in the project", name));
+                            ty.as_ref()
+                                .unwrap_or_else(|| panic!("Can't convert struct named {:?} to complete: it has only opaque definitions in this project", name))
+                                .clone()
+                        },
+                    };
                     let inner_ty: &Type = &arc.read().unwrap();
                     match ctx.sd.get(name) {
                         Some(abstractdata) => {
