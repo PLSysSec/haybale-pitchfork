@@ -1,6 +1,6 @@
-//! The `BV`, `Memory`, `BtorRef`, and `Backend` in this module are
+//! The `BV`, `Memory`, and `Backend` in this module are
 //! intended to be used qualified whenever there is a chance of confusing
-//! them with `haybale::backend::{BV, Memory, BtorRef, Backend}`,
+//! them with `haybale::backend::{BV, Memory, Backend}`,
 //! `haybale::memory::Memory`, or `boolector::BV`.
 
 use boolector::{Btor, BVSolution};
@@ -10,14 +10,11 @@ use log::warn;
 use std::ops::Deref;
 use std::rc::Rc;
 
+/// This wrapper around `Rc<Btor>` exists simply so we can give it a different
+/// implementation of `haybale::backend::SolverRef` than the one provided by
+/// `haybale::backend`
 #[derive(PartialEq, Eq, Clone, Debug)]
-pub struct BtorRef(pub(crate) haybale::backend::BtorRef);
-
-impl Default for BtorRef {
-    fn default() -> Self {
-        Self(haybale::backend::BtorRef::default())
-    }
-}
+pub struct BtorRef(pub(crate) Rc<Btor>);
 
 impl Deref for BtorRef {
     type Target = Btor;
@@ -30,6 +27,10 @@ impl Deref for BtorRef {
 impl haybale::backend::SolverRef for BtorRef {
     type BV = BV;
     type Array = boolector::Array<Rc<Btor>>;
+
+    fn new() -> Self {
+        Self(<Rc<Btor> as haybale::backend::SolverRef>::new())
+    }
 
     fn duplicate(&self) -> Self {
         Self(self.0.duplicate())
