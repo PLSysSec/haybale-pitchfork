@@ -451,6 +451,13 @@ impl<'a, 'p> ToCompleteContext<'a, 'p> {
             within_structs: Vec::new(),
         }
     }
+
+    fn error_backtrace(&self) {
+        eprintln!();
+        for w in self.within_structs.iter() {
+            eprintln!("within struct {}:", w);
+        }
+    }
 }
 
 impl UnderspecifiedAbstractData {
@@ -500,10 +507,7 @@ impl UnderspecifiedAbstractData {
                 },
                 None => ad.to_complete_rec(None, ctx),
                 _ => {
-                    eprintln!();
-                    for w in ctx.within_structs.iter() {
-                        eprintln!("within struct {}:", w);
-                    }
+                    ctx.error_backtrace();
                     panic!("Type mismatch: AbstractData::PublicPointerTo but LLVM type is {:?}", ty);
                 },
             },
@@ -511,20 +515,14 @@ impl UnderspecifiedAbstractData {
                 Some(Type::ArrayType { element_type: llvm_element_type, num_elements: llvm_num_elements })
                 | Some(Type::VectorType { element_type: llvm_element_type, num_elements: llvm_num_elements }) => {
                     if *llvm_num_elements != 0 && *llvm_num_elements != num_elements {
-                        eprintln!();
-                        for w in ctx.within_structs.iter() {
-                            eprintln!("within struct {}:", w);
-                        }
+                        ctx.error_backtrace();
                         panic!("Type mismatch: AbstractData specifies an array with {} elements, but found an array with {} elements", num_elements, llvm_num_elements);
                     }
                     CompleteAbstractData::Array { element_type: Box::new(element_type.to_complete_rec(Some(&**llvm_element_type), ctx.clone())), num_elements }
                 },
                 None => CompleteAbstractData::Array { element_type: Box::new(element_type.to_complete_rec(None, ctx.clone())), num_elements },
                 _ => {
-                    eprintln!();
-                    for w in ctx.within_structs.iter() {
-                        eprintln!("within struct {}:", w);
-                    }
+                    ctx.error_backtrace();
                     panic!("Type mismatch: AbstractData::Array with {} elements, but LLVM type is {:?}", num_elements, ty);
                 },
             }
@@ -546,10 +544,7 @@ impl UnderspecifiedAbstractData {
                 Some(Type::StructType { element_types, .. }) => {
                     ctx.within_structs.push(name.clone());
                     if elements.len() != element_types.len() {
-                        eprintln!();
-                        for w in ctx.within_structs.iter() {
-                            eprintln!("within struct {}:", w);
-                        }
+                        ctx.error_backtrace();
                         panic!("Type mismatch: AbstractData::Struct with {} elements, but LLVM type has {} elements", elements.len(), element_types.len());
                     }
                     CompleteAbstractData::Struct { name, elements:
@@ -570,10 +565,7 @@ impl UnderspecifiedAbstractData {
                     }
                 }
                 _ => {
-                    eprintln!();
-                    for w in ctx.within_structs.iter() {
-                        eprintln!("within struct {}:", w);
-                    }
+                    ctx.error_backtrace();
                     panic!("Type mismatch: AbstractData::Struct {}, but LLVM type is {:?}", name, ty);
                 },
             },
@@ -617,10 +609,7 @@ impl UnderspecifiedAbstractData {
                                 ctx.within_structs.push(name.clone());
                                 self.to_complete_rec(Some(inner_ty), ctx)
                             } else {
-                                eprintln!();
-                                for w in ctx.within_structs.iter() {
-                                    eprintln!("within struct {}:", w);
-                                }
+                                ctx.error_backtrace();
                                 panic!("AbstractData::default() applied to recursive struct {:?}", name)
                             }
                         },
