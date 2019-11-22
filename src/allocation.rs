@@ -501,7 +501,18 @@ pub fn initialize_data_in_memory(
             let element_types = match ty {
                 Some(ty) => match ty {
                     Type::StructType { element_types, .. } => element_types.iter().cloned().map(Some).collect::<Vec<_>>(),
-                    Type::NamedStructType { ty: None, .. } => panic!("can't initialize an opaque struct type"),
+                    Type::NamedStructType { ty: None, name: llvm_struct_name } => {
+                        // This is an opaque struct definition. Try to find a non-opaque definition for the same struct.
+                        let (ty, _) = proj.get_named_struct_type_by_name(&llvm_struct_name).unwrap_or_else(|| panic!("Struct name {:?} (LLVM name {:?}) not found in the project", name, llvm_struct_name));
+                        let actual_ty: &Type = &ty.as_ref()
+                            .unwrap_or_else(|| panic!("Can't convert struct named {:?} (LLVM name {:?}) to complete: it has only opaque definitions in this project", name, llvm_struct_name))
+                            .read()
+                            .unwrap();
+                        match actual_ty {
+                            Type::StructType { element_types, .. } => element_types.iter().cloned().map(Some).collect::<Vec<_>>(),
+                            _ => panic!("NamedStructType referred to type {:?} which is not a StructType variant", actual_ty),
+                        }
+                    },
                     Type::NamedStructType { ty: Some(weak), .. } => {
                         let ty: Arc<RwLock<Type>> = weak.upgrade().expect("Failed to upgrade weak reference");
                         let actual_ty: &Type = &ty.read().unwrap();
