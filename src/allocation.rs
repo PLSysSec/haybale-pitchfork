@@ -61,9 +61,17 @@ pub fn allocate_arg<'p>(proj: &'p Project, state: &mut State<'p, secret::Backend
             let unwrapped_arg = AbstractData(UnderspecifiedAbstractData::Complete(CompleteAbstractData::PublicValue { bits, value: *value }));
             let bv = allocate_arg(proj, state, param, unwrapped_arg, ctx)?;
             match ctx.namedvals.entry(name.to_owned()) {
-                Occupied(_) => panic!("AbstractValue::Named {:?} already exists", name),
-                Vacant(v) => v.insert(bv.clone()),
+                Vacant(v) => {
+                    v.insert(bv.clone());
+                },
+                Occupied(bv_for_name) => {
+                    let bv_for_name = bv_for_name.get();
+                    let width = bv_for_name.get_width();
+                    assert_eq!(width, bits as u32, "AbstractValue::Named {:?}: multiple values with different bitwidths given this name: one with width {} bits, another with width {} bits", name, width, bits);
+                    bv._eq(&bv_for_name).assert()?;
+                },
             };
+            state.overwrite_latest_version_of_bv(&param.name, bv.clone());
             Ok(bv)
         }
         CompleteAbstractData::PublicValue { bits, value: AbstractValue::EqualTo(name) } => {
@@ -263,8 +271,15 @@ pub fn initialize_data_in_memory(
             let unwrapped_data = CompleteAbstractData::PublicValue { bits: *bits, value: (**value).clone() };
             let bv = initialize_data_in_memory(proj, state, addr, &unwrapped_data, ty, cur_struct, parent, ctx)?;
             match ctx.namedvals.entry(name.to_owned()) {
-                Occupied(_) => panic!("AbstractValue::Named {:?} already exists", name),
-                Vacant(v) => v.insert(bv.clone()),
+                Vacant(v) => {
+                    v.insert(bv.clone());
+                },
+                Occupied(bv_for_name) => {
+                    let bv_for_name = bv_for_name.get();
+                    let width = bv_for_name.get_width();
+                    assert_eq!(width, *bits as u32, "AbstractValue::Named {:?}: multiple values with different bitwidths given this name: one with width {} bits, another with width {} bits", name, width, *bits);
+                    bv._eq(&bv_for_name).assert()?;
+                },
             };
             Ok(bv)
         },

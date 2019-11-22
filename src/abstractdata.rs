@@ -634,7 +634,9 @@ pub enum AbstractValue {
     Range(u64, u64),
     /// Any value whatsoever
     Unconstrained,
-    /// A value with a (unique) name, so that it can be referenced in a `Equal`, `SignedLessThan`, `SignedGreaterThan`, etc
+    /// A value with a (unique) name, so that it can be referenced in a `Equal`, `SignedLessThan`, `SignedGreaterThan`, etc.
+    ///
+    /// If more than one `AbstractValue` is given the same name, they will implicitly be set equal to each other.
     Named {
         name: String,
         value: Box<AbstractValue>,
