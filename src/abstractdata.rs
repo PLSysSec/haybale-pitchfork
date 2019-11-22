@@ -474,8 +474,8 @@ impl UnderspecifiedAbstractData {
                 None => CompleteAbstractData::VoidOverride { llvm_struct_name: None, data: Box::new(data.to_complete_rec(None, ctx)) },
                 Some(llvm_struct_name) => {
                     let (llvm_ty, _) = ctx.proj.get_named_struct_type_by_name(&llvm_struct_name)
-                        .unwrap_or_else(|| panic!("VoidOverride: llvm_struct_name {:?} not found in Project", llvm_struct_name));
-                    let arc = llvm_ty.as_ref().unwrap_or_else(|| panic!("VoidOverride: llvm_struct_name {:?} is an opaque type", llvm_struct_name));
+                        .unwrap_or_else(|| { ctx.error_backtrace(); panic!("VoidOverride: llvm_struct_name {:?} not found in Project", llvm_struct_name) });
+                    let arc = llvm_ty.as_ref().unwrap_or_else(|| { ctx.error_backtrace(); panic!("VoidOverride: llvm_struct_name {:?} is an opaque type", llvm_struct_name) });
                     let ty = &arc.read().unwrap();
                     CompleteAbstractData::VoidOverride { llvm_struct_name: Some(llvm_struct_name), data: Box::new(data.to_complete_rec(Some(ty), ctx)) }
                 },
@@ -532,9 +532,9 @@ impl UnderspecifiedAbstractData {
                         Some(ty) => ty.upgrade().expect("Failed to upgrade weak reference"),
                         None => {
                             // This is an opaque struct definition. Try to find a non-opaque definition for the same struct.
-                            let (ty, _) = ctx.proj.get_named_struct_type_by_name(&llvm_struct_name).unwrap_or_else(|| panic!("Struct name {:?} (LLVM name {:?}) not found in the project", name, llvm_struct_name));
+                            let (ty, _) = ctx.proj.get_named_struct_type_by_name(&llvm_struct_name).unwrap_or_else(|| { ctx.error_backtrace(); panic!("Struct name {:?} (LLVM name {:?}) not found in the project", name, llvm_struct_name) });
                             ty.as_ref()
-                                .unwrap_or_else(|| panic!("Can't convert struct named {:?} (LLVM name {:?}) to complete: it has only opaque definitions in this project", name, llvm_struct_name))
+                                .unwrap_or_else(|| { ctx.error_backtrace(); panic!("Can't convert struct named {:?} (LLVM name {:?}) to complete: it has only opaque definitions in this project", name, llvm_struct_name) })
                                 .clone()
                         },
                     };
@@ -592,9 +592,9 @@ impl UnderspecifiedAbstractData {
                         Some(ty) => ty.upgrade().expect("Failed to upgrade weak reference"),
                         None => {
                             // This is an opaque struct definition. Try to find a non-opaque definition for the same struct.
-                            let (ty, _) = ctx.proj.get_named_struct_type_by_name(&name).unwrap_or_else(|| panic!("Struct name {:?} not found in the project", name));
+                            let (ty, _) = ctx.proj.get_named_struct_type_by_name(&name).unwrap_or_else(|| { ctx.error_backtrace(); panic!("Struct name {:?} not found in the project", name) });
                             ty.as_ref()
-                                .unwrap_or_else(|| panic!("Can't convert struct named {:?} to complete: it has only opaque definitions in this project", name))
+                                .unwrap_or_else(|| { ctx.error_backtrace(); panic!("Can't convert struct named {:?} to complete: it has only opaque definitions in this project", name) })
                                 .clone()
                         },
                     };
