@@ -571,68 +571,74 @@ impl UnderspecifiedAbstractData {
                     panic!("Type mismatch: AbstractData::Struct {}, but LLVM type is {:?}", name, ty);
                 },
             },
-            Self::Unspecified => match ty.expect("void_override requires a fully-specified structure") {
-                ty@Type::IntegerType { .. } =>
-                    CompleteAbstractData::PublicValue { bits: layout::size(ty), value: AbstractValue::Unconstrained },
-                Type::PointerType { pointee_type, .. } => match &**pointee_type {
-                    Type::FuncType { .. } =>
-                        CompleteAbstractData::PublicPointerToHook("hook_uninitialized_function_pointer".to_owned()),
-                    Type::IntegerType { bits } =>
-                        CompleteAbstractData::PublicPointerTo(Box::new(CompleteAbstractData::Array {
-                            element_type: Box::new(CompleteAbstractData::PublicValue { bits: *bits as usize, value: AbstractValue::Unconstrained}),
-                            num_elements: AbstractData::DEFAULT_ARRAY_LENGTH,
-                        })),
-                    ty => CompleteAbstractData::PublicPointerTo(Box::new(Self::Unspecified.to_complete_rec(Some(ty), ctx))),
+            Self::Unspecified => match ty {
+                None => {
+                    ctx.error_backtrace();
+                    panic!("Encountered an AbstractData::default() but don't have an LLVM type to use; this is either because (1) void_override was used with llvm_struct_name == None but the specified AbstractData contained a default() somewhere; or (2) a struct in the StructDescriptions is opaque in this Project, but the specified AbstractData contained a default() somewhere");
                 },
-                Type::VectorType { element_type, num_elements } | Type::ArrayType { element_type, num_elements } =>
-                    CompleteAbstractData::Array {
-                        element_type: Box::new(Self::Unspecified.to_complete_rec(Some(element_type), ctx)),
-                        num_elements: if *num_elements == 0 { AbstractData::DEFAULT_ARRAY_LENGTH } else { *num_elements },
+                Some(ty) => match ty {
+                    ty@Type::IntegerType { .. } =>
+                        CompleteAbstractData::PublicValue { bits: layout::size(ty), value: AbstractValue::Unconstrained },
+                    Type::PointerType { pointee_type, .. } => match &**pointee_type {
+                        Type::FuncType { .. } =>
+                            CompleteAbstractData::PublicPointerToHook("hook_uninitialized_function_pointer".to_owned()),
+                        Type::IntegerType { bits } =>
+                            CompleteAbstractData::PublicPointerTo(Box::new(CompleteAbstractData::Array {
+                                element_type: Box::new(CompleteAbstractData::PublicValue { bits: *bits as usize, value: AbstractValue::Unconstrained}),
+                                num_elements: AbstractData::DEFAULT_ARRAY_LENGTH,
+                            })),
+                        ty => CompleteAbstractData::PublicPointerTo(Box::new(Self::Unspecified.to_complete_rec(Some(ty), ctx))),
                     },
-                Type::NamedStructType { ty, name } => {
-                    let arc: Option<Arc<RwLock<Type>>> = match &ty.as_ref() {
-                        Some(ty) => Some(ty.upgrade().expect("Failed to upgrade weak reference")),
-                        None => {
-                            // This is an opaque struct definition. Try to find a non-opaque definition for the same struct.
-                            let (ty, _) = ctx.proj.get_named_struct_type_by_name(&name).unwrap_or_else(|| { ctx.error_backtrace(); panic!("Struct name {:?} not found in the project", name) });
-                            ty.as_ref().map(|arc| arc.clone())
+                    Type::VectorType { element_type, num_elements } | Type::ArrayType { element_type, num_elements } =>
+                        CompleteAbstractData::Array {
+                            element_type: Box::new(Self::Unspecified.to_complete_rec(Some(element_type), ctx)),
+                            num_elements: if *num_elements == 0 { AbstractData::DEFAULT_ARRAY_LENGTH } else { *num_elements },
                         },
-                    };
-                    match ctx.sd.get(name) {
-                        Some(abstractdata) => {
-                            ctx.within_structs.push(name.clone());
-                            match arc {
-                                Some(arc) => {
-                                    let inner_ty: &Type = &arc.read().unwrap();
-                                    abstractdata.clone().to_complete_rec(Some(inner_ty), ctx)
-                                },
-                                None => abstractdata.clone().to_complete_rec(None, ctx),
-                            }
-                        },
-                        None => match arc {
-                            Some(arc) => {
-                                if ctx.unspecified_named_structs.insert(name) {
-                                    ctx.within_structs.push(name.clone());
-                                    let inner_ty: &Type = &arc.read().unwrap();
-                                    self.to_complete_rec(Some(inner_ty), ctx)
-                                } else {
-                                    ctx.error_backtrace();
-                                    panic!("AbstractData::default() applied to recursive struct {:?}", name)
+                    Type::NamedStructType { ty, name } => {
+                        let arc: Option<Arc<RwLock<Type>>> = match &ty.as_ref() {
+                            Some(ty) => Some(ty.upgrade().expect("Failed to upgrade weak reference")),
+                            None => {
+                                // This is an opaque struct definition. Try to find a non-opaque definition for the same struct.
+                                let (ty, _) = ctx.proj.get_named_struct_type_by_name(&name).unwrap_or_else(|| { ctx.error_backtrace(); panic!("Struct name {:?} not found in the project", name) });
+                                ty.as_ref().map(|arc| arc.clone())
+                            },
+                        };
+                        match ctx.sd.get(name) {
+                            Some(abstractdata) => {
+                                ctx.within_structs.push(name.clone());
+                                match arc {
+                                    Some(arc) => {
+                                        let inner_ty: &Type = &arc.read().unwrap();
+                                        abstractdata.clone().to_complete_rec(Some(inner_ty), ctx)
+                                    },
+                                    None => abstractdata.clone().to_complete_rec(None, ctx),
                                 }
                             },
-                            None => {
-                                ctx.error_backtrace();
-                                panic!("Can't convert struct named {:?} to complete: it has only opaque definitions in this project, and it isn't in the StructDescriptions", name);
+                            None => match arc {
+                                Some(arc) => {
+                                    if ctx.unspecified_named_structs.insert(name) {
+                                        ctx.within_structs.push(name.clone());
+                                        let inner_ty: &Type = &arc.read().unwrap();
+                                        self.to_complete_rec(Some(inner_ty), ctx)
+                                    } else {
+                                        ctx.error_backtrace();
+                                        panic!("AbstractData::default() applied to recursive struct {:?}", name)
+                                    }
+                                },
+                                None => {
+                                    ctx.error_backtrace();
+                                    panic!("Can't convert struct named {:?} to complete: it has only opaque definitions in this project, and it isn't in the StructDescriptions", name);
+                                },
                             },
-                        },
-                    }
+                        }
+                    },
+                    Type::StructType { element_types, .. } => CompleteAbstractData::Struct { name: "unspecified_struct".to_owned(), elements:
+                        element_types.iter()
+                        .map(|el_type| Self::Unspecified.to_complete_rec(Some(el_type), ctx.clone()))
+                        .collect()
+                    },
+                    _ => unimplemented!("AbstractData::to_complete with {:?}", ty),
                 },
-                Type::StructType { element_types, .. } => CompleteAbstractData::Struct { name: "unspecified_struct".to_owned(), elements:
-                    element_types.iter()
-                    .map(|el_type| Self::Unspecified.to_complete_rec(Some(el_type), ctx.clone()))
-                    .collect()
-                },
-                _ => unimplemented!("AbstractData::to_complete with {:?}", ty),
             },
         }
     }
