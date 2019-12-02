@@ -466,7 +466,9 @@ impl UnderspecifiedAbstractData {
         self.to_complete_rec(Some(ty), ToCompleteContext::new(proj, sd))
     }
 
-    /// If `ty` is `None`, this indicates that we are explicitly overriding the LLVM type via `VoidOverride`
+    /// If `ty` is `None`, this indicates that either:
+    ///   (1) we are explicitly overriding the LLVM type via `VoidOverride`, or
+    ///   (2) we are initializing a struct via the `StructDescriptions` that we don't have an LLVM type for because it's opaque
     fn to_complete_rec<'a>(self, ty: Option<&'a Type>, mut ctx: ToCompleteContext<'a, '_>) -> CompleteAbstractData {
         match self {
             Self::Complete(abstractdata) => abstractdata,
@@ -588,30 +590,40 @@ impl UnderspecifiedAbstractData {
                         num_elements: if *num_elements == 0 { AbstractData::DEFAULT_ARRAY_LENGTH } else { *num_elements },
                     },
                 Type::NamedStructType { ty, name } => {
-                    let arc: Arc<RwLock<Type>> = match &ty.as_ref() {
-                        Some(ty) => ty.upgrade().expect("Failed to upgrade weak reference"),
+                    let arc: Option<Arc<RwLock<Type>>> = match &ty.as_ref() {
+                        Some(ty) => Some(ty.upgrade().expect("Failed to upgrade weak reference")),
                         None => {
                             // This is an opaque struct definition. Try to find a non-opaque definition for the same struct.
                             let (ty, _) = ctx.proj.get_named_struct_type_by_name(&name).unwrap_or_else(|| { ctx.error_backtrace(); panic!("Struct name {:?} not found in the project", name) });
-                            ty.as_ref()
-                                .unwrap_or_else(|| { ctx.error_backtrace(); panic!("Can't convert struct named {:?} to complete: it has only opaque definitions in this project", name) })
-                                .clone()
+                            ty.as_ref().map(|arc| arc.clone())
                         },
                     };
-                    let inner_ty: &Type = &arc.read().unwrap();
                     match ctx.sd.get(name) {
                         Some(abstractdata) => {
                             ctx.within_structs.push(name.clone());
-                            abstractdata.clone().to_complete_rec(Some(inner_ty), ctx)
-                        },
-                        None => {
-                            if ctx.unspecified_named_structs.insert(name) {
-                                ctx.within_structs.push(name.clone());
-                                self.to_complete_rec(Some(inner_ty), ctx)
-                            } else {
-                                ctx.error_backtrace();
-                                panic!("AbstractData::default() applied to recursive struct {:?}", name)
+                            match arc {
+                                Some(arc) => {
+                                    let inner_ty: &Type = &arc.read().unwrap();
+                                    abstractdata.clone().to_complete_rec(Some(inner_ty), ctx)
+                                },
+                                None => abstractdata.clone().to_complete_rec(None, ctx),
                             }
+                        },
+                        None => match arc {
+                            Some(arc) => {
+                                if ctx.unspecified_named_structs.insert(name) {
+                                    ctx.within_structs.push(name.clone());
+                                    let inner_ty: &Type = &arc.read().unwrap();
+                                    self.to_complete_rec(Some(inner_ty), ctx)
+                                } else {
+                                    ctx.error_backtrace();
+                                    panic!("AbstractData::default() applied to recursive struct {:?}", name)
+                                }
+                            },
+                            None => {
+                                ctx.error_backtrace();
+                                panic!("Can't convert struct named {:?} to complete: it has only opaque definitions in this project, and it isn't in the StructDescriptions", name);
+                            },
                         },
                     }
                 },
