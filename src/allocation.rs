@@ -476,9 +476,22 @@ pub fn initialize_data_in_memory(
             });
             let element_size_bits = element_abstractdata.size_in_bits();
             if let Some(element_type) = element_type {
-                let llvm_element_size_bits = layout::size(element_type);
-                if llvm_element_size_bits != 0 {
-                    assert_eq!(element_size_bits, llvm_element_size_bits, "CompleteAbstractData element size of {} bits does not match LLVM element size of {} bits", element_size_bits, llvm_element_size_bits);
+                let element_type: Option<Arc<RwLock<Type>>> = match element_type {
+                    Type::NamedStructType { ty: None, name: llvm_struct_name } => {
+                        // This is an opaque struct definition. Try to find a non-opaque definition for the same struct.
+                        let (ty, _) = ctx.proj.get_named_struct_type_by_name(&llvm_struct_name).unwrap_or_else(|| panic!("Struct name {:?} not found in the project", llvm_struct_name));
+                        ty.clone()
+                    },
+                    _ => Some(Arc::new(RwLock::new(element_type.clone()))),
+                };
+                match element_type {
+                    None => {},  // element_type is an opaque struct type, there's no size check we can make.
+                    Some(element_type) => {
+                        let llvm_element_size_bits = layout::size(&element_type.read().unwrap());
+                        if llvm_element_size_bits != 0 {
+                            assert_eq!(element_size_bits, llvm_element_size_bits, "CompleteAbstractData element size of {} bits does not match LLVM element size of {} bits", element_size_bits, llvm_element_size_bits);
+                        }
+                    }
                 }
             }
             match **element_abstractdata {
@@ -517,26 +530,31 @@ pub fn initialize_data_in_memory(
             let element_types = match ty {
                 Some(ty) => match ty {
                     Type::StructType { element_types, .. } => element_types.iter().cloned().map(Some).collect::<Vec<_>>(),
-                    Type::NamedStructType { ty: None, name: llvm_struct_name } => {
-                        // This is an opaque struct definition. Try to find a non-opaque definition for the same struct.
-                        let (ty, _) = ctx.proj.get_named_struct_type_by_name(&llvm_struct_name).unwrap_or_else(|| panic!("Struct name {:?} (LLVM name {:?}) not found in the project", name, llvm_struct_name));
-                        let actual_ty: &Type = &ty.as_ref()
-                            .unwrap_or_else(|| panic!("Can't convert struct named {:?} (LLVM name {:?}) to complete: it has only opaque definitions in this project", name, llvm_struct_name))
-                            .read()
-                            .unwrap();
-                        match actual_ty {
-                            Type::StructType { element_types, .. } => element_types.iter().cloned().map(Some).collect::<Vec<_>>(),
-                            _ => panic!("NamedStructType referred to type {:?} which is not a StructType variant", actual_ty),
+                    Type::NamedStructType { ty, name: llvm_struct_name } => {
+                        let arc: Option<Arc<RwLock<Type>>> = match &ty.as_ref() {
+                            Some(weak) => Some(weak.upgrade().expect("Failed to upgrade weak reference")),
+                            None => {
+                                // This is an opaque struct definition. Try to find a non-opaque definition for the same struct.
+                                let (ty, _) = ctx.proj.get_named_struct_type_by_name(&llvm_struct_name).unwrap_or_else(|| panic!("Struct name {:?} (LLVM name {:?}) not found in the project", name, llvm_struct_name));
+                                ty.clone()
+                            },
+                        };
+                        match arc {
+                            Some(arc) => {
+                                let actual_ty: &Type = &arc.read().unwrap();
+                                match actual_ty {
+                                    Type::StructType { element_types, .. } => element_types.iter().cloned().map(Some).collect::<Vec<_>>(),
+                                    ty => panic!("NamedStructType referred to type {:?} which is not a StructType variant", ty),
+                                }
+                            },
+                            None => {
+                                // This struct has only opaque definitions in the Project.
+                                // We also assume it isn't in the StructDescriptions, since that would have been caught in to_complete().
+                                // Just treat this as if `ty` was `None`
+                                itertools::repeat_n(None, elements.len()).collect()
+                            },
                         }
                     },
-                    Type::NamedStructType { ty: Some(weak), .. } => {
-                        let ty: Arc<RwLock<Type>> = weak.upgrade().expect("Failed to upgrade weak reference");
-                        let actual_ty: &Type = &ty.read().unwrap();
-                        match actual_ty {
-                            Type::StructType { element_types, .. } => element_types.iter().cloned().map(Some).collect::<Vec<_>>(),
-                            ty => panic!("NamedStructType referred to type {:?} which is not a StructType variant", ty),
-                        }
-                    }
                     _ => panic!("Type mismatch: CompleteAbstractData specifies a struct named {}, but found type {:?}", name, ty),
                 },
                 None => itertools::repeat_n(None, elements.len()).collect(),
