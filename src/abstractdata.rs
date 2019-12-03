@@ -392,6 +392,7 @@ pub type StructDescriptions = HashMap<String, AbstractData>;
 impl AbstractData {
     pub const DEFAULT_ARRAY_LENGTH: usize = 1024;
     pub const POINTER_SIZE_BITS: usize = CompleteAbstractData::POINTER_SIZE_BITS;
+    pub const OPAQUE_STRUCT_SIZE_BYTES: usize = 1024 * 64;
 
     /// Fill in the default `CompleteAbstractData` for any parts of the
     /// `AbstractData` which are marked `Default`, using the information in the
@@ -402,16 +403,19 @@ impl AbstractData {
     ///
     /// - for LLVM integer type: public unconstrained value of the appropriate size
     /// - for LLVM pointer type (except function pointer): public concrete pointer value to allocated memory, depending on pointer type:
-    ///   - pointee is an integer type: pointer to allocated array of DEFAULT_ARRAY_LENGTH pointees
-    ///       (e.g., default for char* is pointer to array of 1024 chars)
+    ///   - pointee is an integer type: pointer to allocated array of `DEFAULT_ARRAY_LENGTH` pointees
+    ///       (e.g., default for `char*` is pointer to array of 1024 chars)
     ///   - pointee is any other type: pointer to one of that other type
     ///   - (then in either case, apply these rules recursively to each pointee type)
     /// - for LLVM function pointer type: concrete function pointer value which, when called, will raise an error
     /// - for LLVM vector or array type: array of the appropriate length, containing public values
-    ///   (unless the number of elements is 0, in which case, we default to DEFAULT_ARRAY_LENGTH elements)
+    ///   (unless the number of elements is 0, in which case, we default to `DEFAULT_ARRAY_LENGTH` elements)
     ///   - (in any case, apply these rules recursively to each element)
     /// - for LLVM structure type:
     ///   - if this struct is one of those named in `sd`, then use the appropriate struct description
+    ///   - if the structure type is entirely opaque (no definition anywhere in the `Project`), then allocate
+    ///       `OPAQUE_STRUCT_SIZE_BYTES` unconstrained bytes for it and assume that's enough
+    ///       (probably most of that memory will go unused, but that's fine)
     ///   - else, apply these rules recursively to each field
     pub fn to_complete(self, ty: &Type, proj: &Project, sd: &StructDescriptions) -> CompleteAbstractData {
         self.0.to_complete(ty, proj, sd)
@@ -530,18 +534,21 @@ impl UnderspecifiedAbstractData {
             }
             Self::Struct { elements, name } => match ty {
                 Some(Type::NamedStructType { name: llvm_struct_name, ty }) => {
-                    let arc: Arc<RwLock<Type>> = match &ty.as_ref() {
-                        Some(ty) => ty.upgrade().expect("Failed to upgrade weak reference"),
+                    let arc: Option<Arc<RwLock<Type>>> = match &ty.as_ref() {
+                        Some(ty) => Some(ty.upgrade().expect("Failed to upgrade weak reference")),
                         None => {
                             // This is an opaque struct definition. Try to find a non-opaque definition for the same struct.
                             let (ty, _) = ctx.proj.get_named_struct_type_by_name(&llvm_struct_name).unwrap_or_else(|| { ctx.error_backtrace(); panic!("Struct name {:?} (LLVM name {:?}) not found in the project", name, llvm_struct_name) });
-                            ty.as_ref()
-                                .unwrap_or_else(|| { ctx.error_backtrace(); panic!("Can't convert struct named {:?} (LLVM name {:?}) to complete: it has only opaque definitions in this project", name, llvm_struct_name) })
-                                .clone()
+                            ty.clone()
                         },
                     };
-                    let actual_ty: &Type = &arc.read().unwrap();
-                    Self::Struct { elements, name }.to_complete_rec(Some(actual_ty), ctx)
+                    match arc {
+                        Some(arc) => {
+                            let actual_ty: &Type = &arc.read().unwrap();
+                            Self::Struct { elements, name }.to_complete_rec(Some(actual_ty), ctx)
+                        },
+                        None => Self::Struct { elements, name }.to_complete_rec(None, ctx),
+                    }
                 },
                 Some(Type::StructType { element_types, .. }) => {
                     ctx.within_structs.push(name.clone());
@@ -605,6 +612,7 @@ impl UnderspecifiedAbstractData {
                         };
                         match ctx.sd.get(name) {
                             Some(abstractdata) => {
+                                // This is in the StructDescriptions, so use the description there
                                 ctx.within_structs.push(name.clone());
                                 match arc {
                                     Some(arc) => {
@@ -616,6 +624,7 @@ impl UnderspecifiedAbstractData {
                             },
                             None => match arc {
                                 Some(arc) => {
+                                    // We have an LLVM struct definition, so use that
                                     if ctx.unspecified_named_structs.insert(name) {
                                         ctx.within_structs.push(name.clone());
                                         let inner_ty: &Type = &arc.read().unwrap();
@@ -626,8 +635,9 @@ impl UnderspecifiedAbstractData {
                                     }
                                 },
                                 None => {
-                                    ctx.error_backtrace();
-                                    panic!("Can't convert struct named {:?} to complete: it has only opaque definitions in this project, and it isn't in the StructDescriptions", name);
+                                    // all definitions of the struct in the project are opaque, and it isn't in the StructDescriptions
+                                    // allocate OPAQUE_STRUCT_SIZE_BYTES unconstrained bytes and call it good
+                                    CompleteAbstractData::array_of(CompleteAbstractData::pub_i8(AbstractValue::Unconstrained), AbstractData::OPAQUE_STRUCT_SIZE_BYTES)
                                 },
                             },
                         }
