@@ -10,13 +10,15 @@ use std::collections::hash_map::Entry::*;
 use std::sync::{Arc, RwLock};
 
 pub struct Context<'a> {
+    proj: &'a Project,
     sd: &'a StructDescriptions,
     namedvals: HashMap<String, secret::BV>,
 }
 
 impl<'a> Context<'a> {
-    pub fn new(sd: &'a StructDescriptions) -> Self {
+    pub fn new(proj: &'a Project, sd: &'a StructDescriptions) -> Self {
         Self {
+            proj,
             sd,
             namedvals: HashMap::new(),
         }
@@ -24,9 +26,9 @@ impl<'a> Context<'a> {
 }
 
 /// Returns the `secret::BV` representing the argument. Many callers won't need this, though.
-pub fn allocate_arg<'p>(proj: &'p Project, state: &mut State<'p, secret::Backend>, param: &'p function::Parameter, arg: AbstractData, ctx: &mut Context) -> Result<secret::BV> {
+pub fn allocate_arg<'p>(state: &mut State<'p, secret::Backend>, param: &'p function::Parameter, arg: AbstractData, ctx: &mut Context) -> Result<secret::BV> {
     debug!("Allocating function parameter {:?}", &param.name);
-    let arg = arg.to_complete(&param.ty, proj, &ctx.sd);
+    let arg = arg.to_complete(&param.ty, &ctx.proj, &ctx.sd);
     let arg_size = arg.size_in_bits();
     let param_size = layout::size(&param.ty);
     assert_eq!(arg_size, param_size, "Parameter size mismatch for parameter {:?}: parameter is {} bits but CompleteAbstractData is {} bits", &param.name, param_size, arg_size);
@@ -59,7 +61,7 @@ pub fn allocate_arg<'p>(proj: &'p Project, state: &mut State<'p, secret::Backend
         },
         CompleteAbstractData::PublicValue { bits, value: AbstractValue::Named { name, value } } => {
             let unwrapped_arg = AbstractData(UnderspecifiedAbstractData::Complete(CompleteAbstractData::PublicValue { bits, value: *value }));
-            let bv = allocate_arg(proj, state, param, unwrapped_arg, ctx)?;
+            let bv = allocate_arg(state, param, unwrapped_arg, ctx)?;
             match ctx.namedvals.entry(name.to_owned()) {
                 Vacant(v) => {
                     v.insert(bv.clone());
@@ -146,7 +148,7 @@ pub fn allocate_arg<'p>(proj: &'p Project, state: &mut State<'p, secret::Backend
                 Type::PointerType { pointee_type, .. } => pointee_type,
                 ty => panic!("Mismatch for parameter {:?}: CompleteAbstractData specifies a pointer but parameter type is {:?}", &param.name, ty),
             };
-            initialize_data_in_memory(proj, state, &ptr, &*pointee, Some(pointee_ty), None, None, ctx)
+            initialize_data_in_memory(state, &ptr, &*pointee, Some(pointee_ty), None, None, ctx)
         },
         CompleteAbstractData::PublicPointerToFunction(funcname) => {
             debug!("Parameter is marked as a public pointer to the function {:?}", funcname);
@@ -204,7 +206,6 @@ pub fn allocate_arg<'p>(proj: &'p Project, state: &mut State<'p, secret::Backend
 ///
 /// Returns a `secret::BV` representing the initialized data. Many callers won't need this, though.
 pub fn initialize_data_in_memory(
-    proj: &Project,
     state: &mut State<'_, secret::Backend>,
     addr: &secret::BV,
     data: &CompleteAbstractData,
@@ -217,11 +218,11 @@ pub fn initialize_data_in_memory(
         match data {
             CompleteAbstractData::Array { num_elements: 1, element_type: element_abstractdata } => {
                 // both LLVM and CAD type are array-of-one-element.  Unwrap and call recursively
-                return initialize_data_in_memory(proj, state, addr, element_abstractdata, Some(element_type), cur_struct, parent, ctx);
+                return initialize_data_in_memory(state, addr, element_abstractdata, Some(element_type), cur_struct, parent, ctx);
             },
             data => {
                 // LLVM type is array-of-one-element but CAD type is not.  Unwrap the LLVM type and call recursively
-                return initialize_data_in_memory(proj, state, addr, data, Some(element_type), cur_struct, parent, ctx);
+                return initialize_data_in_memory(state, addr, data, Some(element_type), cur_struct, parent, ctx);
             },
         }
     };
@@ -269,7 +270,7 @@ pub fn initialize_data_in_memory(
         },
         CompleteAbstractData::PublicValue { bits, value: AbstractValue::Named { name, value } } => {
             let unwrapped_data = CompleteAbstractData::PublicValue { bits: *bits, value: (**value).clone() };
-            let bv = initialize_data_in_memory(proj, state, addr, &unwrapped_data, ty, cur_struct, parent, ctx)?;
+            let bv = initialize_data_in_memory(state, addr, &unwrapped_data, ty, cur_struct, parent, ctx)?;
             match ctx.namedvals.entry(name.to_owned()) {
                 Vacant(v) => {
                     v.insert(bv.clone());
@@ -380,7 +381,7 @@ pub fn initialize_data_in_memory(
                 Type::PointerType { pointee_type, .. } => &**pointee_type,
                 _ => panic!("Type mismatch: CompleteAbstractData specifies a pointer, but found type {:?}", ty),
             });
-            initialize_data_in_memory(proj, state, &inner_ptr, &**pointee, pointee_ty, cur_struct, parent, ctx)
+            initialize_data_in_memory(state, &inner_ptr, &**pointee, pointee_ty, cur_struct, parent, ctx)
         },
         CompleteAbstractData::PublicPointerToFunction(funcname) => {
             debug!("memory contents are marked as a public pointer to the function {:?}", funcname);
@@ -485,7 +486,7 @@ pub fn initialize_data_in_memory(
                     // special-case this, as we can initialize with one big write
                     let array_size_bits = element_size_bits * *num_elements;
                     debug!("initializing the entire array as {} secret bits", array_size_bits);
-                    initialize_data_in_memory(proj, state, &addr, &CompleteAbstractData::Secret { bits: array_size_bits }, ty, cur_struct, parent, ctx)
+                    initialize_data_in_memory(state, &addr, &CompleteAbstractData::Secret { bits: array_size_bits }, ty, cur_struct, parent, ctx)
                 },
                 CompleteAbstractData::PublicValue { bits, value: AbstractValue::Unconstrained } => {
                     // special-case this, as no initialization is necessary for the entire array
@@ -502,7 +503,7 @@ pub fn initialize_data_in_memory(
                     for i in 0 .. *num_elements {
                         debug!("initializing element {} of the array", i);
                         let element_addr = addr.add(&secret::BV::from_u64(state.solver.clone(), (i*element_size_bytes) as u64, addr.get_width()));
-                        initialize_data_in_memory(proj, state, &element_addr, element_abstractdata, element_type, cur_struct, parent, ctx)?;
+                        initialize_data_in_memory(state, &element_addr, element_abstractdata, element_type, cur_struct, parent, ctx)?;
                     }
                     debug!("done initializing the array at {:?}", addr);
                     // return the BV representing those memory contents. We just do a read here because it's easier than collecting the initialize() return values and concatenating them
@@ -518,7 +519,7 @@ pub fn initialize_data_in_memory(
                     Type::StructType { element_types, .. } => element_types.iter().cloned().map(Some).collect::<Vec<_>>(),
                     Type::NamedStructType { ty: None, name: llvm_struct_name } => {
                         // This is an opaque struct definition. Try to find a non-opaque definition for the same struct.
-                        let (ty, _) = proj.get_named_struct_type_by_name(&llvm_struct_name).unwrap_or_else(|| panic!("Struct name {:?} (LLVM name {:?}) not found in the project", name, llvm_struct_name));
+                        let (ty, _) = ctx.proj.get_named_struct_type_by_name(&llvm_struct_name).unwrap_or_else(|| panic!("Struct name {:?} (LLVM name {:?}) not found in the project", name, llvm_struct_name));
                         let actual_ty: &Type = &ty.as_ref()
                             .unwrap_or_else(|| panic!("Can't convert struct named {:?} (LLVM name {:?}) to complete: it has only opaque definitions in this project", name, llvm_struct_name))
                             .read()
@@ -557,7 +558,7 @@ pub fn initialize_data_in_memory(
                 debug!("initializing element {} of struct {}; element's address is {:?}", element_idx, name, &cur_addr);
                 let new_cur_struct = ty.map(|ty| (addr, ty));
                 let new_parent = cur_struct;
-                initialize_data_in_memory(proj, state, &cur_addr, element, element_ty.as_ref(), new_cur_struct, new_parent, ctx)?;
+                initialize_data_in_memory(state, &cur_addr, element, element_ty.as_ref(), new_cur_struct, new_parent, ctx)?;
                 cur_addr = cur_addr.add(&secret::BV::from_u64(state.solver.clone(), element_size_bytes as u64, addr.get_width()));
             }
             debug!("done initializing struct {} at {:?}", name, addr);
@@ -573,13 +574,13 @@ pub fn initialize_data_in_memory(
                 None => {},  // could be a nested VoidOverride, for instance
             }
             match llvm_struct_name {
-                None => initialize_data_in_memory(proj, state, addr, &data, None, cur_struct, parent, ctx),
+                None => initialize_data_in_memory(state, addr, &data, None, cur_struct, parent, ctx),
                 Some(llvm_struct_name) => {
-                    let (llvm_ty, _) = proj.get_named_struct_type_by_name(&llvm_struct_name)
+                    let (llvm_ty, _) = ctx.proj.get_named_struct_type_by_name(&llvm_struct_name)
                         .unwrap_or_else(|| panic!("VoidOverride: llvm_struct_name {:?} not found in Project", llvm_struct_name));
                     let arc = llvm_ty.as_ref().unwrap_or_else(|| panic!("VoidOverride: llvm_struct_name {:?} is an opaque type", llvm_struct_name));
                     let llvm_ty: &Type = &arc.read().unwrap();
-                    initialize_data_in_memory(proj, state, addr, &data, Some(llvm_ty), cur_struct, parent, ctx)
+                    initialize_data_in_memory(state, addr, &data, Some(llvm_ty), cur_struct, parent, ctx)
                 },
             }
         },
