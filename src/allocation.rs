@@ -5,6 +5,7 @@ use haybale::backend::*;
 use haybale::Result;
 use llvm_ir::*;
 use log::debug;
+use reduce::Reduce;
 use std::collections::HashMap;
 use std::collections::hash_map::Entry::*;
 use std::sync::{Arc, RwLock};
@@ -606,14 +607,23 @@ pub fn initialize_data_in_memory_rec(
                         panic!("Array element size is not a multiple of 8 bits: {}", element_size_bits);
                     }
                     let element_size_bytes = element_size_bits / 8;
+                    if *num_elements == 0 {
+                        // it might seem like we could just do nothing here, but
+                        // actually there's no way to return the correct value
+                        // (Boolector doesn't support 0-width BVs), so we have to panic
+                        error_backtrace(&within_structs);
+                        panic!("Array with 0 elements (and element type {:?})", element_type);
+                    }
+                    let mut initialized_elements: Vec<secret::BV> = Vec::with_capacity(*num_elements);
                     for i in 0 .. *num_elements {
                         debug!("initializing element {} of the array", i);
                         let element_addr = addr.add(&secret::BV::from_u64(state.solver.clone(), (i*element_size_bytes) as u64, addr.get_width()));
-                        initialize_data_in_memory_rec(state, &element_addr, element_abstractdata, element_type, cur_struct, parent, within_structs.clone(), ctx)?;
+                        let bv = initialize_data_in_memory_rec(state, &element_addr, element_abstractdata, element_type, cur_struct, parent, within_structs.clone(), ctx)?;
+                        initialized_elements.push(bv);
                     }
                     debug!("done initializing the array at {:?}", addr);
-                    // return the BV representing those memory contents. We just do a read here because it's easier than collecting the initialize() return values and concatenating them
-                    state.read(&addr, (element_size_bits * *num_elements) as u32)
+                    // return the BV representing those memory contents - this is the concatenation of all of the array elements
+                    Ok(initialized_elements.into_iter().reduce(|a,b| b.concat(&a)).expect("Array with 0 elements, which we should have caught above"))
                 },
             }
         },
@@ -658,8 +668,19 @@ pub fn initialize_data_in_memory_rec(
                 },
                 None => itertools::repeat_n(None, elements.len()).collect(),
             };
+            if elements.len() != element_types.len() {
+                error_backtrace(&within_structs);
+                panic!("Have {} struct elements but {} element types", elements.len(), element_types.len());
+            }
+            if elements.len() == 0 {
+                // it might seem like we could just do nothing here, but
+                // actually there's no way to return the correct value
+                // (Boolector doesn't support 0-width BVs), so we have to panic
+                error_backtrace(&within_structs);
+                panic!("Struct with no elements: {}", name);
+            }
             within_structs.push(name.clone());
-            let mut total_bits = 0;
+            let mut initialized_elements: Vec<secret::BV> = Vec::with_capacity(elements.len());
             for (element_idx, (element, element_ty)) in elements.iter().zip(element_types).enumerate() {
                 let element_size_bits = element.size_in_bits();
                 if let Some(element_ty) = &element_ty {
@@ -675,17 +696,17 @@ pub fn initialize_data_in_memory_rec(
                     error_backtrace(&within_structs);
                     panic!("Struct element size is not a multiple of 8 bits: {}", element_size_bits);
                 }
-                total_bits += element_size_bits;
                 let element_size_bytes = element_size_bits / 8;
                 debug!("initializing element {} of struct {}; element's address is {:?}", element_idx, name, &cur_addr);
                 let new_cur_struct = ty.map(|ty| (addr, ty));
                 let new_parent = cur_struct;
-                initialize_data_in_memory_rec(state, &cur_addr, element, element_ty.as_ref(), new_cur_struct, new_parent, within_structs.clone(), ctx)?;
+                let bv = initialize_data_in_memory_rec(state, &cur_addr, element, element_ty.as_ref(), new_cur_struct, new_parent, within_structs.clone(), ctx)?;
+                initialized_elements.push(bv);
                 cur_addr = cur_addr.add(&secret::BV::from_u64(state.solver.clone(), element_size_bytes as u64, addr.get_width()));
             }
             debug!("done initializing struct {} at {:?}", name, addr);
-            // return the BV representing those memory contents. We just do a read here because it's easier than collecting the initialize() return values and concatenating them
-            state.read(&addr, total_bits as u32)
+            // return the BV representing those memory contents - this is the concatenation of all of the struct elements
+            Ok(initialized_elements.into_iter().reduce(|a,b| b.concat(&a)).expect("Struct with 0 elements, which we should have caught above"))
         }
         CompleteAbstractData::VoidOverride { llvm_struct_name, data } => {
             // first check that the type we're overriding is `i8`: LLVM seems to use `i8*` when C uses `void*`
