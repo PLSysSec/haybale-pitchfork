@@ -36,15 +36,15 @@ dependencies = [
 
 [[package]]
 name = "cc"
-version = "1.0.45"
+version = "1.0.48"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4fc9a35e1f4290eb9e5fc54ba6cf40671ed2a2514c3eeb2b2a908dda2ea5a1be"
+checksum = "f52a465a666ca3d838ebbf08b241383421412fe7ebb463527bba275526d89f76"
 
 [[package]]
 name = "cfg-if"
-version = "0.1.9"
+version = "0.1.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b486ce3ccf7ffd79fdeb678eac06a9e6c09fc88d33836340becb8fffe87c5e33"
+checksum = "4785bdd1c96b2a846b2bd7cc02e86b6b3dbf14e7e53446c4f54c92a361040822"
 
 [[package]]
 name = "either"
@@ -104,9 +104,9 @@ checksum = "e2abad23fbc42b3700f2f279844dc832adb2b2eb069b2df918f455c4e18cc646"
 
 [[package]]
 name = "libc"
-version = "0.2.62"
+version = "0.2.66"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "34fcd2c08d2f832f376f4173a231990fa5aef4e99fb569867318a227ef4c06ba"
+checksum = "d515b1f41455adea1313a4a2ac8a8a477634fbae63cc6100e3aebb207ce61558"
 
 [[package]]
 name = "llvm-ir"
@@ -121,9 +121,9 @@ dependencies = [
 
 [[package]]
 name = "llvm-sys"
-version = "80.1.1"
+version = "80.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2110cd4daf9cd8e39dd3b933b1a2a2ac7315e91f7c92b3a20beab526c63b5978"
+checksum = "cf2969773884a5701f0c255e2a14d48d4522a66db898ec1088cb21879a228377"
 dependencies = [
  "cc",
  "lazy_static",

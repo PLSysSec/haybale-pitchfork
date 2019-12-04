@@ -10,6 +10,6 @@ edition = "2018"
 boolector = { path = "../boolector-rs" }
 haybale = { path = "../haybale" }
 llvm-ir = "0.3.1"
-log = "0.4.0"
-env_logger = "0.6.1"
-itertools = "0.8.0"
+log = "0.4.8"
+env_logger = "0.6.2"
+itertools = "0.8.2"
