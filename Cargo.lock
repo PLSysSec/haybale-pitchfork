@@ -157,7 +157,6 @@ dependencies = [
  "itertools",
  "llvm-ir",
  "log",
- "reduce",
 ]
 
 [[package]]

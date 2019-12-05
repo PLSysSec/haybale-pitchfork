@@ -5,7 +5,6 @@ use haybale::backend::*;
 use haybale::Result;
 use llvm_ir::*;
 use log::debug;
-use reduce::Reduce;
 use std::collections::HashMap;
 use std::collections::hash_map::Entry::*;
 use std::sync::{Arc, RwLock};
@@ -153,7 +152,8 @@ pub fn allocate_arg<'p>(state: &mut State<'p, secret::Backend>, param: &'p funct
                 Type::PointerType { pointee_type, .. } => pointee_type,
                 ty => panic!("Mismatch for parameter {:?}: CompleteAbstractData specifies a pointer but parameter type is {:?}", &param.name, ty),
             };
-            initialize_data_in_memory(state, &ptr, &*pointee, Some(pointee_ty), None, None, ctx)
+            initialize_data_in_memory(state, &ptr, &*pointee, Some(pointee_ty), None, None, ctx)?;
+            Ok(ptr)
         },
         CompleteAbstractData::PublicPointerToFunction(funcname) => {
             debug!("Parameter is marked as a public pointer to the function {:?}", funcname);
@@ -209,7 +209,7 @@ pub fn allocate_arg<'p>(state: &mut State<'p, secret::Backend>, param: &'p funct
 /// `parent`: if present, it is a pointer to the struct containing `cur_struct`,
 /// as well as the type of that parent struct.
 ///
-/// Returns a `secret::BV` representing the initialized data. Many callers won't need this, though.
+/// Returns the number of _bits_ (not bytes) the initialized data takes. Many callers won't need this, though.
 pub fn initialize_data_in_memory(
     state: &mut State<'_, secret::Backend>,
     addr: &secret::BV,
@@ -218,7 +218,7 @@ pub fn initialize_data_in_memory(
     cur_struct: Option<(&secret::BV, &Type)>,
     parent: Option<(&secret::BV, &Type)>,
     ctx: &mut Context,
-) -> Result<secret::BV> {
+) -> Result<usize> {
     initialize_data_in_memory_rec(state, addr, data, ty, cur_struct, parent, Vec::new(), ctx)
 }
 
@@ -243,7 +243,7 @@ pub fn initialize_data_in_memory_rec(
     parent: Option<(&secret::BV, &Type)>,
     mut within_structs: Vec<String>,
     ctx: &mut Context,
-) -> Result<secret::BV> {
+) -> Result<usize> {
     if let Some(Type::ArrayType { num_elements: 1, element_type }) | Some(Type::VectorType { num_elements: 1, element_type }) = ty {
         match data {
             CompleteAbstractData::Array { num_elements: 1, element_type: element_abstractdata } => {
@@ -261,8 +261,8 @@ pub fn initialize_data_in_memory_rec(
         CompleteAbstractData::Secret { bits } => {
             debug!("marking {} bits secret at address {:?}", bits, addr);
             let bv = secret::BV::Secret { btor: state.solver.clone(), width: *bits as u32, symbol: None };
-            state.write(&addr, bv.clone())?;
-            Ok(bv)
+            state.write(&addr, bv)?;
+            Ok(*bits)
         },
         CompleteAbstractData::PublicValue { bits, value: AbstractValue::ExactValue(value) } => {
             debug!("setting the memory contents equal to {}", value);
@@ -273,8 +273,8 @@ pub fn initialize_data_in_memory_rec(
                 }
             }
             let bv = secret::BV::from_u64(state.solver.clone(), *value, *bits as u32);
-            state.write(&addr, bv.clone())?;
-            Ok(bv)
+            state.write(&addr, bv)?;
+            Ok(*bits)
         },
         CompleteAbstractData::PublicValue { bits, value: AbstractValue::Range(min, max) } => {
             debug!("constraining the memory contents to be in the range ({}, {}) inclusive", min, max);
@@ -287,7 +287,7 @@ pub fn initialize_data_in_memory_rec(
             let bv = state.read(&addr, *bits as u32)?;
             bv.ugte(&secret::BV::from_u64(state.solver.clone(), *min, *bits as u32)).assert()?;
             bv.ulte(&secret::BV::from_u64(state.solver.clone(), *max, *bits as u32)).assert()?;
-            Ok(bv)
+            Ok(*bits)
         }
         CompleteAbstractData::PublicValue { bits, value: AbstractValue::Unconstrained } => {
             debug!("memory contents are indicated as unconstrained");
@@ -298,15 +298,19 @@ pub fn initialize_data_in_memory_rec(
                     panic!("Size mismatch when initializing data at {:?}: type {:?} is {} bits but CompleteAbstractData is {} bits", addr, ty, layout::size(ty), bits);
                 }
             }
-            // return the BV representing those memory contents
-            state.read(&addr, *bits as u32)
+            Ok(*bits)
         },
         CompleteAbstractData::PublicValue { bits, value: AbstractValue::Named { name, value } } => {
             let unwrapped_data = CompleteAbstractData::PublicValue { bits: *bits, value: (**value).clone() };
-            let bv = initialize_data_in_memory_rec(state, addr, &unwrapped_data, ty, cur_struct, parent, within_structs, ctx)?;
+            let initialized_bits = initialize_data_in_memory_rec(state, addr, &unwrapped_data, ty, cur_struct, parent, within_structs.clone(), ctx)?;
+            if *bits != initialized_bits {
+                error_backtrace(&within_structs);
+                panic!("AbstractValue::Named {:?}: specified {} bits, but value is {} bits", name, bits, initialized_bits);
+            }
+            let bv = state.read(addr, *bits as u32)?;
             match ctx.namedvals.entry(name.to_owned()) {
                 Vacant(v) => {
-                    v.insert(bv.clone());
+                    v.insert(bv);
                 },
                 Occupied(bv_for_name) => {
                     let bv_for_name = bv_for_name.get();
@@ -315,7 +319,7 @@ pub fn initialize_data_in_memory_rec(
                     bv._eq(&bv_for_name).assert()?;
                 },
             };
-            Ok(bv)
+            Ok(*bits)
         },
         CompleteAbstractData::PublicValue { bits, value: AbstractValue::EqualTo(name) } => {
             match ctx.namedvals.get(name) {
@@ -336,7 +340,7 @@ pub fn initialize_data_in_memory_rec(
                         }
                     }
                     state.write(&addr, bv.clone())?;
-                    Ok(bv.clone())
+                    Ok(*bits)
                 }
             }
         }
@@ -360,8 +364,8 @@ pub fn initialize_data_in_memory_rec(
                     }
                     let new_bv = secret::BV::new(state.solver.clone(), width, Some(&format!("SignedLessThan:{}", name)));
                     new_bv.slt(&bv).assert()?;
-                    state.write(&addr, new_bv.clone())?;
-                    Ok(new_bv)
+                    state.write(&addr, new_bv)?;
+                    Ok(*bits)
                 }
             }
         }
@@ -385,8 +389,8 @@ pub fn initialize_data_in_memory_rec(
                     }
                     let new_bv = secret::BV::new(state.solver.clone(), width, Some(&format!("SignedGreaterThan:{}", name)));
                     new_bv.sgt(&bv).assert()?;
-                    state.write(&addr, new_bv.clone())?;
-                    Ok(new_bv)
+                    state.write(&addr, new_bv)?;
+                    Ok(*bits)
                 }
             }
         }
@@ -410,8 +414,8 @@ pub fn initialize_data_in_memory_rec(
                     }
                     let new_bv = secret::BV::new(state.solver.clone(), width, Some(&format!("UnsignedLessThan:{}", name)));
                     new_bv.ult(&bv).assert()?;
-                    state.write(&addr, new_bv.clone())?;
-                    Ok(new_bv)
+                    state.write(&addr, new_bv)?;
+                    Ok(*bits)
                 }
             }
         }
@@ -435,8 +439,8 @@ pub fn initialize_data_in_memory_rec(
                     }
                     let new_bv = secret::BV::new(state.solver.clone(), width, Some(&format!("UnsignedGreaterThan:{}", name)));
                     new_bv.ugt(&bv).assert()?;
-                    state.write(&addr, new_bv.clone())?;
-                    Ok(new_bv)
+                    state.write(&addr, new_bv)?;
+                    Ok(*bits)
                 }
             }
         }
@@ -444,6 +448,7 @@ pub fn initialize_data_in_memory_rec(
             debug!("memory contents are marked as a public pointer");
             let inner_ptr = state.allocate(pointee.size_in_bits() as u64);
             debug!("allocated memory for the pointee at {:?}, and will constrain the memory contents at {:?} to have that pointer value", inner_ptr, addr);
+            let bits = inner_ptr.get_width();
             state.write(&addr, inner_ptr.clone())?; // make `addr` point to a pointer to the newly allocated memory
             let pointee_ty = ty.map(|ty| match ty {
                 Type::PointerType { pointee_type, .. } => &**pointee_type,
@@ -452,7 +457,8 @@ pub fn initialize_data_in_memory_rec(
                     panic!("Type mismatch: CompleteAbstractData specifies a pointer, but found type {:?}", ty)
                 },
             });
-            initialize_data_in_memory_rec(state, &inner_ptr, &**pointee, pointee_ty, cur_struct, parent, within_structs, ctx)
+            initialize_data_in_memory_rec(state, &inner_ptr, &**pointee, pointee_ty, cur_struct, parent, within_structs, ctx)?;
+            Ok(bits as usize)
         },
         CompleteAbstractData::PublicPointerToFunction(funcname) => {
             debug!("memory contents are marked as a public pointer to the function {:?}", funcname);
@@ -469,8 +475,9 @@ pub fn initialize_data_in_memory_rec(
                 .unwrap_or_else(|| { error_backtrace(&within_structs); panic!("Failed to find function {:?}", &funcname) })
                 .clone();
             debug!("setting the memory contents equal to {:?}", inner_ptr);
-            state.write(&addr, inner_ptr.clone())?; // make `addr` point to a pointer to the function
-            Ok(inner_ptr)
+            let bits = inner_ptr.get_width();
+            state.write(&addr, inner_ptr)?; // make `addr` point to a pointer to the function
+            Ok(bits as usize)
         }
         CompleteAbstractData::PublicPointerToHook(funcname) => {
             debug!("memory contents are marked as a public pointer to the active hook for function {:?}", funcname);
@@ -487,8 +494,9 @@ pub fn initialize_data_in_memory_rec(
                 .unwrap_or_else(|| { error_backtrace(&within_structs); panic!("Failed to find hook for function {:?}", &funcname) })
                 .clone();
             debug!("setting the memory contents equal to {:?}", inner_ptr);
-            state.write(&addr, inner_ptr.clone())?; // make `addr` point to a pointer to the hook
-            Ok(inner_ptr)
+            let bits = inner_ptr.get_width();
+            state.write(&addr, inner_ptr)?; // make `addr` point to a pointer to the hook
+            Ok(bits as usize)
         }
         CompleteAbstractData::PublicPointerToParent => {
             debug!("memory contents are marked as a public pointer to this struct's parent");
@@ -528,8 +536,9 @@ pub fn initialize_data_in_memory_rec(
                     };
                     // typecheck passed, write the pointer
                     debug!("setting the memory contents equal to {:?}", parent_ptr);
+                    let bits = parent_ptr.get_width();
                     state.write(&addr, parent_ptr.clone())?;
-                    Ok(parent_ptr.clone())
+                    Ok(bits as usize)
                 },
             }
         }
@@ -545,8 +554,7 @@ pub fn initialize_data_in_memory_rec(
                     },
                 };
             }
-            // return the BV representing those memory contents
-            state.read(&addr, AbstractData::POINTER_SIZE_BITS as u32)
+            Ok(AbstractData::POINTER_SIZE_BITS)
         },
         CompleteAbstractData::Array { element_type: element_abstractdata, num_elements } => {
             debug!("memory contents are marked as an array of {} elements", num_elements);
@@ -597,8 +605,7 @@ pub fn initialize_data_in_memory_rec(
                 CompleteAbstractData::PublicValue { bits, value: AbstractValue::Unconstrained } => {
                     // special-case this, as no initialization is necessary for the entire array
                     debug!("array contents are entirely public unconstrained bits");
-                    // return the BV representing those memory contents
-                    state.read(&addr, bits as u32)
+                    Ok(bits * *num_elements)
                 },
                 _ => {
                     // the general case. This would work in all cases, but would be slower than the optimized special-case above
@@ -614,16 +621,13 @@ pub fn initialize_data_in_memory_rec(
                         error_backtrace(&within_structs);
                         panic!("Array with 0 elements (and element type {:?})", element_type);
                     }
-                    let mut initialized_elements: Vec<secret::BV> = Vec::with_capacity(*num_elements);
                     for i in 0 .. *num_elements {
                         debug!("initializing element {} of the array", i);
                         let element_addr = addr.add(&secret::BV::from_u64(state.solver.clone(), (i*element_size_bytes) as u64, addr.get_width()));
-                        let bv = initialize_data_in_memory_rec(state, &element_addr, element_abstractdata, element_type, cur_struct, parent, within_structs.clone(), ctx)?;
-                        initialized_elements.push(bv);
+                        initialize_data_in_memory_rec(state, &element_addr, element_abstractdata, element_type, cur_struct, parent, within_structs.clone(), ctx)?;
                     }
                     debug!("done initializing the array at {:?}", addr);
-                    // return the BV representing those memory contents - this is the concatenation of all of the array elements
-                    Ok(initialized_elements.into_iter().reduce(|a,b| b.concat(&a)).expect("Array with 0 elements, which we should have caught above"))
+                    Ok(element_size_bits * *num_elements)
                 },
             }
         },
@@ -672,15 +676,8 @@ pub fn initialize_data_in_memory_rec(
                 error_backtrace(&within_structs);
                 panic!("Have {} struct elements but {} element types", elements.len(), element_types.len());
             }
-            if elements.len() == 0 {
-                // it might seem like we could just do nothing here, but
-                // actually there's no way to return the correct value
-                // (Boolector doesn't support 0-width BVs), so we have to panic
-                error_backtrace(&within_structs);
-                panic!("Struct with no elements: {}", name);
-            }
             within_structs.push(name.clone());
-            let mut initialized_elements: Vec<secret::BV> = Vec::with_capacity(elements.len());
+            let mut total_bits = 0;
             for (element_idx, (element, element_ty)) in elements.iter().zip(element_types).enumerate() {
                 let element_size_bits = element.size_in_bits();
                 if let Some(element_ty) = &element_ty {
@@ -688,7 +685,7 @@ pub fn initialize_data_in_memory_rec(
                     if llvm_element_size_bits != 0 {
                         if element_size_bits != llvm_element_size_bits {
                             error_backtrace(&within_structs);
-                            panic!( "CompleteAbstractData element size of {} bits does not match LLVM element size of {} bits", element_size_bits, llvm_element_size_bits);
+                            panic!("CompleteAbstractData element size of {} bits does not match LLVM element size of {} bits", element_size_bits, llvm_element_size_bits);
                         }
                     }
                 }
@@ -696,17 +693,20 @@ pub fn initialize_data_in_memory_rec(
                     error_backtrace(&within_structs);
                     panic!("Struct element size is not a multiple of 8 bits: {}", element_size_bits);
                 }
+                total_bits += element_size_bits;
                 let element_size_bytes = element_size_bits / 8;
                 debug!("initializing element {} of struct {}; element's address is {:?}", element_idx, name, &cur_addr);
                 let new_cur_struct = ty.map(|ty| (addr, ty));
                 let new_parent = cur_struct;
-                let bv = initialize_data_in_memory_rec(state, &cur_addr, element, element_ty.as_ref(), new_cur_struct, new_parent, within_structs.clone(), ctx)?;
-                initialized_elements.push(bv);
+                let bits = initialize_data_in_memory_rec(state, &cur_addr, element, element_ty.as_ref(), new_cur_struct, new_parent, within_structs.clone(), ctx)?;
+                if bits != element_size_bits {
+                    error_backtrace(&within_structs);
+                    panic!("Element {} of struct {} should be {} bits based on its type, but we seem to have initialized {} bits", element_idx, name, element_size_bits, bits);
+                }
                 cur_addr = cur_addr.add(&secret::BV::from_u64(state.solver.clone(), element_size_bytes as u64, addr.get_width()));
             }
             debug!("done initializing struct {} at {:?}", name, addr);
-            // return the BV representing those memory contents - this is the concatenation of all of the struct elements
-            Ok(initialized_elements.into_iter().reduce(|a,b| b.concat(&a)).expect("Struct with 0 elements, which we should have caught above"))
+            Ok(total_bits)
         }
         CompleteAbstractData::VoidOverride { llvm_struct_name, data } => {
             // first check that the type we're overriding is `i8`: LLVM seems to use `i8*` when C uses `void*`
