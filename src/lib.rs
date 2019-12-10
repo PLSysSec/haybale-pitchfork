@@ -96,7 +96,7 @@ pub fn check_for_ct_violation<'p>(
     info!("Checking function {:?} for ct violations", funcname);
     let mut em: ExecutionManager<secret::Backend> = symex_function(funcname, project, config);
 
-    debug!("Allocating memory for function parameters");
+    info!("Allocating memory for function parameters");
     let params = em.state().cur_loc.func.parameters.iter();
     let mut allocationctx = allocation::Context::new(project, sd);
     for (param, arg) in params.zip(args.into_iter()) {
