@@ -1,6 +1,7 @@
 mod abstractdata;
 pub use abstractdata::*;
 pub mod allocation;
+pub mod hook_helpers;
 pub mod secret;
 
 use haybale::{layout, symex_function, backend::Backend, ExecutionManager, State, ReturnValue};
