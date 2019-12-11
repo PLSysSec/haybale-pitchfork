@@ -1,8 +1,8 @@
 //! This module contains helper functions that may be useful in writing function hooks.
 
-use crate::secret;
+use crate::{allocation, secret, AbstractData, StructDescriptions};
 use either::Either;
-use haybale::{Error, Result, State};
+use haybale::{Error, Project, Result, State};
 use haybale::backend::*;
 use llvm_ir::*;
 
@@ -111,5 +111,25 @@ pub fn fill_secret_with_length(
     let secret_bytes = secret::BV::Secret { btor: state.solver.clone(), width: max_buffer_len_bytes * 8, symbol: Some(buffer_name) };
     state.write(&out_buffer, secret_bytes)?;
 
+    Ok(())
+}
+
+/// This helper function reinitializes whatever is pointed to by the given
+/// pointer, according to the given `AbstractData`.
+pub fn reinitialize_pointee(
+    proj: &Project,
+    state: &mut State<secret::Backend>,
+    pointer: &Operand,  // we'll reinitialize the [struct, array, whatever] that this points to
+    ad: AbstractData,  // `AbstractData` describing the _pointee_ (not the pointer) and how to reinitialize it
+    struct_descriptions: &StructDescriptions,
+) -> Result<()> {
+    let ptr = state.operand_to_bv(pointer)?;
+    let pointee_ty = match pointer.get_type() {
+        Type::PointerType { pointee_type, .. } => pointee_type,
+        ty => return Err(Error::OtherError(format!("reinitialize_pointee: expected `pointer` to be a pointer, got {:?}", ty))),
+    };
+    let ad = ad.to_complete(&pointee_ty, proj, struct_descriptions);
+    let mut allocationctx = allocation::Context::new(proj, struct_descriptions);
+    allocation::initialize_data_in_memory(state, &ptr, &ad, Some(&pointee_ty), None, None, &mut allocationctx)?;
     Ok(())
 }
