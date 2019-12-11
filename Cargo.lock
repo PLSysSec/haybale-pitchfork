@@ -152,6 +152,7 @@ name = "pitchfork"
 version = "0.1.0"
 dependencies = [
  "boolector",
+ "either",
  "env_logger",
  "haybale",
  "itertools",
