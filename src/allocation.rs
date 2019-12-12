@@ -9,6 +9,19 @@ use std::collections::HashMap;
 use std::collections::hash_map::Entry::*;
 use std::sync::{Arc, RwLock};
 
+/// Allocate the function parameters given in `params` with their corresponding `AbstractData` descriptions.
+///
+/// Returns a vector of the `secret::BV`s representing the parameters. Many callers won't need this, though.
+pub fn allocate_args<'p>(
+    proj: &'p Project,
+    state: &mut State<'p, secret::Backend>,
+    sd: &StructDescriptions,
+    params: impl IntoIterator<Item = (&'p function::Parameter, AbstractData)>,
+) -> Result<Vec<secret::BV>> {
+    let mut ctx = Context::new(proj, sd);
+    params.into_iter().map(|(param, arg)| allocate_arg(state, param, arg, &mut ctx)).collect()
+}
+
 /// This `Context` serves two purposes:
 /// first, simply collecting some objects together so we can pass them around as a unit;
 /// but second, allowing some state to persist across invocations of `allocate_arg`
@@ -30,7 +43,7 @@ impl<'a> Context<'a> {
 }
 
 /// Returns the `secret::BV` representing the argument. Many callers won't need this, though.
-pub fn allocate_arg<'p>(state: &mut State<'p, secret::Backend>, param: &'p function::Parameter, arg: AbstractData, ctx: &mut Context) -> Result<secret::BV> {
+fn allocate_arg<'p>(state: &mut State<'p, secret::Backend>, param: &'p function::Parameter, arg: AbstractData, ctx: &mut Context) -> Result<secret::BV> {
     debug!("Allocating function parameter {:?}", &param.name);
     let arg = arg.to_complete(&param.ty, &ctx.proj, &ctx.sd);
     let arg_size = arg.size_in_bits();

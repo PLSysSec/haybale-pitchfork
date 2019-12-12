@@ -99,10 +99,7 @@ pub fn check_for_ct_violation<'p>(
 
     info!("Allocating memory for function parameters");
     let params = em.state().cur_loc.func.parameters.iter();
-    let mut allocationctx = allocation::Context::new(project, sd);
-    for (param, arg) in params.zip(args.into_iter()) {
-        allocation::allocate_arg(em.mut_state(), &param, arg, &mut allocationctx).unwrap();
-    }
+    allocation::allocate_args(project, em.mut_state(), sd, params.zip(args.into_iter())).unwrap();
     debug!("Done allocating memory for function parameters");
 
     for path_result in em {
