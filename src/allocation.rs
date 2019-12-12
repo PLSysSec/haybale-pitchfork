@@ -514,12 +514,20 @@ pub fn initialize_data_in_memory_rec(
                                 // typecheck passes, do nothing
                             } else if let Type::NamedStructType { name, ty } = pointee_ty {
                                 // LLVM type is pointer to a named struct type, try unwrapping it and see if that makes the types equal
-                                let ty: Arc<RwLock<Type>> = ty
-                                    .as_ref()
-                                    .unwrap_or_else(|| { error_backtrace(&within_structs); panic!("CompleteAbstractData specifies pointer-to-parent, but found pointer to an opaque struct type") })
-                                    .upgrade()
-                                    .expect("Failed to upgrade weak reference");
-                                let actual_ty: &Type = &ty.read().unwrap();
+                                let arc: Arc<RwLock<Type>> = match &ty.as_ref() {
+                                    Some(ty) => ty.upgrade().expect("Failed to upgrade weak reference"),
+                                    None => {
+                                        // This is an opaque struct definition. Try to find a non-opaque definition for the same struct.
+                                        match ctx.proj.get_named_struct_type_by_name(name).unwrap_or_else(|| { error_backtrace(&within_structs); panic!("Struct name {:?} not found in the project", name) }) {
+                                            (Some(arc), _) => arc.clone(),
+                                            (None, _) => {
+                                                error_backtrace(&within_structs);
+                                                panic!("CompleteAbstractData specifies pointer-to-parent, but parent type (struct named {:?}) is fully opaque and has no definition in this Project", name);
+                                            },
+                                        }
+                                    },
+                                };
+                                let actual_ty: &Type = &arc.read().unwrap();
                                 if actual_ty == parent_ty {
                                     // typecheck passes, do nothing
                                 } else {
