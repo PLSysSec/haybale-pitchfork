@@ -1,7 +1,6 @@
 use haybale::{layout, Project};
 use llvm_ir::Type;
 use std::collections::{HashMap, HashSet};
-use std::sync::{Arc, RwLock};
 
 /// An abstract description of a value: if it is public or not, if it is a
 /// pointer or not, does it point to data that is public/secret, maybe it's a
@@ -51,6 +50,11 @@ pub enum CompleteAbstractData {
     /// you could use this for `Foo* parent` to indicate it should point to the
     /// `Foo` containing this `Bar`.
     PublicPointerToParent,
+
+    /// Like `PublicPointerToParent`, but if the parent is not the correct type
+    /// (or if there is no parent, i.e., we are directly initializing this)
+    /// then pointer to the given `CompleteAbstractData` instead
+    PublicPointerToParentOr(Box<CompleteAbstractData>),
 
     /// A (public) pointer which may point anywhere
     PublicUnconstrainedPointer,
@@ -143,6 +147,13 @@ impl CompleteAbstractData {
         Self::PublicPointerToParent
     }
 
+    /// Like `pub_pointer_to_parent()`, but if the parent is not the correct type
+    /// (or if there is no parent, i.e., we are directly initializing this) then
+    /// pointer to the given `CompleteAbstractData` instead
+    pub fn pub_pointer_to_parent_or(data: Self) -> Self {
+        Self::PublicPointerToParentOr(Box::new(data))
+    }
+
     /// A (first-class) array of values
     pub fn array_of(element_type: Self, num_elements: usize) -> Self {
         Self::Array { element_type: Box::new(element_type), num_elements }
@@ -188,6 +199,7 @@ impl CompleteAbstractData {
             Self::PublicPointerToFunction(_) => Self::POINTER_SIZE_BITS,
             Self::PublicPointerToHook(_) => Self::POINTER_SIZE_BITS,
             Self::PublicPointerToParent => Self::POINTER_SIZE_BITS,
+            Self::PublicPointerToParentOr(_) => Self::POINTER_SIZE_BITS,
             Self::PublicUnconstrainedPointer => Self::POINTER_SIZE_BITS,
             Self::Secret { bits } => *bits,
             Self::VoidOverride { data, .. } => data.size_in_bits(),
@@ -242,6 +254,11 @@ pub(crate) enum UnderspecifiedAbstractData {
 
     /// A (public) pointer to something underspecified
     PublicPointerTo(Box<AbstractData>),
+
+    /// Like `PublicPointerToParent`, but if the parent is not the correct type
+    /// (or if there is no parent, i.e., we are directly initializing this)
+    /// then pointer to the given `AbstractData` instead
+    PublicPointerToParentOr(Box<AbstractData>),
 
     /// an array with underspecified elements
     Array { element_type: Box<AbstractData>, num_elements: usize },
@@ -346,6 +363,13 @@ impl AbstractData {
         Self(UnderspecifiedAbstractData::Complete(CompleteAbstractData::PublicPointerToParent))
     }
 
+    /// Like `pub_pointer_to_parent()`, but if the parent is not the correct type
+    /// (or if there is no parent, i.e., we are directly initializing this)
+    /// then pointer to the given `AbstractData` instead
+    pub fn pub_pointer_to_parent_or(data: Self) -> Self {
+        Self(UnderspecifiedAbstractData::PublicPointerToParentOr(Box::new(data)))
+    }
+
     /// A (first-class) array of values
     pub fn array_of(element_type: Self, num_elements: usize) -> Self {
         Self(UnderspecifiedAbstractData::Array { element_type: Box::new(element_type), num_elements })
@@ -434,10 +458,10 @@ struct ToCompleteContext<'a, 'p> {
     /// `StructDescriptions` which we are working with
     sd: &'p StructDescriptions,
 
-    /// set of struct names we have encountered which were given
-    /// `UnderspecifiedAbstractData::Unspecified` and don't appear in `sd`. We
-    /// keep track of these only so we can detect infinite recursion and abort
-    /// with an appropriate error message.
+    /// set of struct names we are within which were given
+    /// `UnderspecifiedAbstractData::Unspecified` (whether they appear in `sd` or
+    /// not). We keep track of these only so we can detect infinite recursion and
+    /// abort with an appropriate error message.
     unspecified_named_structs: HashSet<&'a String>,
 
     /// Name of the struct we are currently within (and the struct that is
@@ -517,6 +541,17 @@ impl UnderspecifiedAbstractData {
                     panic!("Type mismatch: AbstractData::PublicPointerTo but LLVM type is {:?}", ty);
                 },
             },
+            Self::PublicPointerToParentOr(ad) => {
+                let pointee_ty: Option<&Type> = match ty {
+                    Some(Type::PointerType { pointee_type, .. }) => Some(pointee_type),
+                    Some(ty) => {
+                        ctx.error_backtrace();
+                        panic!("Type mismatch: AbstractData::PublicPointerToParentOr but LLVM type is not a pointer: {:?}", ty);
+                    },
+                    None => None,
+                };
+                CompleteAbstractData::PublicPointerToParentOr(Box::new(ad.to_complete_rec(pointee_ty, ctx)))
+            },
             Self::Array { element_type, num_elements } => match ty {
                 Some(Type::ArrayType { element_type: llvm_element_type, num_elements: llvm_num_elements })
                 | Some(Type::VectorType { element_type: llvm_element_type, num_elements: llvm_num_elements }) => {
@@ -533,16 +568,8 @@ impl UnderspecifiedAbstractData {
                 },
             }
             Self::Struct { elements, name } => match ty {
-                Some(Type::NamedStructType { name: llvm_struct_name, ty }) => {
-                    let arc: Option<Arc<RwLock<Type>>> = match &ty.as_ref() {
-                        Some(ty) => Some(ty.upgrade().expect("Failed to upgrade weak reference")),
-                        None => {
-                            // This is an opaque struct definition. Try to find a non-opaque definition for the same struct.
-                            let (ty, _) = ctx.proj.get_named_struct_type_by_name(&llvm_struct_name).unwrap_or_else(|| { ctx.error_backtrace(); panic!("Struct name {:?} (LLVM name {:?}) not found in the project", name, llvm_struct_name) });
-                            ty.clone()
-                        },
-                    };
-                    match arc {
+                Some(ty@Type::NamedStructType { .. }) => {
+                    match ctx.proj.get_inner_struct_type_from_named(ty) {
                         Some(arc) => {
                             let actual_ty: &Type = &arc.read().unwrap();
                             Self::Struct { elements, name }.to_complete_rec(Some(actual_ty), ctx)
@@ -554,7 +581,7 @@ impl UnderspecifiedAbstractData {
                     ctx.within_structs.push(name.clone());
                     if elements.len() != element_types.len() {
                         ctx.error_backtrace();
-                        panic!("Type mismatch: AbstractData::Struct with {} elements, but LLVM type has {} elements", elements.len(), element_types.len());
+                        panic!("Type mismatch: AbstractData::Struct with {} elements, but LLVM type has {} elements: {:?}", elements.len(), element_types.len(), element_types);
                     }
                     CompleteAbstractData::Struct { name, elements:
                         elements.into_iter()
@@ -601,15 +628,12 @@ impl UnderspecifiedAbstractData {
                             element_type: Box::new(Self::Unspecified.to_complete_rec(Some(element_type), ctx)),
                             num_elements: if *num_elements == 0 { AbstractData::DEFAULT_ARRAY_LENGTH } else { *num_elements },
                         },
-                    Type::NamedStructType { ty, name } => {
-                        let arc: Option<Arc<RwLock<Type>>> = match &ty.as_ref() {
-                            Some(ty) => Some(ty.upgrade().expect("Failed to upgrade weak reference")),
-                            None => {
-                                // This is an opaque struct definition. Try to find a non-opaque definition for the same struct.
-                                let (ty, _) = ctx.proj.get_named_struct_type_by_name(&name).unwrap_or_else(|| { ctx.error_backtrace(); panic!("Struct name {:?} not found in the project", name) });
-                                ty.as_ref().map(|arc| arc.clone())
-                            },
-                        };
+                    Type::NamedStructType { name, .. } => {
+                        if !ctx.unspecified_named_structs.insert(name) {
+                            ctx.error_backtrace();
+                            panic!("Attempt to initialize recursive struct {:?}", name)
+                        }
+                        let arc = ctx.proj.get_inner_struct_type_from_named(ty);
                         match ctx.sd.get(name) {
                             Some(abstractdata) => {
                                 // This is in the StructDescriptions, so use the description there
@@ -625,14 +649,9 @@ impl UnderspecifiedAbstractData {
                             None => match arc {
                                 Some(arc) => {
                                     // We have an LLVM struct definition, so use that
-                                    if ctx.unspecified_named_structs.insert(name) {
-                                        ctx.within_structs.push(name.clone());
-                                        let inner_ty: &Type = &arc.read().unwrap();
-                                        self.to_complete_rec(Some(inner_ty), ctx)
-                                    } else {
-                                        ctx.error_backtrace();
-                                        panic!("AbstractData::default() applied to recursive struct {:?}", name)
-                                    }
+                                    ctx.within_structs.push(name.clone());
+                                    let inner_ty: &Type = &arc.read().unwrap();
+                                    self.to_complete_rec(Some(inner_ty), ctx)
                                 },
                                 None => {
                                     // all definitions of the struct in the project are opaque, and it isn't in the StructDescriptions

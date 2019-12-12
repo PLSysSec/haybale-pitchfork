@@ -180,6 +180,7 @@ pub fn allocate_arg<'p>(state: &mut State<'p, secret::Backend>, param: &'p funct
             Ok(ptr)
         }
         CompleteAbstractData::PublicPointerToParent => panic!("Pointer-to-parent is not supported for toplevel parameter; we have no way to know what struct it is contained in"),
+        CompleteAbstractData::PublicPointerToParentOr(_) => panic!("Pointer-to-parent is not supported for toplevel parameter; we have no way to know what struct it is contained in"),
         CompleteAbstractData::PublicUnconstrainedPointer => {
             debug!("Parameter is marked as a public unconstrained pointer");
             // nothing to do, just check that the type matches
@@ -512,21 +513,12 @@ pub fn initialize_data_in_memory_rec(
                             let pointee_ty = &**pointee_type;
                             if pointee_ty == parent_ty {
                                 // typecheck passes, do nothing
-                            } else if let Type::NamedStructType { name, ty } = pointee_ty {
+                            } else if let Type::NamedStructType { name, .. } = pointee_ty {
                                 // LLVM type is pointer to a named struct type, try unwrapping it and see if that makes the types equal
-                                let arc: Arc<RwLock<Type>> = match &ty.as_ref() {
-                                    Some(ty) => ty.upgrade().expect("Failed to upgrade weak reference"),
-                                    None => {
-                                        // This is an opaque struct definition. Try to find a non-opaque definition for the same struct.
-                                        match ctx.proj.get_named_struct_type_by_name(name).unwrap_or_else(|| { error_backtrace(&within_structs); panic!("Struct name {:?} not found in the project", name) }) {
-                                            (Some(arc), _) => arc.clone(),
-                                            (None, _) => {
-                                                error_backtrace(&within_structs);
-                                                panic!("CompleteAbstractData specifies pointer-to-parent, but parent type (struct named {:?}) is fully opaque and has no definition in this Project", name);
-                                            },
-                                        }
-                                    },
-                                };
+                                let arc = ctx.proj.get_inner_struct_type_from_named(pointee_ty).unwrap_or_else(|| {
+                                    error_backtrace(&within_structs);
+                                    panic!("CompleteAbstractData specifies pointer-to-parent, but parent type (struct named {:?}) is fully opaque and has no definition in this Project", name);
+                                });
                                 let actual_ty: &Type = &arc.read().unwrap();
                                 if actual_ty == parent_ty {
                                     // typecheck passes, do nothing
@@ -534,6 +526,9 @@ pub fn initialize_data_in_memory_rec(
                                     error_backtrace(&within_structs);
                                     panic!("Type mismatch: CompleteAbstractData specifies pointer-to-parent, but found pointer to a different type.\n  Parent type: {:?}\n  Found type: struct named {:?}: {:?}\n", parent_ty, name, actual_ty);
                                 }
+                            } else {
+                                error_backtrace(&within_structs);
+                                panic!("Type mismatch: CompleteAbstractData specifies pointer-to-parent, but found pointer to a different type.\n  Parent type: {:?}\n  Found type: {:?}\n", parent_ty, pointee_ty);
                             }
                         },
                         Some(_) => {
@@ -550,6 +545,55 @@ pub fn initialize_data_in_memory_rec(
                 },
             }
         }
+        CompleteAbstractData::PublicPointerToParentOr(pointee) => {
+            // this parent_ptr will be None if the parent type mismatches
+            let parent_ptr: Option<_> = match parent {
+                None => None,  // no parent, so it's not the correct type; we'll use the `pointee` data
+                Some((parent_ptr, parent_ty)) => match ty {
+                    Some(Type::PointerType { pointee_type, .. }) => {
+                        let pointee_ty = &**pointee_type;
+                        if pointee_ty == parent_ty {
+                            Some(parent_ptr)
+                        } else if let Type::NamedStructType { name, .. } = pointee_ty {
+                            // LLVM type is pointer to a named struct type, try unwrapping it and see if that makes the types equal
+                            let arc = ctx.proj.get_inner_struct_type_from_named(pointee_ty).unwrap_or_else(|| {
+                                error_backtrace(&within_structs);
+                                panic!("CompleteAbstractData specifies pointer-to-parent, but parent type (struct named {:?}) is fully opaque and has no definition in this Project", name);
+                            });
+                            let actual_ty: &Type = &arc.read().unwrap();
+                            if actual_ty == parent_ty {
+                                Some(parent_ptr)
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        }
+                    },
+                    Some(ty) => {
+                        error_backtrace(&within_structs);
+                        panic!("Type mismatch: CompleteAbstractData specifies a pointer, but found type {:?}", ty)
+                    },
+                    None => {
+                        error_backtrace(&within_structs);
+                        panic!("CompleteAbstractData specifies public-pointer-to-parent-or, but since we don't know the current LLVM type, we can't determine whether the parent type matches or not")
+                    },
+                },
+            };
+            match parent_ptr {
+                Some(parent_ptr) => {
+                    debug!("memory contents are marked as a public pointer to this struct's parent");
+                    debug!("setting the memory contents equal to {:?}", parent_ptr);
+                    let bits = parent_ptr.get_width();
+                    state.write(&addr, parent_ptr.clone())?;
+                    Ok(bits as usize)
+                },
+                None => {
+                    debug!("memory contents are marked as public-pointer-to-parent with a backup; since parent type doesn't match, using the backup");
+                    initialize_data_in_memory_rec(state, addr, &CompleteAbstractData::PublicPointerTo(pointee.to_owned()), ty, cur_struct, parent, within_structs, ctx)
+                },
+            }
+        },
         CompleteAbstractData::PublicUnconstrainedPointer => {
             debug!("memory contents are marked as a public unconstrained pointer");
             // nothing to do, just check that the type matches
@@ -645,16 +689,8 @@ pub fn initialize_data_in_memory_rec(
             let element_types = match ty {
                 Some(ty) => match ty {
                     Type::StructType { element_types, .. } => element_types.iter().cloned().map(Some).collect::<Vec<_>>(),
-                    Type::NamedStructType { ty, name: llvm_struct_name } => {
-                        let arc: Option<Arc<RwLock<Type>>> = match &ty.as_ref() {
-                            Some(weak) => Some(weak.upgrade().expect("Failed to upgrade weak reference")),
-                            None => {
-                                // This is an opaque struct definition. Try to find a non-opaque definition for the same struct.
-                                let (ty, _) = ctx.proj.get_named_struct_type_by_name(&llvm_struct_name).unwrap_or_else(|| panic!("Struct name {:?} (LLVM name {:?}) not found in the project", name, llvm_struct_name));
-                                ty.clone()
-                            },
-                        };
-                        match arc {
+                    Type::NamedStructType { .. } => {
+                        match ctx.proj.get_inner_struct_type_from_named(ty) {
                             Some(arc) => {
                                 let actual_ty: &Type = &arc.read().unwrap();
                                 match actual_ty {
