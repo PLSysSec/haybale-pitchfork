@@ -11,7 +11,7 @@ use haybale::{Error, Result};
 pub use haybale::{Config, Project};
 use llvm_ir::instruction;
 use log::{debug, info};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 /// Is a function "constant-time" in its inputs. That is, does the function ever
 /// make branching decisions, or perform address calculations, based on its inputs.
@@ -53,8 +53,10 @@ pub fn is_constant_time<'p>(
 
 pub enum ConstantTimeResult {
     IsConstantTime {
-        /// block-coverage statistics
-        block_coverage: BlockCoverage,
+        /// Map from function names to statistics on the block coverage of those
+        /// functions. Functions not appearing in the map were not encountered on
+        /// any path, or were hooked.
+        block_coverage: HashMap<String, BlockCoverage>,
     },
     NotConstantTime {
         /// A `String` describing the violation. (If there is more than one
@@ -142,8 +144,8 @@ pub fn check_for_ct_violation<'p>(
     // If we reach this point, then no paths had ct violations
     info!("Done checking function {:?}; no ct violations found", funcname);
 
-    let block_coverage = BlockCoverage::new(project, &blocks_seen);
-    info!("Block coverage of toplevel function ({:?}): {:.1}%", funcname, 100.0 * block_coverage.0.get(funcname).unwrap());
+    let block_coverage = compute_coverage_stats(project, &blocks_seen);
+    info!("Block coverage of toplevel function ({:?}): {:.1}%", funcname, 100.0 * block_coverage.get(funcname).unwrap().percentage);
 
     ConstantTimeResult::IsConstantTime { block_coverage }
 }
