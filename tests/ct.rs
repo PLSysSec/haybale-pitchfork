@@ -23,20 +23,23 @@ fn iterator_length_three<I>(a: I, b: I, c: I) -> impl IntoIterator<Item = I> {
     std::iter::once(a).chain(std::iter::once(b)).chain(std::iter::once(c))
 }
 
-fn assert_no_ct_violation(violation: Option<String>) {
-    assert!(violation.is_none(), "{}", violation.unwrap());
+fn assert_no_ct_violation(res: ConstantTimeResult) {
+    match res {
+        ConstantTimeResult::IsConstantTime { .. } => {},  // pass
+        ConstantTimeResult::NotConstantTime { violation_message } =>
+            panic!("Expected no ct violation, but found one:\n  {}", violation_message),
+        ConstantTimeResult::OtherError { error_message } =>
+            panic!("Received this error:\n  {}", error_message),
+    }
 }
 
-fn assert_is_ct_violation(violation: Option<String>) {
-    match violation {
-        None => panic!("Expected a ct violation but didn't get one"),
-        Some(violation) => {
-            if violation.contains("Constant-time violation:") {
-                // pass
-            } else {
-                panic!("Expected a ct violation but got a different error:\n  {}", violation)
-            }
-        }
+fn assert_is_ct_violation(res: ConstantTimeResult) {
+    match res {
+        ConstantTimeResult::NotConstantTime { .. } => {},  // pass
+        ConstantTimeResult::IsConstantTime { .. } =>
+            panic!("Expected a ct violation but didn't get one"),
+        ConstantTimeResult::OtherError { error_message } =>
+            panic!("Expected a ct violation but got a different error:\n  {}", error_message),
     }
 }
 

@@ -1,6 +1,8 @@
 mod abstractdata;
 pub use abstractdata::*;
 pub mod allocation;
+mod coverage;
+use coverage::*;
 pub mod hook_helpers;
 pub mod secret;
 
@@ -20,7 +22,10 @@ pub fn is_constant_time_in_inputs<'p>(
     project: &'p Project,
     config: Config<'p, secret::Backend>
 ) -> bool {
-    check_for_ct_violation_in_inputs(funcname, project, config).is_none()
+    match check_for_ct_violation_in_inputs(funcname, project, config) {
+        ConstantTimeResult::IsConstantTime { .. } => true,
+        _ => false,
+    }
 }
 
 /// Is a function "constant-time" in the secrets identified by the `args` data
@@ -40,7 +45,26 @@ pub fn is_constant_time<'p>(
     sd: &StructDescriptions,
     config: Config<'p, secret::Backend>
 ) -> bool {
-    check_for_ct_violation(funcname, project, args, sd, config, false).is_none()
+    match check_for_ct_violation(funcname, project, args, sd, config, false) {
+        ConstantTimeResult::IsConstantTime { .. } => true,
+        _ => false,
+    }
+}
+
+pub enum ConstantTimeResult {
+    IsConstantTime {
+        /// block-coverage statistics
+        block_coverage: BlockCoverage,
+    },
+    NotConstantTime {
+        /// A `String` describing the violation. (If there is more than one
+        /// violation, this will simply be the first violation found.)
+        violation_message: String,
+    },
+    OtherError {
+        /// A `String` describing the error
+        error_message: String,
+    },
 }
 
 /// Checks whether a function is "constant-time" in its inputs. That is, does the
@@ -48,15 +72,11 @@ pub fn is_constant_time<'p>(
 /// on its inputs.
 ///
 /// For argument descriptions, see `is_constant_time_in_inputs()`.
-///
-/// If the function is constant-time, this returns `None`. Otherwise, it returns
-/// a `String` describing the violation. (If there is more than one violation,
-/// this will simply return the first violation it finds.)
 pub fn check_for_ct_violation_in_inputs<'p>(
     funcname: &str,
     project: &'p Project,
     config: Config<'p, secret::Backend>
-) -> Option<String> {
+) -> ConstantTimeResult {
     let (func, _) = project.get_func_by_name(funcname).expect("Failed to find function");
     let args = func.parameters.iter().map(|p| AbstractData::sec_integer(layout::size(&p.ty)));
     check_for_ct_violation(funcname, project, args, &StructDescriptions::new(), config, false)
@@ -79,10 +99,6 @@ pub fn check_for_ct_violation_in_inputs<'p>(
 /// in the future.
 ///
 /// Other arguments are the same as for `is_constant_time_in_inputs()` above.
-///
-/// If the function is constant-time, this returns `None`. Otherwise, it returns
-/// a `String` describing the violation. (If there is more than one violation,
-/// this will simply return the first violation it finds.)
 pub fn check_for_ct_violation<'p>(
     funcname: &str,
     project: &'p Project,
@@ -90,7 +106,7 @@ pub fn check_for_ct_violation<'p>(
     sd: &StructDescriptions,
     mut config: Config<'p, secret::Backend>,
     rev: bool,
-) -> Option<String> {
+) -> ConstantTimeResult {
     if !config.function_hooks.is_hooked("hook_uninitialized_function_pointer") {
         config.function_hooks.add("hook_uninitialized_function_pointer", &hook_uninitialized_function_pointer);
     }
@@ -110,16 +126,26 @@ pub fn check_for_ct_violation<'p>(
     allocation::allocate_args(project, em.mut_state(), sd, params.zip(args.into_iter()), rev).unwrap();
     debug!("Done allocating memory for function parameters");
 
-    for path_result in em {
-        match path_result {
-            Ok(_) => info!("Finished a path"),
-            Err(s) => return Some(s),
+    let mut blocks_seen = BlocksSeen::new();
+    loop {
+        match em.next() {
+            Some(Ok(_)) => {
+                info!("Finished a path");
+                blocks_seen.update_with_current_path(&em);
+            },
+            Some(Err(s)) if s.contains("Constant-time violation:") => return ConstantTimeResult::NotConstantTime { violation_message: s },
+            Some(Err(s)) => return ConstantTimeResult::OtherError { error_message: s },
+            None => break,
         }
     }
 
     // If we reach this point, then no paths had ct violations
     info!("Done checking function {:?}; no ct violations found", funcname);
-    None
+
+    let block_coverage = BlockCoverage::new(project, &blocks_seen);
+    info!("Block coverage of toplevel function ({:?}): {:.1}%", funcname, 100.0 * block_coverage.0.get(funcname).unwrap());
+
+    ConstantTimeResult::IsConstantTime { block_coverage }
 }
 
 fn hook_uninitialized_function_pointer<B: Backend>(
