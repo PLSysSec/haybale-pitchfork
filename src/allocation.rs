@@ -77,7 +77,7 @@ fn allocate_arg<'p>(state: &mut State<'p, secret::Backend>, param: &'p function:
             state.operand_to_bv(&op)
         },
         CompleteAbstractData::PublicValue { bits, value: AbstractValue::Named { name, value } } => {
-            let unwrapped_arg = AbstractData(UnderspecifiedAbstractData::Complete(CompleteAbstractData::PublicValue { bits, value: *value }));
+            let unwrapped_arg = AbstractData(UnderspecifiedAbstractData::Complete(CompleteAbstractData::pub_integer(bits, *value)));
             let bv = allocate_arg(state, param, unwrapped_arg, ctx)?;
             match ctx.namedvals.entry(name.to_owned()) {
                 Vacant(v) => {
@@ -315,7 +315,7 @@ pub fn initialize_data_in_memory_rec(
             Ok(*bits)
         },
         CompleteAbstractData::PublicValue { bits, value: AbstractValue::Named { name, value } } => {
-            let unwrapped_data = CompleteAbstractData::PublicValue { bits: *bits, value: (**value).clone() };
+            let unwrapped_data = CompleteAbstractData::pub_integer(*bits, (**value).clone());
             let initialized_bits = initialize_data_in_memory_rec(state, addr, &unwrapped_data, ty, cur_struct, parent, within_structs.clone(), ctx)?;
             if *bits != initialized_bits {
                 error_backtrace(&within_structs);
@@ -603,7 +603,7 @@ pub fn initialize_data_in_memory_rec(
                 },
                 None => {
                     debug!("memory contents are marked as public-pointer-to-parent with a backup; since parent type doesn't match, using the backup");
-                    initialize_data_in_memory_rec(state, addr, &CompleteAbstractData::PublicPointerTo(pointee.to_owned()), ty, cur_struct, parent, within_structs, ctx)
+                    initialize_data_in_memory_rec(state, addr, &CompleteAbstractData::pub_pointer_to((**pointee).to_owned()), ty, cur_struct, parent, within_structs, ctx)
                 },
             }
         },
@@ -665,7 +665,7 @@ pub fn initialize_data_in_memory_rec(
                     // special-case this, as we can initialize with one big write
                     let array_size_bits = element_size_bits * *num_elements;
                     debug!("initializing the entire array as {} secret bits", array_size_bits);
-                    initialize_data_in_memory_rec(state, &addr, &CompleteAbstractData::Secret { bits: array_size_bits }, ty, cur_struct, parent, within_structs, ctx)
+                    initialize_data_in_memory_rec(state, &addr, &CompleteAbstractData::sec_integer(array_size_bits), ty, cur_struct, parent, within_structs, ctx)
                 },
                 CompleteAbstractData::PublicValue { bits, value: AbstractValue::Unconstrained } => {
                     // special-case this, as no initialization is necessary for the entire array
