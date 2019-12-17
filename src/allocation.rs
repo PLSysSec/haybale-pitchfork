@@ -156,10 +156,17 @@ fn allocate_arg<'p>(state: &mut State<'p, secret::Backend>, param: &'p function:
                 }
             }
         }
-        CompleteAbstractData::PublicPointerTo(pointee) => {
-            debug!("Parameter is marked as a public pointer");
+        CompleteAbstractData::PublicPointerTo { pointee, maybe_null } => {
+            debug!("Parameter is marked as a public pointer which {} be null", if maybe_null { "may" } else { "cannot" });
             let ptr = state.allocate(pointee.size_in_bits() as u64);
             debug!("Allocated the parameter at {:?}", ptr);
+            let ptr = if maybe_null {
+                let ptr_width = ptr.get_width();
+                let condition = state.new_bv_with_name(Name::from("pointer_is_null"), 1)?;
+                condition.cond_bv(&secret::BV::zero(state.solver.clone(), ptr_width), &ptr)
+            } else {
+                ptr
+            };
             state.overwrite_latest_version_of_bv(&param.name, ptr.clone());
             let pointee_ty = match &param.ty {
                 Type::PointerType { pointee_type, .. } => pointee_type,
@@ -458,12 +465,10 @@ pub fn initialize_data_in_memory_rec(
                 }
             }
         }
-        CompleteAbstractData::PublicPointerTo(pointee) => {
-            debug!("memory contents are marked as a public pointer");
-            let inner_ptr = state.allocate(pointee.size_in_bits() as u64);
-            debug!("allocated memory for the pointee at {:?}, and will constrain the memory contents at {:?} to have that pointer value", inner_ptr, addr);
-            let bits = inner_ptr.get_width();
-            state.write(&addr, inner_ptr.clone())?; // make `addr` point to a pointer to the newly allocated memory
+        CompleteAbstractData::PublicPointerTo { pointee, maybe_null } => {
+            debug!("memory contents are marked as a public pointer which {} be null", if *maybe_null { "may" } else { "cannot"});
+
+            // type-check
             let pointee_ty = ty.map(|ty| match ty {
                 Type::PointerType { pointee_type, .. } => &**pointee_type,
                 _ => {
@@ -471,7 +476,24 @@ pub fn initialize_data_in_memory_rec(
                     panic!("Type mismatch: CompleteAbstractData specifies a pointer, but found type {:?}", ty)
                 },
             });
+
+            // allocate memory for the pointee
+            let inner_ptr = state.allocate(pointee.size_in_bits() as u64);
+            debug!("allocated memory for the pointee at {:?}, and will constrain the memory contents at {:?} to have that pointer value{}", inner_ptr, addr, if *maybe_null { " or null" } else { "" });
+
+            // make `addr` point to a pointer to the newly allocated memory (or point to NULL if appropriate)
+            let bits = inner_ptr.get_width();
+            let inner_ptr = if *maybe_null {
+                let condition = state.new_bv_with_name(Name::from("pointer_is_null"), 1)?;
+                condition.cond_bv(&secret::BV::zero(state.solver.clone(), bits), &inner_ptr)
+            } else {
+                inner_ptr
+            };
+            state.write(&addr, inner_ptr.clone())?;
+
+            // initialize the pointee
             initialize_data_in_memory_rec(state, &inner_ptr, &**pointee, pointee_ty, cur_struct, parent, within_structs, ctx)?;
+
             Ok(bits as usize)
         },
         CompleteAbstractData::PublicPointerToFunction(funcname) => {

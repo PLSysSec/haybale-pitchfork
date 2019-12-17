@@ -170,6 +170,32 @@ fn notct_struct() {
     assert_is_ct_violation(violation);
 }
 
+#[test]
+fn notct_maybenull_null() {
+    init_logging();
+    let project = get_project();
+    let args = iterator_length_three(
+        AbstractData::pub_pointer_to(AbstractData::array_of(AbstractData::pub_i32(AbstractValue::Unconstrained), 100)),
+        AbstractData::pub_maybe_null_pointer_to(AbstractData::array_of(AbstractData::pub_i32(AbstractValue::Unconstrained), 100)),
+        AbstractData::pub_pointer_to(struct_partially_secret()),
+    );
+    let violation = check_for_ct_violation("notct_maybenull_null", &project, args, &StructDescriptions::new(), Config::default());
+    assert_is_ct_violation(violation);
+}
+
+#[test]
+fn notct_maybenull_notnull() {
+    init_logging();
+    let project = get_project();
+    let args = iterator_length_three(
+        AbstractData::pub_pointer_to(AbstractData::array_of(AbstractData::pub_i32(AbstractValue::Unconstrained), 100)),
+        AbstractData::pub_maybe_null_pointer_to(AbstractData::array_of(AbstractData::pub_i32(AbstractValue::Unconstrained), 100)),
+        AbstractData::pub_pointer_to(struct_partially_secret()),
+    );
+    let violation = check_for_ct_violation("notct_maybenull_notnull", &project, args, &StructDescriptions::new(), Config::default());
+    assert_is_ct_violation(violation);
+}
+
 fn ptr_to_ptr_to_secrets() -> AbstractData {
     AbstractData::pub_pointer_to(AbstractData::array_of(
         AbstractData::pub_pointer_to(AbstractData::array_of(AbstractData::sec_i32(), 30)),

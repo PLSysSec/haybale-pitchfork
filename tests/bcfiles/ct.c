@@ -77,6 +77,24 @@ int notct_struct(int* publicarr, struct PartiallySecret* ps) {
   return publicarr[ps->secret] + ps->notsecret;
 }
 
+// not constant-time, on the path where `maybenull` is NULL
+int notct_maybenull_null(int* publicarr, int* maybenull, struct PartiallySecret* ps) {
+  if (!maybenull) {
+    return publicarr[ps->secret];
+  } else {
+    return publicarr[ps->notsecret];
+  }
+}
+
+// not constant-time, on the path where `maybenull` is not NULL
+int notct_maybenull_notnull(int* publicarr, int* maybenull, struct PartiallySecret* ps) {
+  if (maybenull) {
+    return maybenull[ps->secret];
+  } else {
+    return publicarr[ps->notsecret];
+  }
+}
+
 // pointer to pointer to secret
 int ct_doubleptr(int** secretarrs) {
   return secretarrs[2][5] + 3;

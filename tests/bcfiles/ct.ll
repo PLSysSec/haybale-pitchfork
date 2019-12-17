@@ -180,6 +180,33 @@ define i32 @notct_struct(i32* nocapture readonly, %struct.PartiallySecret* nocap
 }
 
 ; Function Attrs: norecurse nounwind readonly ssp uwtable
+define i32 @notct_maybenull_null(i32* nocapture readonly, i32* readnone, %struct.PartiallySecret* nocapture readonly) local_unnamed_addr #3 {
+  %4 = icmp eq i32* %1, null
+  %5 = getelementptr inbounds %struct.PartiallySecret, %struct.PartiallySecret* %2, i64 0, i32 0
+  %6 = getelementptr inbounds %struct.PartiallySecret, %struct.PartiallySecret* %2, i64 0, i32 1
+  %7 = select i1 %4, i32* %6, i32* %5
+  %8 = load i32, i32* %7, align 4, !tbaa !3
+  %9 = sext i32 %8 to i64
+  %10 = getelementptr inbounds i32, i32* %0, i64 %9
+  %11 = load i32, i32* %10, align 4, !tbaa !3
+  ret i32 %11
+}
+
+; Function Attrs: norecurse nounwind readonly ssp uwtable
+define i32 @notct_maybenull_notnull(i32* nocapture readonly, i32* readonly, %struct.PartiallySecret* nocapture readonly) local_unnamed_addr #3 {
+  %4 = icmp eq i32* %1, null
+  %5 = getelementptr inbounds %struct.PartiallySecret, %struct.PartiallySecret* %2, i64 0, i32 0
+  %6 = getelementptr inbounds %struct.PartiallySecret, %struct.PartiallySecret* %2, i64 0, i32 1
+  %7 = select i1 %4, i32* %5, i32* %6
+  %8 = select i1 %4, i32* %0, i32* %1
+  %9 = load i32, i32* %7, align 4, !tbaa !3
+  %10 = sext i32 %9 to i64
+  %11 = getelementptr inbounds i32, i32* %8, i64 %10
+  %12 = load i32, i32* %11, align 4, !tbaa !3
+  ret i32 %12
+}
+
+; Function Attrs: norecurse nounwind readonly ssp uwtable
 define i32 @ct_doubleptr(i32** nocapture readonly) local_unnamed_addr #3 {
   %2 = getelementptr inbounds i32*, i32** %0, i64 2
   %3 = load i32*, i32** %2, align 8, !tbaa !10
@@ -260,15 +287,15 @@ define i32 @indirectly_recursive_struct(i32* nocapture readonly, %struct.Parent*
 
 ; Function Attrs: nounwind readnone ssp uwtable
 define i32 @related_args(i32, i32, i32) local_unnamed_addr #4 {
-  %4 = alloca [100 x i32], align 16
-  %5 = bitcast [100 x i32]* %4 to i8*
-  call void @llvm.lifetime.start.p0i8(i64 400, i8* nonnull %5) #6
-  %6 = icmp ult i32 %0, 100
+  %4 = alloca [20 x i32], align 16
+  %5 = bitcast [20 x i32]* %4 to i8*
+  call void @llvm.lifetime.start.p0i8(i64 80, i8* nonnull %5) #6
+  %6 = icmp ult i32 %0, 20
   br i1 %6, label %7, label %44
 
 ; <label>:7:                                      ; preds = %3
   %8 = zext i32 %0 to i64
-  %9 = sub nsw i64 100, %8
+  %9 = sub nsw i64 20, %8
   %10 = icmp ult i64 %9, 8
   br i1 %10, label %11, label %13
 
@@ -291,7 +318,7 @@ define i32 @related_args(i32, i32, i32) local_unnamed_addr #4 {
 ; <label>:23:                                     ; preds = %23, %13
   %24 = phi i64 [ 0, %13 ], [ %30, %23 ]
   %25 = add i64 %24, %8
-  %26 = getelementptr inbounds [100 x i32], [100 x i32]* %4, i64 0, i64 %25
+  %26 = getelementptr inbounds [20 x i32], [20 x i32]* %4, i64 0, i64 %25
   %27 = bitcast i32* %26 to <4 x i32>*
   store <4 x i32> %20, <4 x i32>* %27, align 4, !tbaa !3
   %28 = getelementptr inbounds i32, i32* %26, i64 4
@@ -307,21 +334,21 @@ define i32 @related_args(i32, i32, i32) local_unnamed_addr #4 {
 
 ; <label>:34:                                     ; preds = %39, %32
   %35 = zext i32 %1 to i64
-  %36 = getelementptr inbounds [100 x i32], [100 x i32]* %4, i64 0, i64 %35
+  %36 = getelementptr inbounds [20 x i32], [20 x i32]* %4, i64 0, i64 %35
   %37 = load i32, i32* %36, align 4, !tbaa !3
   %38 = icmp eq i32 %37, 0
   br i1 %38, label %50, label %44
 
 ; <label>:39:                                     ; preds = %11, %39
   %40 = phi i64 [ %42, %39 ], [ %12, %11 ]
-  %41 = getelementptr inbounds [100 x i32], [100 x i32]* %4, i64 0, i64 %40
+  %41 = getelementptr inbounds [20 x i32], [20 x i32]* %4, i64 0, i64 %40
   store i32 %2, i32* %41, align 4, !tbaa !3
   %42 = add nuw nsw i64 %40, 1
-  %43 = icmp eq i64 %42, 100
+  %43 = icmp eq i64 %42, 20
   br i1 %43, label %34, label %39, !llvm.loop !19
 
 ; <label>:44:                                     ; preds = %3, %34
-  %45 = getelementptr inbounds [100 x i32], [100 x i32]* %4, i64 0, i64 0
+  %45 = getelementptr inbounds [20 x i32], [20 x i32]* %4, i64 0, i64 0
   %46 = load i32, i32* %45, align 16, !tbaa !3
   %47 = mul nsw i32 %46, 33
   %48 = add i32 %1, %0
@@ -330,25 +357,25 @@ define i32 @related_args(i32, i32, i32) local_unnamed_addr #4 {
 
 ; <label>:50:                                     ; preds = %34, %44
   %51 = phi i32 [ %49, %44 ], [ 1, %34 ]
-  call void @llvm.lifetime.end.p0i8(i64 400, i8* nonnull %5) #6
+  call void @llvm.lifetime.end.p0i8(i64 80, i8* nonnull %5) #6
   ret i32 %51
 }
 
 ; Function Attrs: nounwind readonly ssp uwtable
 define i32 @struct_related_fields(%struct.StructWithRelatedFields* nocapture readonly) local_unnamed_addr #5 {
-  %2 = alloca [100 x i32], align 16
-  %3 = bitcast [100 x i32]* %2 to i8*
-  call void @llvm.lifetime.start.p0i8(i64 400, i8* nonnull %3) #6
+  %2 = alloca [20 x i32], align 16
+  %3 = bitcast [20 x i32]* %2 to i8*
+  call void @llvm.lifetime.start.p0i8(i64 80, i8* nonnull %3) #6
   %4 = getelementptr inbounds %struct.StructWithRelatedFields, %struct.StructWithRelatedFields* %0, i64 0, i32 0
   %5 = load i32, i32* %4, align 4, !tbaa !21
-  %6 = icmp ult i32 %5, 100
+  %6 = icmp ult i32 %5, 20
   br i1 %6, label %7, label %36
 
 ; <label>:7:                                      ; preds = %1
   %8 = getelementptr inbounds %struct.StructWithRelatedFields, %struct.StructWithRelatedFields* %0, i64 0, i32 2
   %9 = load i32, i32* %8, align 4, !tbaa !23
   %10 = zext i32 %5 to i64
-  %11 = sub nsw i64 100, %10
+  %11 = sub nsw i64 20, %10
   %12 = icmp ult i64 %11, 8
   br i1 %12, label %13, label %15
 
@@ -371,7 +398,7 @@ define i32 @struct_related_fields(%struct.StructWithRelatedFields* nocapture rea
 ; <label>:25:                                     ; preds = %25, %15
   %26 = phi i64 [ 0, %15 ], [ %32, %25 ]
   %27 = add i64 %26, %10
-  %28 = getelementptr inbounds [100 x i32], [100 x i32]* %2, i64 0, i64 %27
+  %28 = getelementptr inbounds [20 x i32], [20 x i32]* %2, i64 0, i64 %27
   %29 = bitcast i32* %28 to <4 x i32>*
   store <4 x i32> %22, <4 x i32>* %29, align 4, !tbaa !3
   %30 = getelementptr inbounds i32, i32* %28, i64 4
@@ -389,21 +416,21 @@ define i32 @struct_related_fields(%struct.StructWithRelatedFields* nocapture rea
   %37 = getelementptr inbounds %struct.StructWithRelatedFields, %struct.StructWithRelatedFields* %0, i64 0, i32 1
   %38 = load i32, i32* %37, align 4, !tbaa !25
   %39 = zext i32 %38 to i64
-  %40 = getelementptr inbounds [100 x i32], [100 x i32]* %2, i64 0, i64 %39
+  %40 = getelementptr inbounds [20 x i32], [20 x i32]* %2, i64 0, i64 %39
   %41 = load i32, i32* %40, align 4, !tbaa !3
   %42 = icmp eq i32 %41, 0
   br i1 %42, label %54, label %48
 
 ; <label>:43:                                     ; preds = %13, %43
   %44 = phi i64 [ %46, %43 ], [ %14, %13 ]
-  %45 = getelementptr inbounds [100 x i32], [100 x i32]* %2, i64 0, i64 %44
+  %45 = getelementptr inbounds [20 x i32], [20 x i32]* %2, i64 0, i64 %44
   store i32 %9, i32* %45, align 4, !tbaa !3
   %46 = add nuw nsw i64 %44, 1
-  %47 = icmp eq i64 %46, 100
+  %47 = icmp eq i64 %46, 20
   br i1 %47, label %36, label %43, !llvm.loop !26
 
 ; <label>:48:                                     ; preds = %36
-  %49 = getelementptr inbounds [100 x i32], [100 x i32]* %2, i64 0, i64 0
+  %49 = getelementptr inbounds [20 x i32], [20 x i32]* %2, i64 0, i64 0
   %50 = load i32, i32* %49, align 16, !tbaa !3
   %51 = mul nsw i32 %50, 33
   %52 = add i32 %38, %5
@@ -412,7 +439,7 @@ define i32 @struct_related_fields(%struct.StructWithRelatedFields* nocapture rea
 
 ; <label>:54:                                     ; preds = %36, %48
   %55 = phi i32 [ %53, %48 ], [ 1, %36 ]
-  call void @llvm.lifetime.end.p0i8(i64 400, i8* nonnull %3) #6
+  call void @llvm.lifetime.end.p0i8(i64 80, i8* nonnull %3) #6
   ret i32 %55
 }
 

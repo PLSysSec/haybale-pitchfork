@@ -25,7 +25,13 @@ pub enum CompleteAbstractData {
     Struct { name: String, elements: Vec<Self> },
 
     /// A (public) pointer to something - another value, an array, etc
-    PublicPointerTo(Box<Self>),
+    PublicPointerTo {
+        /// Description of the thing being pointed to
+        pointee: Box<Self>,
+        /// If `false`, the pointer must point to the pointee; if `true`,
+        /// it may either point to the pointee or be NULL
+        maybe_null: bool,
+    },
 
     /// A (public) pointer to the LLVM `Function` with the given name
     PublicPointerToFunction(String),
@@ -128,7 +134,12 @@ impl CompleteAbstractData {
 
     /// a (public) pointer to something - another value, an array, etc
     pub fn pub_pointer_to(data: Self) -> Self {
-        Self::PublicPointerTo(Box::new(data))
+        Self::PublicPointerTo { pointee: Box::new(data), maybe_null: false }
+    }
+
+    /// A (public) pointer which may either point to the given data or be NULL
+    pub fn pub_maybe_null_pointer_to(data: Self) -> Self {
+        Self::PublicPointerTo { pointee: Box::new(data), maybe_null: true }
     }
 
     /// a (public) pointer to the LLVM `Function` with the given name
@@ -195,7 +206,7 @@ impl CompleteAbstractData {
             Self::PublicValue { bits, .. } => *bits,
             Self::Array { element_type, num_elements } => element_type.size_in_bits() * num_elements,
             Self::Struct { elements, .. } => elements.iter().map(Self::size_in_bits).sum(),
-            Self::PublicPointerTo(_) => Self::POINTER_SIZE_BITS,
+            Self::PublicPointerTo { .. } => Self::POINTER_SIZE_BITS,
             Self::PublicPointerToFunction(_) => Self::POINTER_SIZE_BITS,
             Self::PublicPointerToHook(_) => Self::POINTER_SIZE_BITS,
             Self::PublicPointerToParent => Self::POINTER_SIZE_BITS,
@@ -253,7 +264,13 @@ pub(crate) enum UnderspecifiedAbstractData {
     Complete(CompleteAbstractData),
 
     /// A (public) pointer to something underspecified
-    PublicPointerTo(Box<AbstractData>),
+    PublicPointerTo {
+        /// Description of the thing being pointed to
+        pointee: Box<AbstractData>,
+        /// If `false`, the pointer must point to the pointee; if `true`,
+        /// it may either point to the pointee or be NULL
+        maybe_null: bool,
+    },
 
     /// Like `PublicPointerToParent`, but if the parent is not the correct type
     /// (or if there is no parent, i.e., we are directly initializing this)
@@ -330,7 +347,12 @@ impl AbstractData {
 
     /// A (public) pointer to something - another value, an array, etc
     pub fn pub_pointer_to(data: Self) -> Self {
-        Self(UnderspecifiedAbstractData::PublicPointerTo(Box::new(data)))
+        Self(UnderspecifiedAbstractData::PublicPointerTo { pointee: Box::new(data), maybe_null: false })
+    }
+
+    /// A (public) pointer which may either point to the given data or be NULL
+    pub fn pub_maybe_null_pointer_to(data: Self) -> Self {
+        Self(UnderspecifiedAbstractData::PublicPointerTo { pointee: Box::new(data), maybe_null: true })
     }
 
     /// a (public) pointer to the LLVM `Function` with the given name
@@ -510,32 +532,32 @@ impl UnderspecifiedAbstractData {
                     CompleteAbstractData::void_override(Some(&llvm_struct_name), data.to_complete_rec(Some(ty), ctx))
                 },
             }
-            Self::PublicPointerTo(ad) => match ty {
+            Self::PublicPointerTo { pointee, maybe_null } => match ty {
                 Some(Type::PointerType { pointee_type, .. }) =>
-                    CompleteAbstractData::pub_pointer_to(match &ad.0 {
+                    CompleteAbstractData::PublicPointerTo { pointee: Box::new(match &pointee.0 {
                         Self::Array { num_elements, .. } => {
                             // AbstractData is pointer-to-array, but LLVM type may be pointer-to-scalar
                             match &**pointee_type {
                                 ty@Type::ArrayType { .. } | ty@Type::VectorType { .. } => {
-                                    ad.to_complete_rec(Some(ty), ctx)  // LLVM type is array or vector as well, it matches
+                                    pointee.to_complete_rec(Some(ty), ctx)  // LLVM type is array or vector as well, it matches
                                 },
                                 ty => {
                                     // LLVM type is scalar, but AbstractData is array, so it's actually pointer-to-array
                                     let num_elements = *num_elements;
-                                    ad.to_complete_rec(Some(&Type::ArrayType { element_type: Box::new(ty.clone()), num_elements }), ctx)
+                                    pointee.to_complete_rec(Some(&Type::ArrayType { element_type: Box::new(ty.clone()), num_elements }), ctx)
                                 },
                             }
                         },
                         _ => {
                             // AbstractData is pointer-to-something-else, just let the recursive call handle it
-                            ad.to_complete_rec(Some(&**pointee_type), ctx)
+                            pointee.to_complete_rec(Some(&**pointee_type), ctx)
                         },
-                    }),
+                    }), maybe_null },
                 Some(Type::ArrayType { num_elements: 1, element_type }) | Some(Type::VectorType { num_elements: 1, element_type }) => {
                     // auto-unwrap LLVM type if it is array or vector of one element
-                    Self::PublicPointerTo(ad).to_complete_rec(Some(&**element_type), ctx)
+                    Self::PublicPointerTo { pointee, maybe_null }.to_complete_rec(Some(&**element_type), ctx)
                 },
-                None => ad.to_complete_rec(None, ctx),
+                None => pointee.to_complete_rec(None, ctx),
                 _ => {
                     ctx.error_backtrace();
                     panic!("Type mismatch: AbstractData::PublicPointerTo but LLVM type is {:?}", ty);
