@@ -45,7 +45,7 @@ pub fn is_constant_time<'p>(
     sd: &StructDescriptions,
     config: Config<'p, secret::Backend>
 ) -> bool {
-    match check_for_ct_violation(funcname, project, args, sd, config, false) {
+    match check_for_ct_violation(funcname, project, args, sd, config) {
         ConstantTimeResult::IsConstantTime { .. } => true,
         _ => false,
     }
@@ -81,7 +81,7 @@ pub fn check_for_ct_violation_in_inputs<'p>(
 ) -> ConstantTimeResult {
     let (func, _) = project.get_func_by_name(funcname).expect("Failed to find function");
     let args = func.parameters.iter().map(|p| AbstractData::sec_integer(layout::size(&p.ty)));
-    check_for_ct_violation(funcname, project, args, &StructDescriptions::new(), config, false)
+    check_for_ct_violation(funcname, project, args, &StructDescriptions::new(), config)
 }
 
 /// Checks whether a function is "constant-time" in the secrets identified by the
@@ -93,13 +93,6 @@ pub fn check_for_ct_violation_in_inputs<'p>(
 /// (and if so how much), etc; or `AbstractData::default()` to use the default
 /// based on the LLVM parameter type and/or the struct descriptions in `sd`.
 ///
-/// `rev`: if this is `true`, then initialize the parameters in the reverse
-/// order. This might be necessary, for instance, in order to ensure that
-/// `AbstractValue::Named` values are defined before they are used (in a
-/// different parameter).
-/// TODO: This is a total hack and we should figure out a better way to do this
-/// in the future.
-///
 /// Other arguments are the same as for `is_constant_time_in_inputs()` above.
 pub fn check_for_ct_violation<'p>(
     funcname: &str,
@@ -107,7 +100,6 @@ pub fn check_for_ct_violation<'p>(
     args: impl IntoIterator<Item = AbstractData>,
     sd: &StructDescriptions,
     mut config: Config<'p, secret::Backend>,
-    rev: bool,
 ) -> ConstantTimeResult {
     if !config.function_hooks.is_hooked("hook_uninitialized_function_pointer") {
         config.function_hooks.add("hook_uninitialized_function_pointer", &hook_uninitialized_function_pointer);
@@ -125,7 +117,7 @@ pub fn check_for_ct_violation<'p>(
 
     info!("Allocating memory for function parameters");
     let params = em.state().cur_loc.func.parameters.iter();
-    allocation::allocate_args(project, em.mut_state(), sd, params.zip(args.into_iter()), rev).unwrap();
+    allocation::allocate_args(project, em.mut_state(), sd, params.zip(args.into_iter())).unwrap();
     debug!("Done allocating memory for function parameters");
 
     let mut blocks_seen = BlocksSeen::new();

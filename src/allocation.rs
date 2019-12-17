@@ -11,29 +11,15 @@ use std::sync::{Arc, RwLock};
 
 /// Allocate the function parameters given in `params` with their corresponding `AbstractData` descriptions.
 ///
-/// `rev`: if this is `true`, then initialize the parameters in the reverse
-/// order. This might be necessary, for instance, in order to ensure that
-/// `AbstractValue::Named` values are defined before they are used (in a
-/// different parameter).
-/// TODO: This is a total hack and we should figure out a better way to do this
-/// in the future.
-///
 /// Returns a vector of the `secret::BV`s representing the parameters. Many callers won't need this, though.
 pub fn allocate_args<'p>(
     proj: &'p Project,
     state: &mut State<'p, secret::Backend>,
     sd: &StructDescriptions,
     params: impl IntoIterator<Item = (&'p function::Parameter, AbstractData)>,
-    rev: bool,
 ) -> Result<Vec<secret::BV>> {
-    if rev {
-        // since this is a total hack anyway, we don't worry about optimizing this terrible code here
-        let params = params.into_iter().collect::<Vec<_>>().into_iter().rev().collect::<Vec<_>>();
-        allocate_args(proj, state, sd, params, false)
-    } else {
-        let mut ctx = Context::new(proj, sd);
-        params.into_iter().map(|(param, arg)| allocate_arg(state, param, arg, &mut ctx)).collect()
-    }
+    let mut ctx = Context::new(proj, sd);
+    params.into_iter().map(|(param, arg)| allocate_arg(state, param, arg, &mut ctx)).collect()
 }
 
 /// This `Context` serves two purposes:
