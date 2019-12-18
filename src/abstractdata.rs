@@ -39,6 +39,17 @@ pub enum CompleteAbstractData {
     /// A (public) pointer to the _hook_ registered for the given name
     PublicPointerToHook(String),
 
+    /// A (public) pointer to this struct itself. E.g., in the C code
+    /// ```c
+    /// struct Foo {
+    ///     int x;
+    ///     Foo* f;
+    /// };
+    /// ```
+    /// you could use this for `Foo* f` to indicate it should point to
+    /// this exact `Foo` itself.
+    PublicPointerToSelf,
+
     /// A (public) pointer to this struct's parent. E.g., in the C code
     /// ```c
     /// struct Foo {
@@ -152,6 +163,12 @@ impl CompleteAbstractData {
         Self::PublicPointerToHook(funcname.into())
     }
 
+    /// a (public) pointer to this struct itself; see comments on
+    /// `CompleteAbstractData::PublicPointerToSelf`
+    pub fn pub_pointer_to_self() -> Self {
+        Self::PublicPointerToSelf
+    }
+
     /// a (public) pointer to this struct's parent; see comments on
     /// `CompleteAbstractData::PublicPointerToParent`
     pub fn pub_pointer_to_parent() -> Self {
@@ -209,6 +226,7 @@ impl CompleteAbstractData {
             Self::PublicPointerTo { .. } => Self::POINTER_SIZE_BITS,
             Self::PublicPointerToFunction(_) => Self::POINTER_SIZE_BITS,
             Self::PublicPointerToHook(_) => Self::POINTER_SIZE_BITS,
+            Self::PublicPointerToSelf => Self::POINTER_SIZE_BITS,
             Self::PublicPointerToParent => Self::POINTER_SIZE_BITS,
             Self::PublicPointerToParentOr(_) => Self::POINTER_SIZE_BITS,
             Self::PublicUnconstrainedPointer => Self::POINTER_SIZE_BITS,
@@ -363,6 +381,19 @@ impl AbstractData {
     /// a (public) pointer to the _hook_ registered for the given name
     pub fn pub_pointer_to_hook(funcname: impl Into<String>) -> Self {
         Self(UnderspecifiedAbstractData::Complete(CompleteAbstractData::pub_pointer_to_hook(funcname)))
+    }
+
+    /// A (public) pointer to this struct itself. E.g., in the C code
+    /// ```c
+    /// struct Foo {
+    ///     int x;
+    ///     Foo* f;
+    /// };
+    /// ```
+    /// you could use this for `Foo* f` to indicate it should point to
+    /// this exact `Foo` itself.
+    pub fn pub_pointer_to_self() -> Self {
+        Self(UnderspecifiedAbstractData::Complete(CompleteAbstractData::pub_pointer_to_self()))
     }
 
     /// A (public) pointer to this struct's parent. E.g., in the C code
