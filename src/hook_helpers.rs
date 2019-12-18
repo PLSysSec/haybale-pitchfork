@@ -114,6 +114,22 @@ pub fn fill_secret_with_length(
     Ok(())
 }
 
+/// This helper function allocates space for the given `AbstractData`,
+/// initializes it, and returns a pointer to the newly-allocated space.
+pub fn allocate_and_init_abstractdata(
+    proj: &Project,
+    state: &mut State<secret::Backend>,
+    ad: AbstractData,
+    ty: &Type,  // Type of the AbstractData
+    sd: &StructDescriptions,
+) -> Result<secret::BV> {
+    let ad = ad.to_complete(ty, proj, sd);
+    let ptr = state.allocate(ad.size_in_bits() as u64);
+    let mut allocationctx = allocation::Context::new(proj, sd);
+    allocation::initialize_data_in_memory(state, &ptr, &ad, Some(ty), None, None, &mut allocationctx)?;
+    Ok(ptr)
+}
+
 /// This helper function reinitializes whatever is pointed to by the given
 /// pointer, according to the given `AbstractData`.
 pub fn reinitialize_pointee(
