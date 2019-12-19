@@ -91,10 +91,10 @@ pub enum CompleteAbstractData {
     /// and the provided `CompleteAbstractData` will be assumed correct.
     VoidOverride { llvm_struct_name: Option<String>, data: Box<Self> },
 
-    /// Use the given `CompleteAbstractData`, but also (during initialization)
-    /// add a watchpoint to the `State` covering the memory region which it
-    /// points to.  (The `CompleteAbstractData` here must be a pointer of some kind.)
-    WithWatchpoint(Box<Self>),
+    /// Use the given `data`, but also (during initialization) add a watchpoint
+    /// with the given `name` to the `State` covering the memory region which it
+    /// points to. (The `data` here must be a pointer of some kind.)
+    WithWatchpoint { name: String, data: Box<Self> },
 }
 
 impl CompleteAbstractData {
@@ -218,11 +218,11 @@ impl CompleteAbstractData {
         Self::VoidOverride { llvm_struct_name: llvm_struct_name.map(Into::into), data: Box::new(data) }
     }
 
-    /// Use the given `CompleteAbstractData`, but also (during initialization)
-    /// add a watchpoint to the `State` covering the memory region which it
-    /// points to.  (The `data` must be a pointer of some kind.)
-    pub fn with_watchpoint(data: Self) -> Self {
-        Self::WithWatchpoint(Box::new(data))
+    /// Use the given `data`, but also (during initialization) add a watchpoint
+    /// with the given `name` to the `State` covering the memory region which it
+    /// points to. (The `data` must be a pointer of some kind.)
+    pub fn with_watchpoint(name: impl Into<String>, data: Self) -> Self {
+        Self::WithWatchpoint { name: name.into(), data: Box::new(data) }
     }
 }
 
@@ -244,7 +244,7 @@ impl CompleteAbstractData {
             Self::PublicUnconstrainedPointer => Self::POINTER_SIZE_BITS,
             Self::Secret { bits } => *bits,
             Self::VoidOverride { data, .. } => data.size_in_bits(),
-            Self::WithWatchpoint(data) => data.size_in_bits(),
+            Self::WithWatchpoint { data, .. } => data.size_in_bits(),
         }
     }
 
@@ -255,7 +255,7 @@ impl CompleteAbstractData {
             Self::Struct { elements, .. } => Self::size_in_bits(&elements[n]),
             Self::Array { element_type, .. } => Self::size_in_bits(element_type),
             Self::VoidOverride { data, .. } => data.field_size_in_bits(n),
-            Self::WithWatchpoint(data) => data.field_size_in_bits(n),
+            Self::WithWatchpoint { data, .. } => data.field_size_in_bits(n),
             _ => panic!("field_size_in_bits called on {:?}", self),
         }
     }
@@ -267,7 +267,7 @@ impl CompleteAbstractData {
             Self::Struct { elements, .. } => elements.iter().take(n).map(Self::size_in_bits).sum(),
             Self::Array { element_type, .. } => element_type.size_in_bits() * n,
             Self::VoidOverride { data, .. } => data.offset_in_bits(n),
-            Self::WithWatchpoint(data) => data.offset_in_bits(n),
+            Self::WithWatchpoint { data, .. } => data.offset_in_bits(n),
             _ => panic!("offset_in_bits called on {:?}", self),
         }
     }
@@ -287,7 +287,7 @@ impl CompleteAbstractData {
             Self::PublicUnconstrainedPointer => true,
             Self::Secret { .. } => panic!("is_pointer on a Secret"),
             Self::VoidOverride { data, .. } => data.is_pointer(),
-            Self::WithWatchpoint(data) => data.is_pointer(),
+            Self::WithWatchpoint { data, .. } => data.is_pointer(),
         }
     }
 
@@ -308,7 +308,7 @@ impl CompleteAbstractData {
             Self::PublicUnconstrainedPointer => panic!("pointee_size_in_bits() on an unconstrained pointer"),
             Self::Secret { .. } => panic!("pointee_size_in_bits() on a Secret"),
             Self::VoidOverride { data, .. } => data.pointee_size_in_bits(),
-            Self::WithWatchpoint(data) => data.pointee_size_in_bits(),
+            Self::WithWatchpoint { data, .. } => data.pointee_size_in_bits(),
         }
     }
 }
@@ -366,11 +366,10 @@ pub(crate) enum UnderspecifiedAbstractData {
     /// be performed (the `AbstractData` will be assumed correct).
     VoidOverride { llvm_struct_name: Option<String>, data: Box<AbstractData> },
 
-    /// Use the given `AbstractData`, but also (during initialization) add a
-    /// watchpoint to the `State` covering the memory region which it points to.
-    ///
-    /// (The `AbstractData` must be a pointer of some kind.)
-    WithWatchpoint(Box<AbstractData>),
+    /// Use the given `data`, but also (during initialization) add a watchpoint
+    /// with the given `name` to the `State` covering the memory region which it
+    /// points to. (The `data` here must be a pointer of some kind.)
+    WithWatchpoint { name: String, data: Box<AbstractData> },
 }
 
 impl AbstractData {
@@ -523,12 +522,11 @@ impl AbstractData {
         Self(UnderspecifiedAbstractData::VoidOverride { llvm_struct_name: llvm_struct_name.map(Into::into), data: Box::new(data) })
     }
 
-    /// Use the given `AbstractData`, but also (during initialization) add a
-    /// watchpoint to the `State` covering the memory region which it points to.
-    ///
-    /// (The `data` must be a pointer of some kind.)
-    pub fn with_watchpoint(data: Self) -> Self {
-        Self(UnderspecifiedAbstractData::WithWatchpoint(Box::new(data)))
+    /// Use the given `data`, but also (during initialization) add a watchpoint
+    /// with the given `name` to the `State` covering the memory region which it
+    /// points to. (The `data` here must be a pointer of some kind.)
+    pub fn with_watchpoint(name: impl Into<String>, data: Self) -> Self {
+        Self(UnderspecifiedAbstractData::WithWatchpoint { name: name.into(), data: Box::new(data) })
     }
 }
 
@@ -622,7 +620,7 @@ impl UnderspecifiedAbstractData {
     fn to_complete_rec<'a>(self, ty: Option<&'a Type>, mut ctx: ToCompleteContext<'a, '_>) -> CompleteAbstractData {
         match self {
             Self::Complete(abstractdata) => abstractdata,
-            Self::WithWatchpoint(data) => CompleteAbstractData::with_watchpoint(data.to_complete_rec(ty, ctx)),
+            Self::WithWatchpoint { name, data } => CompleteAbstractData::with_watchpoint(name, data.to_complete_rec(ty, ctx)),
             Self::VoidOverride { llvm_struct_name, data } => match llvm_struct_name {
                 None => CompleteAbstractData::void_override(None, data.to_complete_rec(None, ctx)),
                 Some(llvm_struct_name) => {
