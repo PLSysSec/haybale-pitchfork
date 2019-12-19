@@ -3,6 +3,7 @@ use crate::secret;
 use haybale::{layout, Project, State};
 use haybale::backend::*;
 use haybale::Result;
+use haybale::watchpoints::Watchpoint;
 use llvm_ir::*;
 use log::debug;
 use std::collections::HashMap;
@@ -216,6 +217,17 @@ fn allocate_arg<'p>(state: &mut State<'p, secret::Backend>, param: &'p function:
         CompleteAbstractData::Array { .. } => unimplemented!("Array passed by value"),
         CompleteAbstractData::Struct { .. } => unimplemented!("Struct passed by value"),
         CompleteAbstractData::VoidOverride { .. } => unimplemented!("VoidOverride used as an argument directly.  You probably meant to use a pointer to a VoidOverride"),
+        CompleteAbstractData::WithWatchpoint(data) => {
+            if data.is_pointer() {
+                let pointee_size = data.pointee_size_in_bits();
+                let abstractdata = AbstractData(UnderspecifiedAbstractData::Complete(*data));
+                let ptr = allocate_arg(state, param, abstractdata, ctx)?;
+                state.add_mem_watchpoint(Watchpoint::new(ptr.as_u64().unwrap(), pointee_size as u64));
+                Ok(ptr)
+            } else {
+                panic!("WithWatchpoint used with a non-pointer: {:?}", data)
+            }
+        },
     }
 }
 
@@ -859,5 +871,15 @@ pub fn initialize_data_in_memory_rec(
                 },
             }
         },
+        CompleteAbstractData::WithWatchpoint(data) => {
+            if data.is_pointer() {
+                let retval = initialize_data_in_memory_rec(state, addr, &**data, ty, cur_struct, parent, within_structs, ctx)?;
+                let ptr = state.read(addr, CompleteAbstractData::POINTER_SIZE_BITS as u32)?;
+                state.add_mem_watchpoint(Watchpoint::new(ptr.as_u64().unwrap(), data.pointee_size_in_bits() as u64));
+                Ok(retval)
+            } else {
+                panic!("WithWatchpoint used with a non-pointer: {:?}", data)
+            }
+        }
     }
 }
