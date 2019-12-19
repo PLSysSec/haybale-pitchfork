@@ -59,15 +59,15 @@ fn allocate_arg<'p>(state: &mut State<'p, secret::Backend>, param: &'p function:
         },
         CompleteAbstractData::PublicValue { bits, value: AbstractValue::ExactValue(value) } => {
             debug!("Parameter is marked public, equal to {}", value);
-            let bv = secret::BV::from_u64(state.solver.clone(), value, bits as u32);
+            let bv = state.bv_from_u64(value, bits as u32);
             state.overwrite_latest_version_of_bv(&param.name, bv.clone());
             Ok(bv)
         },
         CompleteAbstractData::PublicValue { bits, value: AbstractValue::Range(min, max) } => {
             debug!("Parameter is marked public, in the range ({}, {}) inclusive", min, max);
             let parambv = state.new_bv_with_name(param.name.clone(), bits as u32).unwrap();
-            parambv.ugte(&secret::BV::from_u64(state.solver.clone(), min, bits as u32)).assert()?;
-            parambv.ulte(&secret::BV::from_u64(state.solver.clone(), max, bits as u32)).assert()?;
+            parambv.ugte(&state.bv_from_u64(min, bits as u32)).assert()?;
+            parambv.ulte(&state.bv_from_u64(max, bits as u32)).assert()?;
             state.overwrite_latest_version_of_bv(&param.name, parambv.clone());
             Ok(parambv)
         }
@@ -111,7 +111,7 @@ fn allocate_arg<'p>(state: &mut State<'p, secret::Backend>, param: &'p function:
                 Some(bv) => {
                     let width = bv.get_width();
                     assert_eq!(width, bits as u32, "AbstractValue::SignedLessThan {:?}, which has {} bits, but current value has {} bits", name, width, bits);
-                    let new_bv = secret::BV::new(state.solver.clone(), width, Some(&format!("SignedLessThan{}:", name)));
+                    let new_bv = state.new_bv_with_name(Name::from(format!("SignedLessThan{}:", name)), width)?;
                     new_bv.slt(&bv).assert()?;
                     state.overwrite_latest_version_of_bv(&param.name, new_bv.clone());
                     Ok(new_bv)
@@ -124,7 +124,7 @@ fn allocate_arg<'p>(state: &mut State<'p, secret::Backend>, param: &'p function:
                 Some(bv) => {
                     let width = bv.get_width();
                     assert_eq!(width, bits as u32, "AbstractValue::SignedGreaterThan {:?}, which has {} bits, but current value has {} bits", name, width, bits);
-                    let new_bv = secret::BV::new(state.solver.clone(), width, Some(&format!("SignedGreaterThan:{}", name)));
+                    let new_bv = state.new_bv_with_name(Name::from(format!("SignedGreaterThan:{}", name)), width)?;
                     new_bv.sgt(&bv).assert()?;
                     state.overwrite_latest_version_of_bv(&param.name, new_bv.clone());
                     Ok(new_bv)
@@ -137,7 +137,7 @@ fn allocate_arg<'p>(state: &mut State<'p, secret::Backend>, param: &'p function:
                 Some(bv) => {
                     let width = bv.get_width();
                     assert_eq!(width, bits as u32, "AbstractValue::UnsignedLessThan {:?}, which has {} bits, but current value has {} bits", name, width, bits);
-                    let new_bv = secret::BV::new(state.solver.clone(), width, Some(&format!("UnsignedLessThan:{}", name)));
+                    let new_bv = state.new_bv_with_name(Name::from(format!("UnsignedLessThan:{}", name)), width)?;
                     new_bv.ult(&bv).assert()?;
                     state.overwrite_latest_version_of_bv(&param.name, new_bv.clone());
                     Ok(new_bv)
@@ -150,7 +150,7 @@ fn allocate_arg<'p>(state: &mut State<'p, secret::Backend>, param: &'p function:
                 Some(bv) => {
                     let width = bv.get_width();
                     assert_eq!(width, bits as u32, "AbstractValue::UnsignedGreaterThan {:?}, which has {} bits, but current value has {} bits", name, width, bits);
-                    let new_bv = secret::BV::new(state.solver.clone(), width, Some(&format!("UnsignedGreaterThan:{}", name)));
+                    let new_bv = state.new_bv_with_name(Name::from(format!("UnsignedGreaterThan:{}", name)), width)?;
                     new_bv.ugt(&bv).assert()?;
                     state.overwrite_latest_version_of_bv(&param.name, new_bv.clone());
                     Ok(new_bv)
@@ -164,7 +164,7 @@ fn allocate_arg<'p>(state: &mut State<'p, secret::Backend>, param: &'p function:
             let ptr = if maybe_null {
                 let ptr_width = ptr.get_width();
                 let condition = state.new_bv_with_name(Name::from("pointer_is_null"), 1)?;
-                condition.cond_bv(&secret::BV::zero(state.solver.clone(), ptr_width), &ptr)
+                condition.cond_bv(&state.zero(ptr_width), &ptr)
             } else {
                 ptr
             };
@@ -306,7 +306,7 @@ pub fn initialize_data_in_memory_rec(
                     panic!("Size mismatch when initializing data at {:?}: type {:?} is {} bits but CompleteAbstractData is {} bits", addr, ty, layout::size(ty), bits);
                 }
             }
-            let bv = secret::BV::from_u64(state.solver.clone(), *value, *bits as u32);
+            let bv = state.bv_from_u64(*value, *bits as u32);
             state.write(&addr, bv)?;
             Ok(*bits)
         },
@@ -319,8 +319,8 @@ pub fn initialize_data_in_memory_rec(
                 }
             }
             let bv = state.read(&addr, *bits as u32)?;
-            bv.ugte(&secret::BV::from_u64(state.solver.clone(), *min, *bits as u32)).assert()?;
-            bv.ulte(&secret::BV::from_u64(state.solver.clone(), *max, *bits as u32)).assert()?;
+            bv.ugte(&state.bv_from_u64(*min, *bits as u32)).assert()?;
+            bv.ulte(&state.bv_from_u64(*max, *bits as u32)).assert()?;
             Ok(*bits)
         }
         CompleteAbstractData::PublicValue { bits, value: AbstractValue::Unconstrained } => {
@@ -396,7 +396,7 @@ pub fn initialize_data_in_memory_rec(
                             panic!("Size mismatch when initializing data at {:?}: type {:?} is {} bits but CompleteAbstractData is {} bits", addr, ty, layout::size(ty), bits);
                         }
                     }
-                    let new_bv = secret::BV::new(state.solver.clone(), width, Some(&format!("SignedLessThan:{}", name)));
+                    let new_bv = state.new_bv_with_name(Name::from(format!("SignedLessThan:{}", name)), width)?;
                     new_bv.slt(&bv).assert()?;
                     state.write(&addr, new_bv)?;
                     Ok(*bits)
@@ -421,7 +421,7 @@ pub fn initialize_data_in_memory_rec(
                             panic!("Size mismatch when initializing data at {:?}: type {:?} is {} bits but CompleteAbstractData is {} bits", addr, ty, layout::size(ty), bits);
                         }
                     }
-                    let new_bv = secret::BV::new(state.solver.clone(), width, Some(&format!("SignedGreaterThan:{}", name)));
+                    let new_bv = state.new_bv_with_name(Name::from(format!("SignedGreaterThan:{}", name)), width)?;
                     new_bv.sgt(&bv).assert()?;
                     state.write(&addr, new_bv)?;
                     Ok(*bits)
@@ -446,7 +446,7 @@ pub fn initialize_data_in_memory_rec(
                             panic!("Size mismatch when initializing data at {:?}: type {:?} is {} bits but CompleteAbstractData is {} bits", addr, ty, layout::size(ty), bits);
                         }
                     }
-                    let new_bv = secret::BV::new(state.solver.clone(), width, Some(&format!("UnsignedLessThan:{}", name)));
+                    let new_bv = state.new_bv_with_name(Name::from(format!("UnsignedLessThan:{}", name)), width)?;
                     new_bv.ult(&bv).assert()?;
                     state.write(&addr, new_bv)?;
                     Ok(*bits)
@@ -471,7 +471,7 @@ pub fn initialize_data_in_memory_rec(
                             panic!("Size mismatch when initializing data at {:?}: type {:?} is {} bits but CompleteAbstractData is {} bits", addr, ty, layout::size(ty), bits);
                         }
                     }
-                    let new_bv = secret::BV::new(state.solver.clone(), width, Some(&format!("UnsignedGreaterThan:{}", name)));
+                    let new_bv = state.new_bv_with_name(Name::from(format!("UnsignedGreaterThan:{}", name)), width)?;
                     new_bv.ugt(&bv).assert()?;
                     state.write(&addr, new_bv)?;
                     Ok(*bits)
@@ -498,7 +498,7 @@ pub fn initialize_data_in_memory_rec(
             let bits = inner_ptr.get_width();
             let inner_ptr = if *maybe_null {
                 let condition = state.new_bv_with_name(Name::from("pointer_is_null"), 1)?;
-                condition.cond_bv(&secret::BV::zero(state.solver.clone(), bits), &inner_ptr)
+                condition.cond_bv(&state.zero(bits), &inner_ptr)
             } else {
                 inner_ptr
             };
@@ -769,7 +769,7 @@ pub fn initialize_data_in_memory_rec(
                     }
                     for i in 0 .. *num_elements {
                         debug!("initializing element {} of the array", i);
-                        let element_addr = addr.add(&secret::BV::from_u64(state.solver.clone(), (i*element_size_bytes) as u64, addr.get_width()));
+                        let element_addr = addr.add(&state.bv_from_u64((i*element_size_bytes) as u64, addr.get_width()));
                         initialize_data_in_memory_rec(state, &element_addr, element_abstractdata, element_type, cur_struct, parent, within_structs.clone(), ctx)?;
                     }
                     debug!("done initializing the array at {:?}", addr);
@@ -841,7 +841,7 @@ pub fn initialize_data_in_memory_rec(
                     error_backtrace(&within_structs);
                     panic!("Element {} of struct {} should be {} bits based on its type, but we seem to have initialized {} bits", element_idx, name, element_size_bits, bits);
                 }
-                cur_addr = cur_addr.add(&secret::BV::from_u64(state.solver.clone(), element_size_bytes as u64, addr.get_width()));
+                cur_addr = cur_addr.add(&state.bv_from_u64(element_size_bytes as u64, addr.get_width()));
             }
             debug!("done initializing struct {} at {:?}", name, addr);
             Ok(total_bits)
