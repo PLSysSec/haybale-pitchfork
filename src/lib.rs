@@ -9,7 +9,7 @@ pub mod secret;
 use haybale::{layout, symex_function, backend::Backend, ExecutionManager, State, ReturnValue};
 use haybale::{Error, Result};
 pub use haybale::{Config, Project};
-use llvm_ir::instruction;
+use haybale::function_hooks::IsCall;
 use log::{debug, info};
 use std::collections::{HashMap, HashSet};
 
@@ -145,7 +145,7 @@ pub fn check_for_ct_violation<'p>(
 fn hook_uninitialized_function_pointer<B: Backend>(
     _proj: &Project,
     _state: &mut State<B>,
-    _call: &instruction::Call,
+    _call: &dyn IsCall,
 ) -> Result<ReturnValue<B::BV>> {
     Err(Error::OtherError("Call of an uninitialized function pointer".to_owned()))
 }
