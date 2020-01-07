@@ -6,12 +6,14 @@ use coverage::*;
 pub mod hook_helpers;
 pub mod secret;
 
+use colored::*;
 use haybale::{layout, symex_function, backend::Backend, ExecutionManager, State, ReturnValue};
 use haybale::{Error, Result};
 pub use haybale::{Config, Project};
 use haybale::function_hooks::IsCall;
 use log::{debug, info};
 use std::collections::{HashMap, HashSet};
+use std::fmt;
 
 /// Is a function "constant-time" in its inputs. That is, does the function ever
 /// make branching decisions, or perform address calculations, based on its inputs.
@@ -22,7 +24,7 @@ pub fn is_constant_time_in_inputs<'p>(
     project: &'p Project,
     config: Config<'p, secret::Backend>
 ) -> bool {
-    match check_for_ct_violation_in_inputs(funcname, project, config) {
+    match check_for_ct_violation_in_inputs(funcname, project, config).ct_result {
         ConstantTimeResult::IsConstantTime { .. } => true,
         _ => false,
     }
@@ -45,7 +47,7 @@ pub fn is_constant_time<'p>(
     sd: &StructDescriptions,
     config: Config<'p, secret::Backend>
 ) -> bool {
-    match check_for_ct_violation(funcname, project, args, sd, config) {
+    match check_for_ct_violation(funcname, project, args, sd, config).ct_result {
         ConstantTimeResult::IsConstantTime { .. } => true,
         _ => false,
     }
@@ -69,16 +71,58 @@ pub enum ConstantTimeResult {
     },
 }
 
+pub struct ConstantTimeResultForFunction<'a> {
+    /// a `ConstantTimeResult` for which toplevel function?
+    pub funcname: &'a str,
+    /// the `ConstantTimeResult` for that function
+    pub ct_result: ConstantTimeResult,
+}
+
+/// Produces a pretty (even colored!) description of the
+/// `ConstantTimeResultForFunction`, including selected coverage statistics in
+/// the success case
+impl<'a> fmt::Display for ConstantTimeResultForFunction<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        writeln!(f)?;
+        match &self.ct_result {
+            ConstantTimeResult::IsConstantTime { block_coverage } => {
+                writeln!(f, "{} {}", self.funcname, "is constant-time".green())?;
+                writeln!(f)?;
+                let toplevel_coverage = block_coverage.get(self.funcname).unwrap();
+                writeln!(f, "  Block coverage of toplevel function ({}): {:.1}%", self.funcname, 100.0 * toplevel_coverage.percentage)?;
+                if toplevel_coverage.percentage < 1.0 {
+                    writeln!(f, "  Missed blocks in toplevel function: {:?}", toplevel_coverage.missed_blocks.iter())?;
+                }
+                writeln!(f)?;
+                for (fname, coverage) in block_coverage {
+                    if fname != self.funcname {
+                        writeln!(f, "  Block coverage of {}: {:.1}%", fname, 100.0 * coverage.percentage)?;
+                    }
+                }
+            },
+            ConstantTimeResult::NotConstantTime { violation_message } => {
+                writeln!(f, "{} {}", self.funcname, "is not constant-time".red())?;
+                writeln!(f, "{}", violation_message)?;
+            },
+            ConstantTimeResult::OtherError { error_message } => {
+                writeln!(f, "While analyzing {}, {}", self.funcname, "received a fatal error:".red())?;
+                writeln!(f, "{}", error_message)?;
+            },
+        }
+        Ok(())
+    }
+}
+
 /// Checks whether a function is "constant-time" in its inputs. That is, does the
 /// function ever make branching decisions, or perform address calculations, based
 /// on its inputs.
 ///
 /// For argument descriptions, see `is_constant_time_in_inputs()`.
-pub fn check_for_ct_violation_in_inputs<'p>(
-    funcname: &str,
+pub fn check_for_ct_violation_in_inputs<'f, 'p>(
+    funcname: &'f str,
     project: &'p Project,
     config: Config<'p, secret::Backend>
-) -> ConstantTimeResult {
+) -> ConstantTimeResultForFunction<'f> {
     let (func, _) = project.get_func_by_name(funcname).expect("Failed to find function");
     let args = func.parameters.iter().map(|p| AbstractData::sec_integer(layout::size(&p.ty)));
     check_for_ct_violation(funcname, project, args, &StructDescriptions::new(), config)
@@ -94,13 +138,13 @@ pub fn check_for_ct_violation_in_inputs<'p>(
 /// based on the LLVM parameter type and/or the struct descriptions in `sd`.
 ///
 /// Other arguments are the same as for `is_constant_time_in_inputs()` above.
-pub fn check_for_ct_violation<'p>(
-    funcname: &str,
+pub fn check_for_ct_violation<'f, 'p>(
+    funcname: &'f str,
     project: &'p Project,
     args: impl IntoIterator<Item = AbstractData>,
     sd: &StructDescriptions,
     mut config: Config<'p, secret::Backend>,
-) -> ConstantTimeResult {
+) -> ConstantTimeResultForFunction<'f> {
     if !config.function_hooks.is_hooked("hook_uninitialized_function_pointer") {
         config.function_hooks.add("hook_uninitialized_function_pointer", &hook_uninitialized_function_pointer);
     }
@@ -127,8 +171,14 @@ pub fn check_for_ct_violation<'p>(
                 info!("Finished a path");
                 blocks_seen.update_with_current_path(&em);
             },
-            Some(Err(s)) if s.contains("Constant-time violation:") => return ConstantTimeResult::NotConstantTime { violation_message: s },
-            Some(Err(s)) => return ConstantTimeResult::OtherError { error_message: s },
+            Some(Err(s)) if s.contains("Constant-time violation:") => return ConstantTimeResultForFunction {
+                funcname,
+                ct_result: ConstantTimeResult::NotConstantTime { violation_message: s },
+            },
+            Some(Err(s)) => return ConstantTimeResultForFunction {
+                funcname,
+                ct_result: ConstantTimeResult::OtherError { error_message: s },
+            },
             None => break,
         }
     }
@@ -139,7 +189,10 @@ pub fn check_for_ct_violation<'p>(
     let block_coverage = compute_coverage_stats(project, &blocks_seen);
     info!("Block coverage of toplevel function ({:?}): {:.1}%", funcname, 100.0 * block_coverage.get(funcname).unwrap().percentage);
 
-    ConstantTimeResult::IsConstantTime { block_coverage }
+    ConstantTimeResultForFunction {
+        funcname,
+        ct_result: ConstantTimeResult::IsConstantTime { block_coverage },
+    }
 }
 
 fn hook_uninitialized_function_pointer<B: Backend>(
