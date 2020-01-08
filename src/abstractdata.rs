@@ -336,6 +336,9 @@ pub(crate) enum UnderspecifiedAbstractData {
     /// See [`AbstractData::to_complete`](enum.AbstractData.html#method.to_complete)
     Unspecified,
 
+    /// Just fill with the appropriate number of unconstrained bytes based on the LLVM type
+    Unconstrained,
+
     /// Use the given `CompleteAbstractData`, which gives a complete description
     Complete(CompleteAbstractData),
 
@@ -510,6 +513,11 @@ impl AbstractData {
         Self(UnderspecifiedAbstractData::Complete(CompleteAbstractData::unconstrained_pointer()))
     }
 
+    /// Just fill with the appropriate number of unconstrained bytes based on the LLVM type
+    pub fn unconstrained() -> Self {
+        Self(UnderspecifiedAbstractData::Unconstrained)
+    }
+
     /// See notes on [`CompleteAbstractData::void_override`](enum.CompleteAbstractData.html#method.void_override).
     ///
     /// Note that the `AbstractData` here must actually be fully specified,
@@ -628,6 +636,13 @@ impl UnderspecifiedAbstractData {
         }
         match self {
             Self::Complete(abstractdata) => abstractdata,
+            Self::Unconstrained => match ty {
+                Some(ty) => CompleteAbstractData::PublicValue { bits: layout::size(ty), value: AbstractValue::Unconstrained },
+                None => {
+                    ctx.error_backtrace();
+                    panic!("Encountered an AbstractData::unconstrained() but don't have an LLVM type to use");
+                },
+            },
             Self::WithWatchpoint { name, data } => CompleteAbstractData::with_watchpoint(name, data.to_complete_rec(ty, ctx)),
             Self::VoidOverride { llvm_struct_name, data } => match llvm_struct_name {
                 None => CompleteAbstractData::void_override(None, data.to_complete_rec(None, ctx)),
