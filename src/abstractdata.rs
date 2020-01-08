@@ -1,5 +1,6 @@
 use haybale::{layout, Project};
 use llvm_ir::Type;
+use log::warn;
 use std::collections::{HashMap, HashSet};
 
 /// An abstract description of a value: if it is public or not, if it is a
@@ -748,8 +749,8 @@ impl UnderspecifiedAbstractData {
                         ),
                     Type::NamedStructType { name, .. } => {
                         if !ctx.unspecified_named_structs.insert(name) {
-                            ctx.error_backtrace();
-                            panic!("Attempt to initialize recursive struct {:?}", name)
+                            warn!("Setting a pointer to {:?} to unconstrained in order to avoid infinite recursion", name);
+                            return CompleteAbstractData::unconstrained_pointer();
                         }
                         let arc = ctx.proj.get_inner_struct_type_from_named(ty);
                         match ctx.sd.get(name) {
