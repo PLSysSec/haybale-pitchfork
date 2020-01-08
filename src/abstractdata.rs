@@ -552,12 +552,12 @@ impl AbstractData {
     /// - for LLVM pointer type (except function pointer): public concrete pointer value to allocated memory, depending on pointer type:
     ///   - pointee is an integer type: pointer to allocated array of `DEFAULT_ARRAY_LENGTH` pointees
     ///       (e.g., default for `char*` is pointer to array of 1024 chars)
+    ///   - pointee is an array type with 0 elements: pointer to allocated array of `DEFAULT_ARRAY_LENGTH` elements
     ///   - pointee is any other type: pointer to one of that other type
-    ///   - (then in either case, apply these rules recursively to each pointee type)
+    ///   - (then in any case, apply these rules recursively to each pointee type)
     /// - for LLVM function pointer type: concrete function pointer value which, when called, will raise an error
     /// - for LLVM vector or array type: array of the appropriate length, containing public values
-    ///   (unless the number of elements is 0, in which case, we default to `DEFAULT_ARRAY_LENGTH` elements)
-    ///   - (in any case, apply these rules recursively to each element)
+    ///   - (then apply these rules recursively to each element)
     /// - for LLVM structure type:
     ///   - if this struct is one of those named in `sd`, then use the appropriate struct description
     ///   - if the structure type is entirely opaque (no definition anywhere in the `Project`), then allocate
@@ -747,12 +747,17 @@ impl UnderspecifiedAbstractData {
                                 CompleteAbstractData::pub_integer(*bits as usize, AbstractValue::Unconstrained),
                                 AbstractData::DEFAULT_ARRAY_LENGTH,
                             )),
+                        Type::ArrayType { num_elements: 0, element_type } =>
+                            CompleteAbstractData::pub_pointer_to(CompleteAbstractData::array_of(
+                                Self::Unspecified.to_complete_rec(Some(element_type), ctx),
+                                AbstractData::DEFAULT_ARRAY_LENGTH,
+                            )),
                         ty => CompleteAbstractData::pub_pointer_to(Self::Unspecified.to_complete_rec(Some(ty), ctx)),
                     },
                     Type::VectorType { element_type, num_elements } | Type::ArrayType { element_type, num_elements } =>
                         CompleteAbstractData::array_of(
                             Self::Unspecified.to_complete_rec(Some(element_type), ctx),
-                            if *num_elements == 0 { AbstractData::DEFAULT_ARRAY_LENGTH } else { *num_elements },
+                            *num_elements,
                         ),
                     Type::NamedStructType { name, .. } => {
                         if !ctx.unspecified_named_structs.insert(name) {
