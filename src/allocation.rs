@@ -261,7 +261,7 @@ pub fn initialize_data_in_memory(
 struct WithinStruct {
     /// Name of the struct we are within
     name: String,
-    /// Index of the element in that struct which we are within
+    /// Index of the element in that struct which we are within (0-indexed)
     element_index: usize,
 }
 
