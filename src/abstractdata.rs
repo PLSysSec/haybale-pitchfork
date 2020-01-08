@@ -1,7 +1,9 @@
 use haybale::{layout, Project};
+use lazy_static::lazy_static;
 use llvm_ir::Type;
 use log::warn;
 use std::collections::{HashMap, HashSet};
+use std::sync::Mutex;
 
 /// An abstract description of a value: if it is public or not, if it is a
 /// pointer or not, does it point to data that is public/secret, maybe it's a
@@ -581,8 +583,7 @@ struct ToCompleteContext<'a, 'p> {
 
     /// set of struct names we are within which were given
     /// `UnderspecifiedAbstractData::Unspecified` (whether they appear in `sd` or
-    /// not). We keep track of these only so we can detect infinite recursion and
-    /// abort with an appropriate error message.
+    /// not). We keep track of these only so we can detect infinite recursion.
     unspecified_named_structs: HashSet<&'a String>,
 
     /// Name of the struct we are currently within (and the struct that is
@@ -619,6 +620,12 @@ impl UnderspecifiedAbstractData {
     ///   (1) we are explicitly overriding the LLVM type via `VoidOverride`, or
     ///   (2) we are initializing a struct via the `StructDescriptions` that we don't have an LLVM type for because it's opaque
     fn to_complete_rec<'a>(self, ty: Option<&'a Type>, mut ctx: ToCompleteContext<'a, '_>) -> CompleteAbstractData {
+        // Set of struct names which have been detected to have infinite recursion,
+        // and which we have already warned about. We won't warn again for the same
+        // struct names.
+        lazy_static! {
+            static ref WARNED_STRUCTS: Mutex<HashSet<String>> = Mutex::new(HashSet::new());
+        }
         match self {
             Self::Complete(abstractdata) => abstractdata,
             Self::WithWatchpoint { name, data } => CompleteAbstractData::with_watchpoint(name, data.to_complete_rec(ty, ctx)),
@@ -749,7 +756,9 @@ impl UnderspecifiedAbstractData {
                         ),
                     Type::NamedStructType { name, .. } => {
                         if !ctx.unspecified_named_structs.insert(name) {
-                            warn!("Setting a pointer to {:?} to unconstrained in order to avoid infinite recursion", name);
+                            if WARNED_STRUCTS.lock().unwrap().insert(name.clone()) {
+                                warn!("Setting a pointer to {:?} to unconstrained in order to avoid infinite recursion. We will not warn again for infinite recursion on a pointer to a {:?}", name, name);
+                            }
                             return CompleteAbstractData::unconstrained_pointer();
                         }
                         let arc = ctx.proj.get_inner_struct_type_from_named(ty);

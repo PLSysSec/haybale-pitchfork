@@ -140,8 +140,7 @@ checksum = "d515b1f41455adea1313a4a2ac8a8a477634fbae63cc6100e3aebb207ce61558"
 [[package]]
 name = "llvm-ir"
 version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3528bcc72a10df0688720d6a515443a92d9a587c2a9701c7e600bf7e923200f3"
+source = "git+https://github.com/cdisselkoen/llvm-ir#a14c0d0e73fb7846cca60024f742c3925d39930a"
 dependencies = [
  "either",
  "llvm-sys",
@@ -186,6 +185,7 @@ dependencies = [
  "env_logger",
  "haybale",
  "itertools",
+ "lazy_static",
  "llvm-ir",
  "log",
 ]

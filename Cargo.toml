@@ -9,9 +9,10 @@ edition = "2018"
 [dependencies]
 boolector = { path = "../boolector-rs" }
 haybale = { path = "../haybale" }
-llvm-ir = "0.4.0"
+llvm-ir = { git = "https://github.com/cdisselkoen/llvm-ir" }
 log = "0.4.8"
 env_logger = "0.6.2"
+lazy_static = "1.4"
 colored = "1.9"
 itertools = "0.8.2"
 either = "1.5.3"
