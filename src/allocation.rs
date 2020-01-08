@@ -8,6 +8,7 @@ use llvm_ir::*;
 use log::debug;
 use std::collections::HashMap;
 use std::collections::hash_map::Entry::*;
+use std::fmt;
 use std::sync::{Arc, RwLock};
 
 /// Allocate the function parameters given in `params` with their corresponding `AbstractData` descriptions.
@@ -256,26 +257,40 @@ pub fn initialize_data_in_memory(
     initialize_data_in_memory_rec(state, addr, data, ty, cur_struct, parent, Vec::new(), ctx)
 }
 
-fn error_backtrace(within_structs: &Vec<String>) {
-    eprintln!();
-    for w in within_structs {
-        eprintln!("within struct {}:", w);
+#[derive(PartialEq, Eq, Clone, Debug, Hash)]
+struct WithinStruct {
+    /// Name of the struct we are within
+    name: String,
+    /// Index of the element in that struct which we are within
+    element_index: usize,
+}
+
+impl fmt::Display for WithinStruct {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "struct {:?}, element {}", self.name, self.element_index)
     }
 }
 
-/// `within_structs`: Name of the struct we are currently within (and the struct
-/// that is within, etc), purely for debugging purposes. First in the vec is the
-/// top-level struct, last is the most immediate struct.
+fn error_backtrace(within_structs: &Vec<WithinStruct>) {
+    eprintln!();
+    for w in within_structs {
+        eprintln!("within {}:", w);
+    }
+}
+
+/// `within_structs`: Description of the struct we are currently within (and the
+/// struct that is within, etc), purely for debugging purposes. First in the vec
+/// is the top-level struct, last is the most immediate struct.
 ///
 /// Other arguments are as for `initialize_data_in_memory`.
-pub fn initialize_data_in_memory_rec(
+fn initialize_data_in_memory_rec(
     state: &mut State<'_, secret::Backend>,
     addr: &secret::BV,
     data: &CompleteAbstractData,
     ty: Option<&Type>,
     cur_struct: Option<(&secret::BV, &Type)>,
     parent: Option<(&secret::BV, &Type)>,
-    mut within_structs: Vec<String>,
+    mut within_structs: Vec<WithinStruct>,
     ctx: &mut Context,
 ) -> Result<usize> {
     if let Some(Type::ArrayType { num_elements: 1, element_type }) | Some(Type::VectorType { num_elements: 1, element_type }) = ty {
@@ -814,9 +829,11 @@ pub fn initialize_data_in_memory_rec(
                 error_backtrace(&within_structs);
                 panic!("Have {} struct elements but {} element types", elements.len(), element_types.len());
             }
-            within_structs.push(name.clone());
+            within_structs.push(WithinStruct { name: name.clone(), element_index: 0 });
             let mut total_bits = 0;
             for (element_idx, (element, element_ty)) in elements.iter().zip(element_types).enumerate() {
+                let within_structs_len = within_structs.len();
+                within_structs.get_mut(within_structs_len - 1).unwrap().element_index = element_idx;
                 let element_size_bits = element.size_in_bits();
                 if let Some(element_ty) = &element_ty {
                     let llvm_element_size_bits = layout::size(&element_ty);
