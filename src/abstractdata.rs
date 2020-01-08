@@ -779,7 +779,10 @@ impl UnderspecifiedAbstractData {
                                     // We have an LLVM struct definition, so use that
                                     ctx.within_structs.push(name.clone());
                                     let inner_ty: &Type = &arc.read().unwrap();
-                                    self.to_complete_rec(Some(inner_ty), ctx)
+                                    match self.to_complete_rec(Some(inner_ty), ctx) {
+                                        CompleteAbstractData::Struct { elements, .. } => CompleteAbstractData::_struct(name.clone(), elements),  // put in the correct struct name
+                                        cad => panic!("Expected to end up with a Struct from this call, but got {:?}", cad),
+                                    }
                                 },
                                 None => {
                                     // all definitions of the struct in the project are opaque, and it isn't in the StructDescriptions
