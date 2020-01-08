@@ -760,13 +760,22 @@ impl UnderspecifiedAbstractData {
                             *num_elements,
                         ),
                     Type::NamedStructType { name, .. } => {
-                        if !ctx.unspecified_named_structs.insert(name) {
-                            if WARNED_STRUCTS.lock().unwrap().insert(name.clone()) {
-                                warn!("Setting a pointer to {:?} to unconstrained in order to avoid infinite recursion. We will not warn again for infinite recursion on a pointer to a {:?}", name, name);
-                            }
-                            return CompleteAbstractData::unconstrained_pointer();
-                        }
                         let arc = ctx.proj.get_inner_struct_type_from_named(ty);
+                        if !ctx.unspecified_named_structs.insert(name) {
+                            match arc {
+                                Some(arc) => {
+                                    if WARNED_STRUCTS.lock().unwrap().insert(name.clone()) {
+                                        warn!("Setting the contents of a {:?} to unconstrained in order to avoid infinite recursion. We will not warn again for infinite recursion on a {:?}", name, name);
+                                    }
+                                    let inner_ty: &Type = &arc.read().unwrap();
+                                    return CompleteAbstractData::PublicValue { bits: layout::size(inner_ty), value: AbstractValue::Unconstrained };
+                                },
+                                None => {
+                                    ctx.error_backtrace();
+                                    panic!("Encountered infinite recursion in struct {:?}, which is opaque; this should be impossible");
+                                },
+                            }
+                        }
                         match ctx.sd.get(name) {
                             Some(abstractdata) => {
                                 // This is in the StructDescriptions, so use the description there
