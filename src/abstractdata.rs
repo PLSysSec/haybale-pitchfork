@@ -18,7 +18,7 @@ pub enum CompleteAbstractData {
     /// unconstrained, etc.
     ///
     /// This may be used for either a non-pointer value, or for a pointer value
-    /// if you want to specify the exact numerical value of the pointer (e.g. NULL).
+    /// if you want to specify the exact numerical value of the pointer (e.g. `NULL`).
     PublicValue { bits: usize, value: AbstractValue },
 
     /// A (first-class) array of values
@@ -32,7 +32,7 @@ pub enum CompleteAbstractData {
         /// Description of the thing being pointed to
         pointee: Box<Self>,
         /// If `false`, the pointer must point to the pointee; if `true`,
-        /// it may either point to the pointee or be NULL
+        /// it may either point to the pointee or be `NULL`
         maybe_null: bool,
     },
 
@@ -75,9 +75,6 @@ pub enum CompleteAbstractData {
     /// (or if there is no parent, i.e., we are directly initializing this)
     /// then pointer to the given `CompleteAbstractData` instead
     PublicPointerToParentOr(Box<CompleteAbstractData>),
-
-    /// A (public) pointer which may point anywhere
-    PublicUnconstrainedPointer,
 
     /// A secret value (pointer or non-pointer, doesn't matter) of the given size in bits
     Secret { bits: usize },
@@ -156,7 +153,7 @@ impl CompleteAbstractData {
         Self::PublicPointerTo { pointee: Box::new(data), maybe_null: false }
     }
 
-    /// A (public) pointer which may either point to the given data or be NULL
+    /// A (public) pointer which may either point to the given data or be `NULL`
     pub fn pub_maybe_null_pointer_to(data: Self) -> Self {
         Self::PublicPointerTo { pointee: Box::new(data), maybe_null: true }
     }
@@ -202,9 +199,9 @@ impl CompleteAbstractData {
         Self::Struct { name: name.into(), elements: elements.into_iter().collect() }
     }
 
-    /// A (public) pointer which may point anywhere
+    /// A (public) pointer which may point anywhere, including being `NULL`
     pub fn unconstrained_pointer() -> Self {
-        Self::PublicUnconstrainedPointer
+        Self::PublicValue { bits: Self::POINTER_SIZE_BITS, value: AbstractValue::Unconstrained }
     }
 
     /// When C code uses `void*`, this often becomes `i8*` in LLVM. However,
@@ -244,7 +241,6 @@ impl CompleteAbstractData {
             Self::PublicPointerToSelf => Self::POINTER_SIZE_BITS,
             Self::PublicPointerToParent => Self::POINTER_SIZE_BITS,
             Self::PublicPointerToParentOr(_) => Self::POINTER_SIZE_BITS,
-            Self::PublicUnconstrainedPointer => Self::POINTER_SIZE_BITS,
             Self::Secret { bits } => *bits,
             Self::VoidOverride { data, .. } => data.size_in_bits(),
             Self::WithWatchpoint { data, .. } => data.size_in_bits(),
@@ -287,7 +283,6 @@ impl CompleteAbstractData {
             Self::PublicPointerToSelf => true,
             Self::PublicPointerToParent => true,
             Self::PublicPointerToParentOr(_) => true,
-            Self::PublicUnconstrainedPointer => true,
             Self::Secret { .. } => panic!("is_pointer on a Secret"),
             Self::VoidOverride { data, .. } => data.is_pointer(),
             Self::WithWatchpoint { data, .. } => data.is_pointer(),
@@ -308,7 +303,6 @@ impl CompleteAbstractData {
             Self::PublicPointerToSelf => unimplemented!("pointee_size_in_bits() on PublicPointerToSelf"),
             Self::PublicPointerToParent => unimplemented!("pointee_size_in_bits() on PublicPointerToParent"),
             Self::PublicPointerToParentOr(data) => data.size_in_bits(),  // assume that if the parent typechecks, it's the same size
-            Self::PublicUnconstrainedPointer => panic!("pointee_size_in_bits() on an unconstrained pointer"),
             Self::Secret { .. } => panic!("pointee_size_in_bits() on a Secret"),
             Self::VoidOverride { data, .. } => data.pointee_size_in_bits(),
             Self::WithWatchpoint { data, .. } => data.pointee_size_in_bits(),
@@ -358,7 +352,7 @@ pub(crate) enum UnderspecifiedAbstractData {
         /// Description of the thing being pointed to
         pointee: Box<AbstractData>,
         /// If `false`, the pointer must point to the pointee; if `true`,
-        /// it may either point to the pointee or be NULL
+        /// it may either point to the pointee or be `NULL`
         maybe_null: bool,
     },
 
@@ -445,7 +439,7 @@ impl AbstractData {
         Self(UnderspecifiedAbstractData::PublicPointerTo { pointee: Box::new(data), maybe_null: false })
     }
 
-    /// A (public) pointer which may either point to the given data or be NULL
+    /// A (public) pointer which may either point to the given data or be `NULL`
     pub fn pub_maybe_null_pointer_to(data: Self) -> Self {
         Self(UnderspecifiedAbstractData::PublicPointerTo { pointee: Box::new(data), maybe_null: true })
     }
@@ -519,7 +513,7 @@ impl AbstractData {
         Self(UnderspecifiedAbstractData::Unspecified)
     }
 
-    /// A (public) pointer which may point anywhere
+    /// A (public) pointer which may point anywhere, including being `NULL`
     pub fn unconstrained_pointer() -> Self {
         Self(UnderspecifiedAbstractData::Complete(CompleteAbstractData::unconstrained_pointer()))
     }

@@ -204,17 +204,6 @@ fn allocate_arg<'p>(state: &mut State<'p, secret::Backend>, param: &'p function:
         CompleteAbstractData::PublicPointerToSelf => panic!("Pointer-to-self is not supported for toplevel parameter (requires support for struct-passed-by-value, which at the time of this writing is also unimplemented)"),
         CompleteAbstractData::PublicPointerToParent => panic!("Pointer-to-parent is not supported for toplevel parameter; we have no way to know what struct it is contained in"),
         CompleteAbstractData::PublicPointerToParentOr(_) => panic!("Pointer-to-parent is not supported for toplevel parameter; we have no way to know what struct it is contained in"),
-        CompleteAbstractData::PublicUnconstrainedPointer => {
-            debug!("Parameter is marked as a public unconstrained pointer");
-            // nothing to do, just check that the type matches
-            match &param.ty {
-                Type::PointerType { .. } => {},
-                ty => panic!("Mismatch for parameter {:?}: CompleteAbstractData specifies a pointer but parameter type is {:?}", &param.name, ty),
-            };
-            // return the BV representing the parameter
-            let op = Operand::LocalOperand { name: param.name.clone(), ty: param.ty.clone() };
-            state.operand_to_bv(&op)
-        },
         CompleteAbstractData::Array { .. } => unimplemented!("Array passed by value"),
         CompleteAbstractData::Struct { .. } => unimplemented!("Struct passed by value"),
         CompleteAbstractData::VoidOverride { .. } => unimplemented!("VoidOverride used as an argument directly.  You probably meant to use a pointer to a VoidOverride"),
@@ -734,20 +723,6 @@ fn initialize_data_in_memory_rec(
                     initialize_data_in_memory_rec(state, addr, &CompleteAbstractData::pub_pointer_to((**pointee).to_owned()), ty, cur_struct, parent, within_structs, ctx)
                 },
             }
-        },
-        CompleteAbstractData::PublicUnconstrainedPointer => {
-            debug!("memory contents are marked as a public unconstrained pointer");
-            // nothing to do, just check that the type matches
-            if let Some(ty) = ty {
-                match ty {
-                    Type::PointerType { .. } => {},
-                    _ => {
-                        error_backtrace(&within_structs);
-                        panic!("Type mismatch: CompleteAbstractData specifies a pointer, but found type {:?}", ty)
-                    },
-                };
-            }
-            Ok(AbstractData::POINTER_SIZE_BITS)
         },
         CompleteAbstractData::Array { element_type: element_abstractdata, num_elements } => {
             debug!("memory contents are marked as an array of {} elements", num_elements);
