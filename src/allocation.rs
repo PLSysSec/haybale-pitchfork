@@ -293,6 +293,7 @@ fn initialize_data_in_memory_rec(
     mut within_structs: Vec<WithinStruct>,
     ctx: &mut Context,
 ) -> Result<usize> {
+    // First we handle the case where the LLVM type is array-of-one-element
     if let Some(Type::ArrayType { num_elements: 1, element_type }) | Some(Type::VectorType { num_elements: 1, element_type }) = ty {
         match data {
             CompleteAbstractData::Array { num_elements: 1, element_type: element_abstractdata } => {
@@ -305,6 +306,37 @@ fn initialize_data_in_memory_rec(
             },
         }
     };
+
+    // Then we handle the case where the LLVM type is struct-of-one-element
+    match ty {
+        Some(Type::StructType { element_types, .. }) if element_types.len() == 1 => {
+            if !data.could_describe_a_struct_of_one_element() {
+                // `data` specifies some incompatible type.  Unwrap the LLVM struct and try again.
+                return initialize_data_in_memory_rec(state, addr, data, Some(&element_types[0]), cur_struct, parent, within_structs, ctx);
+            }
+        },
+        Some(ty@Type::NamedStructType { .. }) => {
+            match ctx.proj.get_inner_struct_type_from_named(ty) {
+                None => {},  // we're looking for where LLVM type is a struct of one element. Opaque struct type is a different problem.
+                Some(arc) => {
+                    let actual_ty: &Type = &arc.read().unwrap();
+                    if let Type::StructType { element_types, .. } = actual_ty {
+                        if element_types.len() == 1 {
+                            // the LLVM type is struct of one element.  Proceed as in the above case
+                            if !data.could_describe_a_struct_of_one_element() {
+                                // `data` specifies some incompatible type.  Unwrap the LLVM struct and try again.
+                                // we could consider pushing the named struct name to within_structs here
+                                return initialize_data_in_memory_rec(state, addr, data, Some(&element_types[0]), cur_struct, parent, within_structs, ctx);
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        _ => {},  // LLVM type isn't struct of one element.  Continue.
+    }
+
+    // Otherwise, on to normal processing
     debug!("Initializing data in memory at address {:?}", addr);
     match data {
         CompleteAbstractData::Secret { bits } => {

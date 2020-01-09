@@ -314,6 +314,17 @@ impl CompleteAbstractData {
             Self::WithWatchpoint { data, .. } => data.pointee_size_in_bits(),
         }
     }
+
+    /// for internal use: could this `CompleteAbstractData` be valid for describing a struct of one element?
+    pub(crate) fn could_describe_a_struct_of_one_element(&self) -> bool {
+        match self {
+            Self::Struct { elements, .. } => elements.len() == 1,  // compatible iff the number of elements is 1
+            Self::Secret { .. } => true,  // could be compatible with the struct-of-one-element type
+            Self::VoidOverride { .. } => true,  // could be compatible with the struct-of-one-element type
+            Self::WithWatchpoint { .. } => true,  // could be compatible with the struct-of-one-element type
+            _ => false,
+        }
+    }
 }
 
 /// An abstract description of a value: if it is public or not, if it is a
@@ -619,6 +630,19 @@ impl<'a, 'p> ToCompleteContext<'a, 'p> {
 }
 
 impl UnderspecifiedAbstractData {
+    /// for internal use: could this `UnderspecifiedAbstractData` be valid for describing a struct of one element?
+    pub(crate) fn could_describe_a_struct_of_one_element(&self) -> bool {
+        match self {
+            Self::Unspecified => true,  // compatible with the struct-of-one-element type
+            Self::Unconstrained => true,  // compatible with the struct-of-one-element type
+            Self::Struct { elements, .. } => elements.len() == 1,  // compatible iff the number of elements is 1
+            Self::Complete(CompleteAbstractData::Struct { elements, .. }) => elements.len() == 1,  // compatible iff the number of elements is 1
+            Self::VoidOverride { .. } => true,  // could be compatible with the struct-of-one-element type
+            Self::WithWatchpoint { .. } => true,  // could be compatible with the struct-of-one-element type
+            _ => false,
+        }
+    }
+
     /// See method description on [`AbstractData::to_complete`](enum.AbstractData.html#method.to_complete)
     pub fn to_complete(self, ty: &Type, proj: &Project, sd: &StructDescriptions) -> CompleteAbstractData {
         self.to_complete_rec(Some(ty), ToCompleteContext::new(proj, sd))
@@ -634,6 +658,38 @@ impl UnderspecifiedAbstractData {
         lazy_static! {
             static ref WARNED_STRUCTS: Mutex<HashSet<String>> = Mutex::new(HashSet::new());
         }
+
+        // If LLVM type is a struct of one element, and UAD is specified as
+        // something else, unwrap the LLVM struct and try again
+        match ty {
+            Some(Type::StructType { element_types, .. }) if element_types.len() == 1 => {
+                if !self.could_describe_a_struct_of_one_element() {
+                    // `self` specifies some incompatible type.  Unwrap the LLVM struct and try again.
+                    return self.to_complete_rec(Some(&element_types[0]), ctx);
+                }
+            },
+            Some(ty@Type::NamedStructType { .. }) => {
+                match ctx.proj.get_inner_struct_type_from_named(ty) {
+                    None => {},  // we're looking for where LLVM type is a struct of one element. Opaque struct type is a different problem.
+                    Some(arc) => {
+                        let actual_ty: &Type = &arc.read().unwrap();
+                        if let Type::StructType { element_types, .. } = actual_ty {
+                            if element_types.len() == 1 {
+                                // the LLVM type is struct of one element.  Proceed as in the above case
+                                if !self.could_describe_a_struct_of_one_element() {
+                                    // `self` specifies some incompatible type.  Unwrap the LLVM struct and try again.
+                                    // we could consider pushing the named struct name to within_structs here
+                                    return self.to_complete_rec(Some(&element_types[0]), ctx);
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            _ => {},  // LLVM type isn't struct of one element.  Continue.
+        }
+
+        // Otherwise, on to the normal processing
         match self {
             Self::Complete(abstractdata) => abstractdata,
             Self::Unconstrained => match ty {
