@@ -202,7 +202,6 @@ fn allocate_arg<'p>(state: &mut State<'p, secret::Backend>, param: &'p function:
             Ok(ptr)
         }
         CompleteAbstractData::PublicPointerToSelf => panic!("Pointer-to-self is not supported for toplevel parameter (requires support for struct-passed-by-value, which at the time of this writing is also unimplemented)"),
-        CompleteAbstractData::PublicPointerToParent => panic!("Pointer-to-parent is not supported for toplevel parameter; we have no way to know what struct it is contained in"),
         CompleteAbstractData::PublicPointerToParentOr(_) => panic!("Pointer-to-parent is not supported for toplevel parameter; we have no way to know what struct it is contained in"),
         CompleteAbstractData::Array { .. } => unimplemented!("Array passed by value"),
         CompleteAbstractData::Struct { .. } => unimplemented!("Struct passed by value"),
@@ -629,56 +628,10 @@ fn initialize_data_in_memory_rec(
                 }
             }
         }
-        CompleteAbstractData::PublicPointerToParent => {
-            debug!("memory contents are marked as a public pointer to this struct's parent");
-            match parent {
-                None => {
-                    error_backtrace(&within_structs);
-                    panic!("Pointer-to-parent used but there is no immediate parent")
-                },
-                Some((parent_ptr, parent_ty)) => {
-                    // first typecheck: is this actually a pointer to the correct parent type
-                    match ty {
-                        Some(Type::PointerType { pointee_type, .. }) => {
-                            let pointee_ty = &**pointee_type;
-                            if pointee_ty == parent_ty {
-                                // typecheck passes, do nothing
-                            } else if let Type::NamedStructType { name, .. } = pointee_ty {
-                                // LLVM type is pointer to a named struct type, try unwrapping it and see if that makes the types equal
-                                let arc = ctx.proj.get_inner_struct_type_from_named(pointee_ty).unwrap_or_else(|| {
-                                    error_backtrace(&within_structs);
-                                    panic!("CompleteAbstractData specifies pointer-to-parent, but parent type (struct named {:?}) is fully opaque and has no definition in this Project", name);
-                                });
-                                let actual_ty: &Type = &arc.read().unwrap();
-                                if actual_ty == parent_ty {
-                                    // typecheck passes, do nothing
-                                } else {
-                                    error_backtrace(&within_structs);
-                                    panic!("Type mismatch: CompleteAbstractData specifies pointer-to-parent, but found pointer to a different type.\n  Parent type: {:?}\n  Found type: struct named {:?}: {:?}\n", parent_ty, name, actual_ty);
-                                }
-                            } else {
-                                error_backtrace(&within_structs);
-                                panic!("Type mismatch: CompleteAbstractData specifies pointer-to-parent, but found pointer to a different type.\n  Parent type: {:?}\n  Found type: {:?}\n", parent_ty, pointee_ty);
-                            }
-                        },
-                        Some(_) => {
-                            error_backtrace(&within_structs);
-                            panic!("Type mismatch: CompleteAbstractData specifies a pointer, but found type {:?}", ty)
-                        },
-                        None => {},
-                    };
-                    // typecheck passed, write the pointer
-                    debug!("setting the memory contents equal to {:?}", parent_ptr);
-                    let bits = parent_ptr.get_width();
-                    state.write(&addr, parent_ptr.clone())?;
-                    Ok(bits as usize)
-                },
-            }
-        }
         CompleteAbstractData::PublicPointerToParentOr(pointee) => {
             // this parent_ptr will be None if the parent type mismatches
             let parent_ptr: Option<_> = match parent {
-                None => None,  // no parent, so it's not the correct type; we'll use the `pointee` data
+                None => None,  // no parent, so it's not the correct type; we'll use the `pointee` data, if it was provided
                 Some((parent_ptr, parent_ty)) => match ty {
                     Some(Type::PointerType { pointee_type, .. }) => {
                         let pointee_ty = &**pointee_type;
@@ -704,24 +657,44 @@ fn initialize_data_in_memory_rec(
                         error_backtrace(&within_structs);
                         panic!("Type mismatch: CompleteAbstractData specifies a pointer, but found type {:?}", ty)
                     },
-                    None => {
-                        error_backtrace(&within_structs);
-                        panic!("CompleteAbstractData specifies public-pointer-to-parent-or, but since we don't know the current LLVM type, we can't determine whether the parent type matches or not")
+                    None => match pointee {
+                        None => Some(parent_ptr),  // we can't determine if the parent type matches, but we weren't given a backup, so we assume the types match (somewhat dangerous)
+                        _ => {
+                            error_backtrace(&within_structs);
+                            panic!("CompleteAbstractData specifies public-pointer-to-parent-or, but since we don't know the current LLVM type, we can't determine whether the parent type matches or not")
+                        },
                     },
                 },
             };
-            match parent_ptr {
-                Some(parent_ptr) => {
+            match (parent_ptr, pointee) {
+                (Some(parent_ptr), _) => {
+                    // no need for the backup, since the parent type matches
                     debug!("memory contents are marked as a public pointer to this struct's parent");
                     debug!("setting the memory contents equal to {:?}", parent_ptr);
                     let bits = parent_ptr.get_width();
                     state.write(&addr, parent_ptr.clone())?;
                     Ok(bits as usize)
                 },
-                None => {
-                    debug!("memory contents are marked as public-pointer-to-parent with a backup; since parent type doesn't match, using the backup");
+                (None, Some(pointee)) => {
+                    // parent type mismatches, or parent doesn't exist: use the backup
+                    debug!("memory contents are marked as public-pointer-to-parent with a backup; since {}, using the backup", match parent {
+                        Some(_) => "parent type doesn't match",
+                        None => "there is no immediate parent",
+                    });
                     initialize_data_in_memory_rec(state, addr, &CompleteAbstractData::pub_pointer_to((**pointee).to_owned()), ty, cur_struct, parent, within_structs, ctx)
                 },
+                (None, None) => {
+                    // parent type mismatches, but we have no backup
+                    error_backtrace(&within_structs);
+                    match parent {
+                        None => panic!("CompleteAbstractData specifies pointer-to-parent (with no backup), but there is no immediate parent"),
+                        Some((_, parent_ty)) => match ty {
+                            Some(Type::PointerType { pointee_type, .. }) =>
+                                panic!("Type mismatch: CompleteAbstractData specifies pointer-to-parent (with no backup), but found pointer to a different type.\n  Parent type: {:?}\n  Found type: {:?}\n", parent_ty, &**pointee_type),
+                            _ => panic!("we should have already panicked above in this case"),
+                        },
+                    }
+                }
             }
         },
         CompleteAbstractData::Array { element_type: element_abstractdata, num_elements } => {

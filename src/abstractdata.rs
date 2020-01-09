@@ -21,6 +21,9 @@ pub enum CompleteAbstractData {
     /// if you want to specify the exact numerical value of the pointer (e.g. `NULL`).
     PublicValue { bits: usize, value: AbstractValue },
 
+    /// A secret value (pointer or non-pointer, doesn't matter) of the given size in bits
+    Secret { bits: usize },
+
     /// A (first-class) array of values
     Array { element_type: Box<Self>, num_elements: usize },
 
@@ -69,15 +72,11 @@ pub enum CompleteAbstractData {
     /// ```
     /// you could use this for `Foo* parent` to indicate it should point to the
     /// `Foo` containing this `Bar`.
-    PublicPointerToParent,
-
-    /// Like `PublicPointerToParent`, but if the parent is not the correct type
+    ///
+    /// If the `Option` is `Some`, then if the parent is not the correct type
     /// (or if there is no parent, i.e., we are directly initializing this)
     /// then pointer to the given `CompleteAbstractData` instead
-    PublicPointerToParentOr(Box<CompleteAbstractData>),
-
-    /// A secret value (pointer or non-pointer, doesn't matter) of the given size in bits
-    Secret { bits: usize },
+    PublicPointerToParentOr(Option<Box<CompleteAbstractData>>),
 
     /// When C code uses `void*`, this often becomes `i8*` in LLVM. However,
     /// within Pitchfork, we may want to specify some type other than `i8*` for
@@ -174,17 +173,31 @@ impl CompleteAbstractData {
         Self::PublicPointerToSelf
     }
 
-    /// a (public) pointer to this struct's parent; see comments on
-    /// `CompleteAbstractData::PublicPointerToParent`
+    /// A (public) pointer to this struct's parent. E.g., in the C code
+    /// ```c
+    /// struct Foo {
+    ///     int x;
+    ///     Bar* bar1;
+    ///     Bar* bar2;
+    ///     ...
+    /// };
+    ///
+    /// struct Bar {
+    ///     int y;
+    ///     Foo* parent;  // pointer to the Foo containing this Bar
+    /// };
+    /// ```
+    /// you could use this for `Foo* parent` to indicate it should point to the
+    /// `Foo` containing this `Bar`.
     pub fn pub_pointer_to_parent() -> Self {
-        Self::PublicPointerToParent
+        Self::PublicPointerToParentOr(None)
     }
 
     /// Like `pub_pointer_to_parent()`, but if the parent is not the correct type
     /// (or if there is no parent, i.e., we are directly initializing this) then
     /// pointer to the given `CompleteAbstractData` instead
     pub fn pub_pointer_to_parent_or(data: Self) -> Self {
-        Self::PublicPointerToParentOr(Box::new(data))
+        Self::PublicPointerToParentOr(Some(Box::new(data)))
     }
 
     /// A (first-class) array of values
@@ -239,7 +252,6 @@ impl CompleteAbstractData {
             Self::PublicPointerToFunction(_) => Self::POINTER_SIZE_BITS,
             Self::PublicPointerToHook(_) => Self::POINTER_SIZE_BITS,
             Self::PublicPointerToSelf => Self::POINTER_SIZE_BITS,
-            Self::PublicPointerToParent => Self::POINTER_SIZE_BITS,
             Self::PublicPointerToParentOr(_) => Self::POINTER_SIZE_BITS,
             Self::Secret { bits } => *bits,
             Self::VoidOverride { data, .. } => data.size_in_bits(),
@@ -281,7 +293,6 @@ impl CompleteAbstractData {
             Self::PublicPointerToFunction(_) => true,
             Self::PublicPointerToHook(_) => true,
             Self::PublicPointerToSelf => true,
-            Self::PublicPointerToParent => true,
             Self::PublicPointerToParentOr(_) => true,
             Self::Secret { .. } => panic!("is_pointer on a Secret"),
             Self::VoidOverride { data, .. } => data.is_pointer(),
@@ -301,8 +312,8 @@ impl CompleteAbstractData {
             Self::PublicPointerToFunction(_) => 64,  // as of this writing, haybale allocates 64 bits for functions; see State::new()
             Self::PublicPointerToHook(_) => 64,  // as of this writing, haybale allocates 64 bits for hooks; see State::new()
             Self::PublicPointerToSelf => unimplemented!("pointee_size_in_bits() on PublicPointerToSelf"),
-            Self::PublicPointerToParent => unimplemented!("pointee_size_in_bits() on PublicPointerToParent"),
-            Self::PublicPointerToParentOr(data) => data.size_in_bits(),  // assume that if the parent typechecks, it's the same size
+            Self::PublicPointerToParentOr(None) => unimplemented!("pointee_size_in_bits() on PublicPointerToParent"),
+            Self::PublicPointerToParentOr(Some(data)) => data.size_in_bits(),  // assume that if the parent typechecks, it's the same size
             Self::Secret { .. } => panic!("pointee_size_in_bits() on a Secret"),
             Self::VoidOverride { data, .. } => data.pointee_size_in_bits(),
             Self::WithWatchpoint { data, .. } => data.pointee_size_in_bits(),
@@ -356,9 +367,10 @@ pub(crate) enum UnderspecifiedAbstractData {
         maybe_null: bool,
     },
 
-    /// Like `PublicPointerToParent`, but if the parent is not the correct type
-    /// (or if there is no parent, i.e., we are directly initializing this)
-    /// then pointer to the given `AbstractData` instead
+    /// Like `CompleteAbstractData::PublicPointerToParentOr`, but the `Or` part
+    /// can be an `AbstractData` instead of a `CompleteAbstractData`.
+    /// Also, the `Or` part isn't an `Option` - if you don't want the `Or` part,
+    /// use `Complete` with `CompleteAbstractData::PublicPointerToParentOr(None)`
     PublicPointerToParentOr(Box<AbstractData>),
 
     /// an array with underspecified elements
