@@ -116,28 +116,28 @@ pub fn fill_secret_with_length(
 
 /// This helper function allocates space for the given `AbstractData`,
 /// initializes it, and returns a pointer to the newly-allocated space.
-pub fn allocate_and_init_abstractdata(
-    proj: &Project,
-    state: &mut State<secret::Backend>,
+pub fn allocate_and_init_abstractdata<'p>(
+    proj: &'p Project,
+    state: &mut State<'p, secret::Backend>,
     ad: AbstractData,
     ty: &Type,  // Type of the AbstractData
-    sd: &StructDescriptions,
+    sd: &'p StructDescriptions,
 ) -> Result<secret::BV> {
     let ad = ad.to_complete(ty, proj, sd);
     let ptr = state.allocate(ad.size_in_bits() as u64);
-    let mut allocationctx = allocation::Context::new(proj, sd);
-    allocation::InitializationContext::blank().initialize_data_in_memory(state, &mut allocationctx, &ptr, &ad, Some(ty))?;
+    let mut allocationctx = allocation::Context::new(proj, state, sd);
+    allocation::InitializationContext::blank().initialize_data_in_memory(&mut allocationctx, &ptr, &ad, Some(ty))?;
     Ok(ptr)
 }
 
 /// This helper function reinitializes whatever is pointed to by the given
 /// pointer, according to the given `AbstractData`.
-pub fn reinitialize_pointee(
-    proj: &Project,
-    state: &mut State<secret::Backend>,
+pub fn reinitialize_pointee<'p>(
+    proj: &'p Project,
+    state: &mut State<'p, secret::Backend>,
     pointer: &Operand,  // we'll reinitialize the [struct, array, whatever] that this points to
     ad: AbstractData,  // `AbstractData` describing the _pointee_ (not the pointer) and how to reinitialize it
-    struct_descriptions: &StructDescriptions,
+    struct_descriptions: &'p StructDescriptions,
 ) -> Result<()> {
     let ptr = state.operand_to_bv(pointer)?;
     let pointee_ty = match pointer.get_type() {
@@ -145,7 +145,7 @@ pub fn reinitialize_pointee(
         ty => return Err(Error::OtherError(format!("reinitialize_pointee: expected `pointer` to be a pointer, got {:?}", ty))),
     };
     let ad = ad.to_complete(&pointee_ty, proj, struct_descriptions);
-    let mut allocationctx = allocation::Context::new(proj, struct_descriptions);
-    allocation::InitializationContext::blank().initialize_data_in_memory(state, &mut allocationctx, &ptr, &ad, Some(&pointee_ty))?;
+    let mut allocationctx = allocation::Context::new(proj, state, struct_descriptions);
+    allocation::InitializationContext::blank().initialize_data_in_memory(&mut allocationctx, &ptr, &ad, Some(&pointee_ty))?;
     Ok(())
 }

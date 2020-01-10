@@ -11,6 +11,7 @@ use haybale::{layout, symex_function, backend::Backend, ExecutionManager, State,
 use haybale::{Error, Result};
 pub use haybale::{Config, Project};
 use haybale::function_hooks::IsCall;
+use lazy_static::lazy_static;
 use log::{debug, info};
 use std::collections::{HashMap, HashSet};
 use std::fmt;
@@ -44,7 +45,7 @@ pub fn is_constant_time<'p>(
     funcname: &str,
     project: &'p Project,
     args: impl IntoIterator<Item = AbstractData>,
-    sd: &StructDescriptions,
+    sd: &'p StructDescriptions,
     config: Config<'p, secret::Backend>
 ) -> bool {
     match check_for_ct_violation(funcname, project, args, sd, config).ct_result {
@@ -123,9 +124,13 @@ pub fn check_for_ct_violation_in_inputs<'f, 'p>(
     project: &'p Project,
     config: Config<'p, secret::Backend>
 ) -> ConstantTimeResultForFunction<'f> {
+    lazy_static! {
+        static ref BLANK_STRUCT_DESCRIPTIONS: StructDescriptions = StructDescriptions::new();
+    }
+
     let (func, _) = project.get_func_by_name(funcname).expect("Failed to find function");
     let args = func.parameters.iter().map(|p| AbstractData::sec_integer(layout::size(&p.ty)));
-    check_for_ct_violation(funcname, project, args, &StructDescriptions::new(), config)
+    check_for_ct_violation(funcname, project, args, &BLANK_STRUCT_DESCRIPTIONS, config)
 }
 
 /// Checks whether a function is "constant-time" in the secrets identified by the
@@ -142,7 +147,7 @@ pub fn check_for_ct_violation<'f, 'p>(
     funcname: &'f str,
     project: &'p Project,
     args: impl IntoIterator<Item = AbstractData>,
-    sd: &StructDescriptions,
+    sd: &'p StructDescriptions,
     mut config: Config<'p, secret::Backend>,
 ) -> ConstantTimeResultForFunction<'f> {
     if !config.function_hooks.is_hooked("hook_uninitialized_function_pointer") {

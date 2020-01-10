@@ -17,45 +17,46 @@ use std::sync::{Arc, RwLock};
 pub fn allocate_args<'p>(
     proj: &'p Project,
     state: &mut State<'p, secret::Backend>,
-    sd: &StructDescriptions,
+    sd: &'p StructDescriptions,
     params: impl IntoIterator<Item = (&'p function::Parameter, AbstractData)>,
 ) -> Result<Vec<secret::BV>> {
-    let mut ctx = Context::new(proj, sd);
-    params.into_iter().map(|(param, arg)| ctx.allocate_arg(state, param, arg)).collect()
+    let mut ctx = Context::new(proj, state, sd);
+    params.into_iter().map(|(param, arg)| ctx.allocate_arg(param, arg)).collect()
 }
 
 /// This `Context` serves two purposes:
 /// first, simply collecting some objects together so we can pass them around as a unit;
 /// but second, allowing some state to persist across invocations of `allocate_arg`
 /// (particularly, tracking `AbstractValue::Named` values, thus allowing names used for one arg to reference values defined for another)
-pub struct Context<'a> {
-    proj: &'a Project,
-    sd: &'a StructDescriptions,
+pub struct Context<'p, 's> {
+    proj: &'p Project,
+    state: &'s mut State<'p, secret::Backend>,
+    sd: &'p StructDescriptions,
     namedvals: HashMap<String, secret::BV>,
 }
 
-impl<'a> Context<'a> {
-    pub fn new(proj: &'a Project, sd: &'a StructDescriptions) -> Self {
+impl<'p, 's> Context<'p, 's> {
+    pub fn new(proj: &'p Project, state: &'s mut State<'p, secret::Backend>, sd: &'p StructDescriptions) -> Self {
         Self {
             proj,
+            state,
             sd,
             namedvals: HashMap::new(),
         }
     }
 
     /// Returns the `secret::BV` representing the argument. Many callers won't need this, though.
-    fn allocate_arg<'p>(&mut self, state: &mut State<'p, secret::Backend>, param: &'p function::Parameter, arg: AbstractData) -> Result<secret::BV> {
+    fn allocate_arg(&mut self, param: &'p function::Parameter, arg: AbstractData) -> Result<secret::BV> {
         debug!("Allocating function parameter {:?}", &param.name);
         let arg = arg.to_complete(&param.ty, &self.proj, &self.sd);
-        self.allocate_arg_from_cad(state, param, arg, false)
+        self.allocate_arg_from_cad(param, arg, false)
     }
 
     /// Same as above, but takes a `CompleteAbstractData` instead of an `AbstractData`.
     ///
     /// `type_override`: If `true`, then the parameter type will not be checked against the `CompleteAbstractData`.
-    fn allocate_arg_from_cad<'p>(
+    fn allocate_arg_from_cad(
         &mut self,
-        state: &mut State<'p, secret::Backend>,
         param: &'p function::Parameter,
         arg: CompleteAbstractData,
         type_override: bool,
@@ -66,33 +67,33 @@ impl<'a> Context<'a> {
         match arg {
             CompleteAbstractData::Secret { bits } => {
                 debug!("Parameter is marked secret");
-                let bv = secret::BV::Secret { btor: state.solver.clone(), width: bits as u32, symbol: None };
-                state.overwrite_latest_version_of_bv(&param.name, bv.clone());
+                let bv = secret::BV::Secret { btor: self.state.solver.clone(), width: bits as u32, symbol: None };
+                self.state.overwrite_latest_version_of_bv(&param.name, bv.clone());
                 Ok(bv)
             },
             CompleteAbstractData::PublicValue { bits, value: AbstractValue::ExactValue(value) } => {
                 debug!("Parameter is marked public, equal to {}", value);
-                let bv = state.bv_from_u64(value, bits as u32);
-                state.overwrite_latest_version_of_bv(&param.name, bv.clone());
+                let bv = self.state.bv_from_u64(value, bits as u32);
+                self.state.overwrite_latest_version_of_bv(&param.name, bv.clone());
                 Ok(bv)
             },
             CompleteAbstractData::PublicValue { bits, value: AbstractValue::Range(min, max) } => {
                 debug!("Parameter is marked public, in the range ({}, {}) inclusive", min, max);
-                let parambv = state.new_bv_with_name(param.name.clone(), bits as u32).unwrap();
-                parambv.ugte(&state.bv_from_u64(min, bits as u32)).assert()?;
-                parambv.ulte(&state.bv_from_u64(max, bits as u32)).assert()?;
-                state.overwrite_latest_version_of_bv(&param.name, parambv.clone());
+                let parambv = self.state.new_bv_with_name(param.name.clone(), bits as u32).unwrap();
+                parambv.ugte(&self.state.bv_from_u64(min, bits as u32)).assert()?;
+                parambv.ulte(&self.state.bv_from_u64(max, bits as u32)).assert()?;
+                self.state.overwrite_latest_version_of_bv(&param.name, parambv.clone());
                 Ok(parambv)
             }
             CompleteAbstractData::PublicValue { value: AbstractValue::Unconstrained, .. } => {
                 debug!("Parameter is marked public, unconstrained value");
                 // nothing to do, just return the BV representing that parameter
                 let op = Operand::LocalOperand { name: param.name.clone(), ty: param.ty.clone() };
-                state.operand_to_bv(&op)
+                self.state.operand_to_bv(&op)
             },
             CompleteAbstractData::PublicValue { bits, value: AbstractValue::Named { name, value } } => {
                 let unwrapped_arg = CompleteAbstractData::pub_integer(bits, *value);
-                let bv = self.allocate_arg_from_cad(state, param, unwrapped_arg, type_override)?;
+                let bv = self.allocate_arg_from_cad(param, unwrapped_arg, type_override)?;
                 match self.namedvals.entry(name.to_owned()) {
                     Vacant(v) => {
                         v.insert(bv.clone());
@@ -104,7 +105,7 @@ impl<'a> Context<'a> {
                         bv._eq(&bv_for_name).assert()?;
                     },
                 };
-                state.overwrite_latest_version_of_bv(&param.name, bv.clone());
+                self.state.overwrite_latest_version_of_bv(&param.name, bv.clone());
                 Ok(bv)
             }
             CompleteAbstractData::PublicValue { bits, value: AbstractValue::EqualTo(name) } => {
@@ -113,7 +114,7 @@ impl<'a> Context<'a> {
                     Some(bv) => {
                         let width = bv.get_width();
                         assert_eq!(width, bits as u32, "AbstractValue::EqualTo {:?}, which has {} bits, but current value has {} bits", name, width, bits);
-                        state.overwrite_latest_version_of_bv(&param.name, bv.clone());
+                        self.state.overwrite_latest_version_of_bv(&param.name, bv.clone());
                         Ok(bv.clone())
                     }
                 }
@@ -124,9 +125,9 @@ impl<'a> Context<'a> {
                     Some(bv) => {
                         let width = bv.get_width();
                         assert_eq!(width, bits as u32, "AbstractValue::SignedLessThan {:?}, which has {} bits, but current value has {} bits", name, width, bits);
-                        let new_bv = state.new_bv_with_name(Name::from(format!("SignedLessThan{}:", name)), width)?;
+                        let new_bv = self.state.new_bv_with_name(Name::from(format!("SignedLessThan{}:", name)), width)?;
                         new_bv.slt(&bv).assert()?;
-                        state.overwrite_latest_version_of_bv(&param.name, new_bv.clone());
+                        self.state.overwrite_latest_version_of_bv(&param.name, new_bv.clone());
                         Ok(new_bv)
                     }
                 }
@@ -137,9 +138,9 @@ impl<'a> Context<'a> {
                     Some(bv) => {
                         let width = bv.get_width();
                         assert_eq!(width, bits as u32, "AbstractValue::SignedGreaterThan {:?}, which has {} bits, but current value has {} bits", name, width, bits);
-                        let new_bv = state.new_bv_with_name(Name::from(format!("SignedGreaterThan:{}", name)), width)?;
+                        let new_bv = self.state.new_bv_with_name(Name::from(format!("SignedGreaterThan:{}", name)), width)?;
                         new_bv.sgt(&bv).assert()?;
-                        state.overwrite_latest_version_of_bv(&param.name, new_bv.clone());
+                        self.state.overwrite_latest_version_of_bv(&param.name, new_bv.clone());
                         Ok(new_bv)
                     }
                 }
@@ -150,9 +151,9 @@ impl<'a> Context<'a> {
                     Some(bv) => {
                         let width = bv.get_width();
                         assert_eq!(width, bits as u32, "AbstractValue::UnsignedLessThan {:?}, which has {} bits, but current value has {} bits", name, width, bits);
-                        let new_bv = state.new_bv_with_name(Name::from(format!("UnsignedLessThan:{}", name)), width)?;
+                        let new_bv = self.state.new_bv_with_name(Name::from(format!("UnsignedLessThan:{}", name)), width)?;
                         new_bv.ult(&bv).assert()?;
-                        state.overwrite_latest_version_of_bv(&param.name, new_bv.clone());
+                        self.state.overwrite_latest_version_of_bv(&param.name, new_bv.clone());
                         Ok(new_bv)
                     }
                 }
@@ -163,33 +164,33 @@ impl<'a> Context<'a> {
                     Some(bv) => {
                         let width = bv.get_width();
                         assert_eq!(width, bits as u32, "AbstractValue::UnsignedGreaterThan {:?}, which has {} bits, but current value has {} bits", name, width, bits);
-                        let new_bv = state.new_bv_with_name(Name::from(format!("UnsignedGreaterThan:{}", name)), width)?;
+                        let new_bv = self.state.new_bv_with_name(Name::from(format!("UnsignedGreaterThan:{}", name)), width)?;
                         new_bv.ugt(&bv).assert()?;
-                        state.overwrite_latest_version_of_bv(&param.name, new_bv.clone());
+                        self.state.overwrite_latest_version_of_bv(&param.name, new_bv.clone());
                         Ok(new_bv)
                     }
                 }
             }
             CompleteAbstractData::PublicPointerTo { pointee, maybe_null } => {
                 debug!("Parameter is marked as a public pointer which {} be null", if maybe_null { "may" } else { "cannot" });
-                let ptr = state.allocate(pointee.size_in_bits() as u64);
+                let ptr = self.state.allocate(pointee.size_in_bits() as u64);
                 debug!("Allocated the parameter at {:?}", ptr);
                 let ptr = if maybe_null {
                     let ptr_width = ptr.get_width();
-                    let condition = state.new_bv_with_name(Name::from("pointer_is_null"), 1)?;
-                    condition.cond_bv(&state.zero(ptr_width), &ptr)
+                    let condition = self.state.new_bv_with_name(Name::from("pointer_is_null"), 1)?;
+                    condition.cond_bv(&self.state.zero(ptr_width), &ptr)
                 } else {
                     ptr
                 };
-                state.overwrite_latest_version_of_bv(&param.name, ptr.clone());
+                self.state.overwrite_latest_version_of_bv(&param.name, ptr.clone());
                 if type_override {
-                    InitializationContext::blank().initialize_data_in_memory(state, self, &ptr, &*pointee, None)?;
+                    InitializationContext::blank().initialize_data_in_memory(self, &ptr, &*pointee, None)?;
                 } else {
                     let pointee_ty = match &param.ty {
                         Type::PointerType { pointee_type, .. } => pointee_type,
                         ty => panic!("Mismatch for parameter {:?}: CompleteAbstractData specifies a pointer but parameter type is {:?}", &param.name, ty),
                     };
-                    InitializationContext::blank().initialize_data_in_memory(state, self, &ptr, &*pointee, Some(pointee_ty))?;
+                    InitializationContext::blank().initialize_data_in_memory(self, &ptr, &*pointee, Some(pointee_ty))?;
                 }
                 Ok(ptr)
             },
@@ -201,10 +202,10 @@ impl<'a> Context<'a> {
                         ty => panic!("Mismatch for parameter {:?}: CompleteAbstractData specifies a pointer but parameter type is {:?}", &param.name, ty),
                     };
                 }
-                let ptr = state.get_pointer_to_function(funcname.clone())
+                let ptr = self.state.get_pointer_to_function(funcname.clone())
                     .unwrap_or_else(|| panic!("Failed to find function {:?}", &funcname))
                     .clone();
-                state.overwrite_latest_version_of_bv(&param.name, ptr.clone());
+                self.state.overwrite_latest_version_of_bv(&param.name, ptr.clone());
                 Ok(ptr)
             }
             CompleteAbstractData::PublicPointerToHook(funcname) => {
@@ -215,10 +216,10 @@ impl<'a> Context<'a> {
                         ty => panic!("Mismatch for parameter {:?}: CompleteAbstractData specifies a pointer but parameter type is {:?}", &param.name, ty),
                     };
                 }
-                let ptr = state.get_pointer_to_function_hook(&funcname)
+                let ptr = self.state.get_pointer_to_function_hook(&funcname)
                     .unwrap_or_else(|| panic!("Failed to find hook for function {:?}", &funcname))
                     .clone();
-                state.overwrite_latest_version_of_bv(&param.name, ptr.clone());
+                self.state.overwrite_latest_version_of_bv(&param.name, ptr.clone());
                 Ok(ptr)
             }
             CompleteAbstractData::PublicPointerToSelf => panic!("Pointer-to-self is not supported for toplevel parameter (requires support for struct-passed-by-value, which at the time of this writing is also unimplemented)"),
@@ -228,13 +229,13 @@ impl<'a> Context<'a> {
             CompleteAbstractData::VoidOverride { .. } => unimplemented!("VoidOverride used as an argument directly.  You probably meant to use a pointer to a VoidOverride"),
             CompleteAbstractData::SameSizeOverride { data } => {
                 // we already checked above that the param size == the data size; and we will again on the recursive call, actually
-                self.allocate_arg_from_cad(state, param, *data, true)
+                self.allocate_arg_from_cad(param, *data, true)
             },
             CompleteAbstractData::WithWatchpoint { name, data } => {
                 if data.is_pointer() {
                     let pointee_size = data.pointee_size_in_bits();
-                    let ptr = self.allocate_arg_from_cad(state, param, *data, type_override)?;
-                    state.add_mem_watchpoint(name, Watchpoint::new(ptr.as_u64().unwrap(), pointee_size as u64));
+                    let ptr = self.allocate_arg_from_cad(param, *data, type_override)?;
+                    self.state.add_mem_watchpoint(name, Watchpoint::new(ptr.as_u64().unwrap(), pointee_size as u64));
                     Ok(ptr)
                 } else {
                     panic!("WithWatchpoint used with a non-pointer: {:?}", data)
@@ -311,7 +312,6 @@ impl<'a> InitializationContext<'a> {
     /// Returns the number of _bits_ (not bytes) the initialized data takes. Many callers won't need this, though.
     pub fn initialize_data_in_memory(
         mut self,
-        state: &mut State<'_, secret::Backend>,
         ctx: &mut Context,
         addr: &'a secret::BV,
         data: &CompleteAbstractData,
@@ -322,11 +322,11 @@ impl<'a> InitializationContext<'a> {
             match data {
                 CompleteAbstractData::Array { num_elements: 1, element_type: element_abstractdata } => {
                     // both LLVM and CAD type are array-of-one-element.  Unwrap and call recursively
-                    return self.initialize_data_in_memory(state, ctx, addr, element_abstractdata, Some(element_type));
+                    return self.initialize_data_in_memory(ctx, addr, element_abstractdata, Some(element_type));
                 },
                 data => {
                     // LLVM type is array-of-one-element but CAD type is not.  Unwrap the LLVM type and call recursively
-                    return self.initialize_data_in_memory(state, ctx, addr, data, Some(element_type));
+                    return self.initialize_data_in_memory(ctx, addr, data, Some(element_type));
                 },
             }
         };
@@ -336,7 +336,7 @@ impl<'a> InitializationContext<'a> {
             Some(Type::StructType { element_types, .. }) if element_types.len() == 1 => {
                 if !data.could_describe_a_struct_of_one_element() {
                     // `data` specifies some incompatible type.  Unwrap the LLVM struct and try again.
-                    return self.initialize_data_in_memory(state, ctx, addr, data, Some(&element_types[0]));
+                    return self.initialize_data_in_memory(ctx, addr, data, Some(&element_types[0]));
                 }
             },
             Some(ty@Type::NamedStructType { .. }) => {
@@ -350,7 +350,7 @@ impl<'a> InitializationContext<'a> {
                                 if !data.could_describe_a_struct_of_one_element() {
                                     // `data` specifies some incompatible type.  Unwrap the LLVM struct and try again.
                                     // we could consider pushing the named struct name to within_structs here
-                                    return self.initialize_data_in_memory(state, ctx, addr, data, Some(&element_types[0]));
+                                    return self.initialize_data_in_memory(ctx, addr, data, Some(&element_types[0]));
                                 }
                             }
                         }
@@ -366,8 +366,8 @@ impl<'a> InitializationContext<'a> {
         match data {
             CompleteAbstractData::Secret { bits } => {
                 debug!("marking {} bits secret at address {:?}", bits, addr);
-                let bv = secret::BV::Secret { btor: state.solver.clone(), width: *bits as u32, symbol: None };
-                state.write(&addr, bv)?;
+                let bv = secret::BV::Secret { btor: ctx.state.solver.clone(), width: *bits as u32, symbol: None };
+                ctx.state.write(&addr, bv)?;
                 Ok(*bits)
             },
             CompleteAbstractData::PublicValue { bits, value: AbstractValue::ExactValue(value) } => {
@@ -378,8 +378,8 @@ impl<'a> InitializationContext<'a> {
                         panic!("Size mismatch when initializing data at {:?}: type {:?} is {} bits but CompleteAbstractData is {} bits", addr, ty, layout::size(ty), bits);
                     }
                 }
-                let bv = state.bv_from_u64(*value, *bits as u32);
-                state.write(&addr, bv)?;
+                let bv = ctx.state.bv_from_u64(*value, *bits as u32);
+                ctx.state.write(&addr, bv)?;
                 Ok(*bits)
             },
             CompleteAbstractData::PublicValue { bits, value: AbstractValue::Range(min, max) } => {
@@ -390,9 +390,9 @@ impl<'a> InitializationContext<'a> {
                         panic!("Size mismatch when initializing data at {:?}: type {:?} is {} bits but CompleteAbstractData is {} bits", addr, ty, layout::size(ty), bits);
                     }
                 }
-                let bv = state.read(&addr, *bits as u32)?;
-                bv.ugte(&state.bv_from_u64(*min, *bits as u32)).assert()?;
-                bv.ulte(&state.bv_from_u64(*max, *bits as u32)).assert()?;
+                let bv = ctx.state.read(&addr, *bits as u32)?;
+                bv.ugte(&ctx.state.bv_from_u64(*min, *bits as u32)).assert()?;
+                bv.ulte(&ctx.state.bv_from_u64(*max, *bits as u32)).assert()?;
                 Ok(*bits)
             }
             CompleteAbstractData::PublicValue { bits, value: AbstractValue::Unconstrained } => {
@@ -407,12 +407,12 @@ impl<'a> InitializationContext<'a> {
             },
             CompleteAbstractData::PublicValue { bits, value: AbstractValue::Named { name, value } } => {
                 let unwrapped_data = CompleteAbstractData::pub_integer(*bits, (**value).clone());
-                let initialized_bits = self.clone().initialize_data_in_memory(state, ctx, addr, &unwrapped_data, ty)?;
+                let initialized_bits = self.clone().initialize_data_in_memory(ctx, addr, &unwrapped_data, ty)?;
                 if *bits != initialized_bits {
                     self.error_backtrace();
                     panic!("AbstractValue::Named {:?}: specified {} bits, but value is {} bits", name, bits, initialized_bits);
                 }
-                let bv = state.read(addr, *bits as u32)?;
+                let bv = ctx.state.read(addr, *bits as u32)?;
                 match ctx.namedvals.entry(name.to_owned()) {
                     Vacant(v) => {
                         v.insert(bv);
@@ -444,7 +444,7 @@ impl<'a> InitializationContext<'a> {
                                 panic!("Size mismatch when initializing data at {:?}: type {:?} is {} bits but CompleteAbstractData is {} bits", addr, ty, layout::size(ty), bits);
                             }
                         }
-                        state.write(&addr, bv.clone())?;
+                        ctx.state.write(&addr, bv.clone())?;
                         Ok(*bits)
                     }
                 }
@@ -467,9 +467,9 @@ impl<'a> InitializationContext<'a> {
                                 panic!("Size mismatch when initializing data at {:?}: type {:?} is {} bits but CompleteAbstractData is {} bits", addr, ty, layout::size(ty), bits);
                             }
                         }
-                        let new_bv = state.new_bv_with_name(Name::from(format!("SignedLessThan:{}", name)), width)?;
+                        let new_bv = ctx.state.new_bv_with_name(Name::from(format!("SignedLessThan:{}", name)), width)?;
                         new_bv.slt(&bv).assert()?;
-                        state.write(&addr, new_bv)?;
+                        ctx.state.write(&addr, new_bv)?;
                         Ok(*bits)
                     }
                 }
@@ -492,9 +492,9 @@ impl<'a> InitializationContext<'a> {
                                 panic!("Size mismatch when initializing data at {:?}: type {:?} is {} bits but CompleteAbstractData is {} bits", addr, ty, layout::size(ty), bits);
                             }
                         }
-                        let new_bv = state.new_bv_with_name(Name::from(format!("SignedGreaterThan:{}", name)), width)?;
+                        let new_bv = ctx.state.new_bv_with_name(Name::from(format!("SignedGreaterThan:{}", name)), width)?;
                         new_bv.sgt(&bv).assert()?;
-                        state.write(&addr, new_bv)?;
+                        ctx.state.write(&addr, new_bv)?;
                         Ok(*bits)
                     }
                 }
@@ -517,9 +517,9 @@ impl<'a> InitializationContext<'a> {
                                 panic!("Size mismatch when initializing data at {:?}: type {:?} is {} bits but CompleteAbstractData is {} bits", addr, ty, layout::size(ty), bits);
                             }
                         }
-                        let new_bv = state.new_bv_with_name(Name::from(format!("UnsignedLessThan:{}", name)), width)?;
+                        let new_bv = ctx.state.new_bv_with_name(Name::from(format!("UnsignedLessThan:{}", name)), width)?;
                         new_bv.ult(&bv).assert()?;
-                        state.write(&addr, new_bv)?;
+                        ctx.state.write(&addr, new_bv)?;
                         Ok(*bits)
                     }
                 }
@@ -542,9 +542,9 @@ impl<'a> InitializationContext<'a> {
                                 panic!("Size mismatch when initializing data at {:?}: type {:?} is {} bits but CompleteAbstractData is {} bits", addr, ty, layout::size(ty), bits);
                             }
                         }
-                        let new_bv = state.new_bv_with_name(Name::from(format!("UnsignedGreaterThan:{}", name)), width)?;
+                        let new_bv = ctx.state.new_bv_with_name(Name::from(format!("UnsignedGreaterThan:{}", name)), width)?;
                         new_bv.ugt(&bv).assert()?;
-                        state.write(&addr, new_bv)?;
+                        ctx.state.write(&addr, new_bv)?;
                         Ok(*bits)
                     }
                 }
@@ -562,21 +562,21 @@ impl<'a> InitializationContext<'a> {
                 });
 
                 // allocate memory for the pointee
-                let inner_ptr = state.allocate(pointee.size_in_bits() as u64);
+                let inner_ptr = ctx.state.allocate(pointee.size_in_bits() as u64);
                 debug!("allocated memory for the pointee at {:?}, and will constrain the memory contents at {:?} to have that pointer value{}", inner_ptr, addr, if *maybe_null { " or null" } else { "" });
 
                 // make `addr` point to a pointer to the newly allocated memory (or point to NULL if appropriate)
                 let bits = inner_ptr.get_width();
                 let inner_ptr = if *maybe_null {
-                    let condition = state.new_bv_with_name(Name::from("pointer_is_null"), 1)?;
-                    condition.cond_bv(&state.zero(bits), &inner_ptr)
+                    let condition = ctx.state.new_bv_with_name(Name::from("pointer_is_null"), 1)?;
+                    condition.cond_bv(&ctx.state.zero(bits), &inner_ptr)
                 } else {
                     inner_ptr
                 };
-                state.write(&addr, inner_ptr.clone())?;
+                ctx.state.write(&addr, inner_ptr.clone())?;
 
                 // initialize the pointee
-                self.initialize_data_in_memory(state, ctx, &inner_ptr, &**pointee, pointee_ty)?;
+                self.initialize_data_in_memory(ctx, &inner_ptr, &**pointee, pointee_ty)?;
 
                 Ok(bits as usize)
             },
@@ -590,12 +590,12 @@ impl<'a> InitializationContext<'a> {
                         },
                     };
                 }
-                let inner_ptr = state.get_pointer_to_function(funcname.clone())
+                let inner_ptr = ctx.state.get_pointer_to_function(funcname.clone())
                     .unwrap_or_else(|| { self.error_backtrace(); panic!("Failed to find function {:?}", &funcname) })
                     .clone();
                 debug!("setting the memory contents equal to {:?}", inner_ptr);
                 let bits = inner_ptr.get_width();
-                state.write(&addr, inner_ptr)?; // make `addr` point to a pointer to the function
+                ctx.state.write(&addr, inner_ptr)?; // make `addr` point to a pointer to the function
                 Ok(bits as usize)
             }
             CompleteAbstractData::PublicPointerToHook(funcname) => {
@@ -608,12 +608,12 @@ impl<'a> InitializationContext<'a> {
                         },
                     };
                 }
-                let inner_ptr = state.get_pointer_to_function_hook(funcname)
+                let inner_ptr = ctx.state.get_pointer_to_function_hook(funcname)
                     .unwrap_or_else(|| { self.error_backtrace(); panic!("Failed to find hook for function {:?}", &funcname) })
                     .clone();
                 debug!("setting the memory contents equal to {:?}", inner_ptr);
                 let bits = inner_ptr.get_width();
-                state.write(&addr, inner_ptr)?; // make `addr` point to a pointer to the hook
+                ctx.state.write(&addr, inner_ptr)?; // make `addr` point to a pointer to the hook
                 Ok(bits as usize)
             }
             CompleteAbstractData::PublicPointerToSelf => {
@@ -656,7 +656,7 @@ impl<'a> InitializationContext<'a> {
                         // typecheck passed, write the pointer
                         debug!("setting the memory contents equal to {:?}", cur_struct_ptr);
                         let bits = cur_struct_ptr.get_width();
-                        state.write(&addr, cur_struct_ptr.clone())?;
+                        ctx.state.write(&addr, cur_struct_ptr.clone())?;
                         Ok(bits as usize)
                     }
                 }
@@ -704,7 +704,7 @@ impl<'a> InitializationContext<'a> {
                         // no need for the backup, since the parent type matches
                         debug!("setting the memory contents equal to {:?}", parent_ptr);
                         let bits = parent_ptr.get_width();
-                        state.write(&addr, parent_ptr.clone())?;
+                        ctx.state.write(&addr, parent_ptr.clone())?;
                         Ok(bits as usize)
                     },
                     (None, Some(pointee)) => {
@@ -713,7 +713,7 @@ impl<'a> InitializationContext<'a> {
                             Some(_) => "parent type doesn't match",
                             None => "there is no immediate parent",
                         });
-                        self.initialize_data_in_memory(state, ctx, addr, &CompleteAbstractData::pub_pointer_to((**pointee).to_owned()), ty)
+                        self.initialize_data_in_memory(ctx, addr, &CompleteAbstractData::pub_pointer_to((**pointee).to_owned()), ty)
                     },
                     (None, None) => {
                         // parent type mismatches, but we have no backup
@@ -772,7 +772,7 @@ impl<'a> InitializationContext<'a> {
                         // special-case this, as we can initialize with one big write
                         let array_size_bits = element_size_bits * *num_elements;
                         debug!("initializing the entire array as {} secret bits", array_size_bits);
-                        self.initialize_data_in_memory(state, ctx, &addr, &CompleteAbstractData::sec_integer(array_size_bits), ty)
+                        self.initialize_data_in_memory(ctx, &addr, &CompleteAbstractData::sec_integer(array_size_bits), ty)
                     },
                     CompleteAbstractData::PublicValue { bits, value: AbstractValue::Unconstrained } => {
                         // special-case this, as no initialization is necessary for the entire array
@@ -795,8 +795,8 @@ impl<'a> InitializationContext<'a> {
                         }
                         for i in 0 .. *num_elements {
                             debug!("initializing element {} of the array", i);
-                            let element_addr = addr.add(&state.bv_from_u64((i*element_size_bytes) as u64, addr.get_width()));
-                            self.clone().initialize_data_in_memory(state, ctx, &element_addr, element_abstractdata, element_type)?;
+                            let element_addr = addr.add(&ctx.state.bv_from_u64((i*element_size_bytes) as u64, addr.get_width()));
+                            self.clone().initialize_data_in_memory(ctx, &element_addr, element_abstractdata, element_type)?;
                         }
                         debug!("done initializing the array at {:?}", addr);
                         Ok(element_size_bits * *num_elements)
@@ -863,12 +863,12 @@ impl<'a> InitializationContext<'a> {
                     total_bits += element_size_bits;
                     let element_size_bytes = element_size_bits / 8;
                     debug!("initializing element {} of struct {}; element's address is {:?}", element_idx, name, &cur_addr);
-                    let bits = self.clone().initialize_data_in_memory(state, ctx, &cur_addr, element, element_ty.as_ref())?;
+                    let bits = self.clone().initialize_data_in_memory(ctx, &cur_addr, element, element_ty.as_ref())?;
                     if bits != element_size_bits {
                         self.error_backtrace();
                         panic!("Element {} of struct {} should be {} bits based on its type, but we seem to have initialized {} bits", element_idx, name, element_size_bits, bits);
                     }
-                    cur_addr = cur_addr.add(&state.bv_from_u64(element_size_bytes as u64, addr.get_width()));
+                    cur_addr = cur_addr.add(&ctx.state.bv_from_u64(element_size_bytes as u64, addr.get_width()));
                 }
                 debug!("done initializing struct {} at {:?}", name, addr);
                 Ok(total_bits)
@@ -888,13 +888,13 @@ impl<'a> InitializationContext<'a> {
                     None => {},  // could be a nested VoidOverride, for instance
                 }
                 match llvm_struct_name {
-                    None => self.initialize_data_in_memory(state, ctx, addr, &data, None),
+                    None => self.initialize_data_in_memory(ctx, addr, &data, None),
                     Some(llvm_struct_name) => {
                         let (llvm_ty, _) = ctx.proj.get_named_struct_type_by_name(&llvm_struct_name)
                             .unwrap_or_else(|| { self.error_backtrace(); panic!("VoidOverride: llvm_struct_name {:?} not found in Project", llvm_struct_name) });
                         let arc = llvm_ty.as_ref().unwrap_or_else(|| { self.error_backtrace(); panic!("VoidOverride: llvm_struct_name {:?} is an opaque type", llvm_struct_name) });
                         let llvm_ty: &Type = &arc.read().unwrap();
-                        self.initialize_data_in_memory(state, ctx, addr, &data, Some(llvm_ty))
+                        self.initialize_data_in_memory(ctx, addr, &data, Some(llvm_ty))
                     },
                 }
             },
@@ -904,13 +904,13 @@ impl<'a> InitializationContext<'a> {
                     Some(ty) => assert_eq!(data.size_in_bits(), layout::size(ty), "same_size_override: size mismatch: specified something of size {} bits, but the LLVM type has size {} bits", data.size_in_bits(), layout::size(ty)),
                     None => {},
                 };
-                self.initialize_data_in_memory(state, ctx, addr, &**data, None)
+                self.initialize_data_in_memory(ctx, addr, &**data, None)
             }
             CompleteAbstractData::WithWatchpoint { name, data } => {
                 if data.is_pointer() {
-                    let retval = self.initialize_data_in_memory(state, ctx, addr, &**data, ty)?;
-                    let ptr = state.read(addr, CompleteAbstractData::POINTER_SIZE_BITS as u32)?;
-                    state.add_mem_watchpoint(name, Watchpoint::new(ptr.as_u64().unwrap(), data.pointee_size_in_bits() as u64));
+                    let retval = self.initialize_data_in_memory(ctx, addr, &**data, ty)?;
+                    let ptr = ctx.state.read(addr, CompleteAbstractData::POINTER_SIZE_BITS as u32)?;
+                    ctx.state.add_mem_watchpoint(name, Watchpoint::new(ptr.as_u64().unwrap(), data.pointee_size_in_bits() as u64));
                     Ok(retval)
                 } else {
                     panic!("WithWatchpoint used with a non-pointer: {:?}", data)
