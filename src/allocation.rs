@@ -184,13 +184,13 @@ fn allocate_arg_from_cad<'p>(
             };
             state.overwrite_latest_version_of_bv(&param.name, ptr.clone());
             if type_override {
-                initialize_data_in_memory(state, &ptr, &*pointee, None, None, None, ctx)?;
+                initialize_data_in_memory(state, ctx, &ptr, &*pointee, None, InitializationContext::blank())?;
             } else {
                 let pointee_ty = match &param.ty {
                     Type::PointerType { pointee_type, .. } => pointee_type,
                     ty => panic!("Mismatch for parameter {:?}: CompleteAbstractData specifies a pointer but parameter type is {:?}", &param.name, ty),
                 };
-                initialize_data_in_memory(state, &ptr, &*pointee, Some(pointee_ty), None, None, ctx)?;
+                initialize_data_in_memory(state, ctx, &ptr, &*pointee, Some(pointee_ty), InitializationContext::blank())?;
             }
             Ok(ptr)
         },
@@ -244,29 +244,48 @@ fn allocate_arg_from_cad<'p>(
     }
 }
 
-/// Initialize the data in memory at `addr` according to the given `CompleteAbstractData`.
+/// As opposed to the `Context`, which contains global-ish state preserved across
+/// all allocations (even of different function args), this
+/// `InitializationContext` contains more immediate information about where we
+/// are and what we're doing.
 ///
-/// `ty` should be the type of the pointed-to object, not the type of `addr`.
-/// It is used only for type-checking, to ensure that the `CompleteAbstractData` actually matches the intended LLVM type.
-/// Setting `ty` to `None` disables this type-checking.
-///
-/// `cur_struct`: if present, it is a pointer to the struct containing the
-/// element we're initializing, as well as the type of that struct.
-///
-/// `parent`: if present, it is a pointer to the struct containing `cur_struct`,
-/// as well as the type of that parent struct.
-///
-/// Returns the number of _bits_ (not bytes) the initialized data takes. Many callers won't need this, though.
-pub fn initialize_data_in_memory(
-    state: &mut State<'_, secret::Backend>,
-    addr: &secret::BV,
-    data: &CompleteAbstractData,
-    ty: Option<&Type>,
-    cur_struct: Option<(&secret::BV, &Type)>,
-    parent: Option<(&secret::BV, &Type)>,
-    ctx: &mut Context,
-) -> Result<usize> {
-    initialize_data_in_memory_rec(state, addr, data, ty, cur_struct, parent, Vec::new(), ctx)
+/// It is not preserved across different invocations of
+/// `initialize_data_in_memory` - note that `initialize_data_in_memory` takes an
+/// _owned_ `InitializationContext`, so it will consume and destroy the
+/// `InitializationContext` when the initialization is done.
+#[derive(PartialEq, Eq, Clone, Debug)]
+pub struct InitializationContext<'a> {
+    /// If present, this is a pointer to the struct containing the element we're
+    /// initializing, as well as the type of that struct.
+    cur_struct: Option<(&'a secret::BV, &'a Type)>,
+
+    /// If present, this is a pointer to the struct containing `cur_struct`,
+    /// as well as the type of that parent struct.
+    parent: Option<(&'a secret::BV, &'a Type)>,
+
+    /// Description of the struct we are currently within (and the struct that is
+    /// within, etc), purely for debugging purposes. First in the vec is the
+    /// top-level struct, last is the most immediate struct.
+    within_structs: Vec<WithinStruct>,
+}
+
+impl<'a> InitializationContext<'a> {
+    /// A default/blank initialization context. If you're not doing anything fancy,
+    /// this is what you'll pass to `initialize_data_in_memory()`.
+    pub fn blank() -> Self {
+        Self {
+            cur_struct: None,
+            parent: None,
+            within_structs: Vec::new(),
+        }
+    }
+
+    fn error_backtrace(&self) {
+        eprintln!();
+        for w in &self.within_structs {
+            eprintln!("within {}:", w);
+        }
+    }
 }
 
 #[derive(PartialEq, Eq, Clone, Debug, Hash)]
@@ -283,38 +302,31 @@ impl fmt::Display for WithinStruct {
     }
 }
 
-fn error_backtrace(within_structs: &Vec<WithinStruct>) {
-    eprintln!();
-    for w in within_structs {
-        eprintln!("within {}:", w);
-    }
-}
-
-/// `within_structs`: Description of the struct we are currently within (and the
-/// struct that is within, etc), purely for debugging purposes. First in the vec
-/// is the top-level struct, last is the most immediate struct.
+/// Initialize the data in memory at `addr` according to the given `CompleteAbstractData`.
 ///
-/// Other arguments are as for `initialize_data_in_memory`.
-fn initialize_data_in_memory_rec(
+/// `ty` should be the type of the pointed-to object, not the type of `addr`.
+/// It is used only for type-checking, to ensure that the `CompleteAbstractData` actually matches the intended LLVM type.
+/// Setting `ty` to `None` disables this type-checking.
+///
+/// Returns the number of _bits_ (not bytes) the initialized data takes. Many callers won't need this, though.
+pub fn initialize_data_in_memory<'a>(
     state: &mut State<'_, secret::Backend>,
-    addr: &secret::BV,
-    data: &CompleteAbstractData,
-    ty: Option<&Type>,
-    cur_struct: Option<(&secret::BV, &Type)>,
-    parent: Option<(&secret::BV, &Type)>,
-    mut within_structs: Vec<WithinStruct>,
     ctx: &mut Context,
+    addr: &'a secret::BV,
+    data: &CompleteAbstractData,
+    ty: Option<&'a Type>,
+    mut initialization_ctx: InitializationContext<'a>,
 ) -> Result<usize> {
     // First we handle the case where the LLVM type is array-of-one-element
     if let Some(Type::ArrayType { num_elements: 1, element_type }) | Some(Type::VectorType { num_elements: 1, element_type }) = ty {
         match data {
             CompleteAbstractData::Array { num_elements: 1, element_type: element_abstractdata } => {
                 // both LLVM and CAD type are array-of-one-element.  Unwrap and call recursively
-                return initialize_data_in_memory_rec(state, addr, element_abstractdata, Some(element_type), cur_struct, parent, within_structs, ctx);
+                return initialize_data_in_memory(state, ctx, addr, element_abstractdata, Some(element_type), initialization_ctx);
             },
             data => {
                 // LLVM type is array-of-one-element but CAD type is not.  Unwrap the LLVM type and call recursively
-                return initialize_data_in_memory_rec(state, addr, data, Some(element_type), cur_struct, parent, within_structs, ctx);
+                return initialize_data_in_memory(state, ctx, addr, data, Some(element_type), initialization_ctx);
             },
         }
     };
@@ -324,7 +336,7 @@ fn initialize_data_in_memory_rec(
         Some(Type::StructType { element_types, .. }) if element_types.len() == 1 => {
             if !data.could_describe_a_struct_of_one_element() {
                 // `data` specifies some incompatible type.  Unwrap the LLVM struct and try again.
-                return initialize_data_in_memory_rec(state, addr, data, Some(&element_types[0]), cur_struct, parent, within_structs, ctx);
+                return initialize_data_in_memory(state, ctx, addr, data, Some(&element_types[0]), initialization_ctx);
             }
         },
         Some(ty@Type::NamedStructType { .. }) => {
@@ -338,7 +350,7 @@ fn initialize_data_in_memory_rec(
                             if !data.could_describe_a_struct_of_one_element() {
                                 // `data` specifies some incompatible type.  Unwrap the LLVM struct and try again.
                                 // we could consider pushing the named struct name to within_structs here
-                                return initialize_data_in_memory_rec(state, addr, data, Some(&element_types[0]), cur_struct, parent, within_structs, ctx);
+                                return initialize_data_in_memory(state, ctx, addr, data, Some(&element_types[0]), initialization_ctx);
                             }
                         }
                     }
@@ -362,7 +374,7 @@ fn initialize_data_in_memory_rec(
             debug!("setting the memory contents equal to {}", value);
             if let Some(ty) = ty {
                 if *bits != layout::size(ty) {
-                    error_backtrace(&within_structs);
+                    initialization_ctx.error_backtrace();
                     panic!("Size mismatch when initializing data at {:?}: type {:?} is {} bits but CompleteAbstractData is {} bits", addr, ty, layout::size(ty), bits);
                 }
             }
@@ -374,7 +386,7 @@ fn initialize_data_in_memory_rec(
             debug!("constraining the memory contents to be in the range ({}, {}) inclusive", min, max);
             if let Some(ty) = ty {
                 if *bits != layout::size(ty) {
-                    error_backtrace(&within_structs);
+                    initialization_ctx.error_backtrace();
                     panic!("Size mismatch when initializing data at {:?}: type {:?} is {} bits but CompleteAbstractData is {} bits", addr, ty, layout::size(ty), bits);
                 }
             }
@@ -387,7 +399,7 @@ fn initialize_data_in_memory_rec(
             // nothing to do, just check that the type matches
             if let Some(ty) = ty {
                 if *bits != layout::size(ty) {
-                    error_backtrace(&within_structs);
+                    initialization_ctx.error_backtrace();
                     panic!("Size mismatch when initializing data at {:?}: type {:?} is {} bits but CompleteAbstractData is {} bits", addr, ty, layout::size(ty), bits);
                 }
             }
@@ -395,9 +407,9 @@ fn initialize_data_in_memory_rec(
         },
         CompleteAbstractData::PublicValue { bits, value: AbstractValue::Named { name, value } } => {
             let unwrapped_data = CompleteAbstractData::pub_integer(*bits, (**value).clone());
-            let initialized_bits = initialize_data_in_memory_rec(state, addr, &unwrapped_data, ty, cur_struct, parent, within_structs.clone(), ctx)?;
+            let initialized_bits = initialize_data_in_memory(state, ctx, addr, &unwrapped_data, ty, initialization_ctx.clone())?;
             if *bits != initialized_bits {
-                error_backtrace(&within_structs);
+                initialization_ctx.error_backtrace();
                 panic!("AbstractValue::Named {:?}: specified {} bits, but value is {} bits", name, bits, initialized_bits);
             }
             let bv = state.read(addr, *bits as u32)?;
@@ -417,18 +429,18 @@ fn initialize_data_in_memory_rec(
         CompleteAbstractData::PublicValue { bits, value: AbstractValue::EqualTo(name) } => {
             match ctx.namedvals.get(name) {
                 None => {
-                    error_backtrace(&within_structs);
+                    initialization_ctx.error_backtrace();
                     panic!("AbstractValue::Named {:?} not found", name)
                 },
                 Some(bv) => {
                     let width = bv.get_width();
                     if width != *bits as u32 {
-                        error_backtrace(&within_structs);
+                        initialization_ctx.error_backtrace();
                         panic!("AbstractValue::EqualTo {:?}, which has {} bits, but current value has {} bits", name, width, bits);
                     }
                     if let Some(ty) = ty {
                         if *bits != layout::size(ty) {
-                            error_backtrace(&within_structs);
+                            initialization_ctx.error_backtrace();
                             panic!("Size mismatch when initializing data at {:?}: type {:?} is {} bits but CompleteAbstractData is {} bits", addr, ty, layout::size(ty), bits);
                         }
                     }
@@ -440,18 +452,18 @@ fn initialize_data_in_memory_rec(
         CompleteAbstractData::PublicValue { bits, value: AbstractValue::SignedLessThan(name) } => {
             match ctx.namedvals.get(name) {
                 None => {
-                    error_backtrace(&within_structs);
+                    initialization_ctx.error_backtrace();
                     panic!("AbstractValue::Named {:?} not found", name)
                 },
                 Some(bv) => {
                     let width = bv.get_width();
                     if width != *bits as u32 {
-                        error_backtrace(&within_structs);
+                        initialization_ctx.error_backtrace();
                         panic!("AbstractValue::SignedLessThan {:?}, which has {} bits, but current value has {} bits", name, width, bits);
                     }
                     if let Some(ty) = ty {
                         if *bits != layout::size(ty) {
-                            error_backtrace(&within_structs);
+                            initialization_ctx.error_backtrace();
                             panic!("Size mismatch when initializing data at {:?}: type {:?} is {} bits but CompleteAbstractData is {} bits", addr, ty, layout::size(ty), bits);
                         }
                     }
@@ -465,18 +477,18 @@ fn initialize_data_in_memory_rec(
         CompleteAbstractData::PublicValue { bits, value: AbstractValue::SignedGreaterThan(name) } => {
             match ctx.namedvals.get(name) {
                 None => {
-                    error_backtrace(&within_structs);
+                    initialization_ctx.error_backtrace();
                     panic!("AbstractValue::Named {:?} not found", name)
                 },
                 Some(bv) => {
                     let width = bv.get_width();
                     if width != *bits as u32 {
-                        error_backtrace(&within_structs);
+                        initialization_ctx.error_backtrace();
                         panic!("AbstractValue::SignedGreaterThan {:?}, which has {} bits, but current value has {} bits", name, width, bits);
                     }
                     if let Some(ty) = ty {
                         if *bits != layout::size(ty) {
-                            error_backtrace(&within_structs);
+                            initialization_ctx.error_backtrace();
                             panic!("Size mismatch when initializing data at {:?}: type {:?} is {} bits but CompleteAbstractData is {} bits", addr, ty, layout::size(ty), bits);
                         }
                     }
@@ -490,18 +502,18 @@ fn initialize_data_in_memory_rec(
         CompleteAbstractData::PublicValue { bits, value: AbstractValue::UnsignedLessThan(name) } => {
             match ctx.namedvals.get(name) {
                 None => {
-                    error_backtrace(&within_structs);
+                    initialization_ctx.error_backtrace();
                     panic!("AbstractValue::Named {:?} not found", name)
                 },
                 Some(bv) => {
                     let width = bv.get_width();
                     if width != *bits as u32 {
-                        error_backtrace(&within_structs);
+                        initialization_ctx.error_backtrace();
                         panic!("AbstractValue::UnsignedLessThan {:?}, which has {} bits, but current value has {} bits", name, width, bits);
                     }
                     if let Some(ty) = ty {
                         if *bits != layout::size(ty) {
-                            error_backtrace(&within_structs);
+                            initialization_ctx.error_backtrace();
                             panic!("Size mismatch when initializing data at {:?}: type {:?} is {} bits but CompleteAbstractData is {} bits", addr, ty, layout::size(ty), bits);
                         }
                     }
@@ -515,18 +527,18 @@ fn initialize_data_in_memory_rec(
         CompleteAbstractData::PublicValue { bits, value: AbstractValue::UnsignedGreaterThan(name) } => {
             match ctx.namedvals.get(name) {
                 None => {
-                    error_backtrace(&within_structs);
+                    initialization_ctx.error_backtrace();
                     panic!("AbstractValue::Named {:?} not found", name)
                 },
                 Some(bv) => {
                     let width = bv.get_width();
                     if width != *bits as u32 {
-                        error_backtrace(&within_structs);
+                        initialization_ctx.error_backtrace();
                         panic!("AbstractValue::UnsignedGreaterThan {:?}, which has {} bits, but current value has {} bits", name, width, bits);
                     }
                     if let Some(ty) = ty {
                         if *bits != layout::size(ty) {
-                            error_backtrace(&within_structs);
+                            initialization_ctx.error_backtrace();
                             panic!("Size mismatch when initializing data at {:?}: type {:?} is {} bits but CompleteAbstractData is {} bits", addr, ty, layout::size(ty), bits);
                         }
                     }
@@ -544,7 +556,7 @@ fn initialize_data_in_memory_rec(
             let pointee_ty = ty.map(|ty| match ty {
                 Type::PointerType { pointee_type, .. } => &**pointee_type,
                 _ => {
-                    error_backtrace(&within_structs);
+                    initialization_ctx.error_backtrace();
                     panic!("Type mismatch: CompleteAbstractData specifies a pointer, but found type {:?}", ty)
                 },
             });
@@ -564,7 +576,7 @@ fn initialize_data_in_memory_rec(
             state.write(&addr, inner_ptr.clone())?;
 
             // initialize the pointee
-            initialize_data_in_memory_rec(state, &inner_ptr, &**pointee, pointee_ty, cur_struct, parent, within_structs, ctx)?;
+            initialize_data_in_memory(state, ctx, &inner_ptr, &**pointee, pointee_ty, initialization_ctx)?;
 
             Ok(bits as usize)
         },
@@ -573,13 +585,13 @@ fn initialize_data_in_memory_rec(
                 match ty {
                     Type::PointerType { .. } => {},
                     _ => {
-                        error_backtrace(&within_structs);
+                        initialization_ctx.error_backtrace();
                         panic!("Type mismatch: CompleteAbstractData specifies a pointer, but found type {:?}", ty)
                     },
                 };
             }
             let inner_ptr = state.get_pointer_to_function(funcname.clone())
-                .unwrap_or_else(|| { error_backtrace(&within_structs); panic!("Failed to find function {:?}", &funcname) })
+                .unwrap_or_else(|| { initialization_ctx.error_backtrace(); panic!("Failed to find function {:?}", &funcname) })
                 .clone();
             debug!("setting the memory contents equal to {:?}", inner_ptr);
             let bits = inner_ptr.get_width();
@@ -591,13 +603,13 @@ fn initialize_data_in_memory_rec(
                 match ty {
                     Type::PointerType { .. } => {},
                     _ => {
-                        error_backtrace(&within_structs);
+                        initialization_ctx.error_backtrace();
                         panic!("Type mismatch: CompleteAbstractData specifies a pointer, but found type {:?}", ty)
                     },
                 };
             }
             let inner_ptr = state.get_pointer_to_function_hook(funcname)
-                .unwrap_or_else(|| { error_backtrace(&within_structs); panic!("Failed to find hook for function {:?}", &funcname) })
+                .unwrap_or_else(|| { initialization_ctx.error_backtrace(); panic!("Failed to find hook for function {:?}", &funcname) })
                 .clone();
             debug!("setting the memory contents equal to {:?}", inner_ptr);
             let bits = inner_ptr.get_width();
@@ -605,9 +617,9 @@ fn initialize_data_in_memory_rec(
             Ok(bits as usize)
         }
         CompleteAbstractData::PublicPointerToSelf => {
-            match cur_struct {
+            match initialization_ctx.cur_struct {
                 None => {
-                    error_backtrace(&within_structs);
+                    initialization_ctx.error_backtrace();
                     panic!("Pointer-to-self used but there is no current struct")
                 },
                 Some((cur_struct_ptr, cur_struct_ty)) => {
@@ -620,23 +632,23 @@ fn initialize_data_in_memory_rec(
                             } else if let Type::NamedStructType { name, .. } = pointee_ty {
                                 // LLVM type is pointer to a named struct type, try unwrapping it and see if that makes the types equal
                                 let arc = ctx.proj.get_inner_struct_type_from_named(pointee_ty).unwrap_or_else(|| {
-                                    error_backtrace(&within_structs);
+                                    initialization_ctx.error_backtrace();
                                     panic!("CompleteAbstractData specifies pointer-to-self, but self type (struct named {:?}) is fully opaque and has no definition in this Project", name);
                                 });
                                 let actual_ty: &Type = &arc.read().unwrap();
                                 if actual_ty == cur_struct_ty {
                                     // typecheck passes, do nothing
                                 } else {
-                                    error_backtrace(&within_structs);
+                                    initialization_ctx.error_backtrace();
                                     panic!("Type mismatch: CompleteAbstractData specifies pointer-to-self, but found pointer to a different type.\n  Self type: {:?}\n  Found type: struct named {:?}: {:?}\n", cur_struct_ty, name, actual_ty);
                                 }
                             } else {
-                                error_backtrace(&within_structs);
+                                initialization_ctx.error_backtrace();
                                 panic!("Type mismatch: CompleteAbstractData specifies pointer-to-self, but found pointer to a different type.\n  Self type: {:?}\n  Found type: {:?}\n", cur_struct_ty, pointee_ty);
                             }
                         },
                         Some(_) => {
-                            error_backtrace(&within_structs);
+                            initialization_ctx.error_backtrace();
                             panic!("Type mismatch: CompleteAbstractData specifies a pointer, but found type {:?}", ty)
                         },
                         None => {},
@@ -651,7 +663,7 @@ fn initialize_data_in_memory_rec(
         }
         CompleteAbstractData::PublicPointerToParentOr(pointee) => {
             // this parent_ptr will be None if the parent type mismatches
-            let parent_ptr: Option<_> = match parent {
+            let parent_ptr: Option<_> = match initialization_ctx.parent {
                 None => None,  // no parent, so it's not the correct type; we'll use the `pointee` data, if it was provided
                 Some((parent_ptr, parent_ty)) => match ty {
                     Some(Type::PointerType { pointee_type, .. }) => {
@@ -661,7 +673,7 @@ fn initialize_data_in_memory_rec(
                         } else if let Type::NamedStructType { name, .. } = pointee_ty {
                             // LLVM type is pointer to a named struct type, try unwrapping it and see if that makes the types equal
                             let arc = ctx.proj.get_inner_struct_type_from_named(pointee_ty).unwrap_or_else(|| {
-                                error_backtrace(&within_structs);
+                                initialization_ctx.error_backtrace();
                                 panic!("CompleteAbstractData specifies pointer-to-parent, but parent type (struct named {:?}) is fully opaque and has no definition in this Project", name);
                             });
                             let actual_ty: &Type = &arc.read().unwrap();
@@ -675,13 +687,13 @@ fn initialize_data_in_memory_rec(
                         }
                     },
                     Some(ty) => {
-                        error_backtrace(&within_structs);
+                        initialization_ctx.error_backtrace();
                         panic!("Type mismatch: CompleteAbstractData specifies a pointer, but found type {:?}", ty)
                     },
                     None => match pointee {
                         None => Some(parent_ptr),  // we can't determine if the parent type matches, but we weren't given a backup, so we assume the types match (somewhat dangerous)
                         _ => {
-                            error_backtrace(&within_structs);
+                            initialization_ctx.error_backtrace();
                             panic!("CompleteAbstractData specifies public-pointer-to-parent-or, but since we don't know the current LLVM type, we can't determine whether the parent type matches or not")
                         },
                     },
@@ -697,16 +709,16 @@ fn initialize_data_in_memory_rec(
                 },
                 (None, Some(pointee)) => {
                     // parent type mismatches, or parent doesn't exist: use the backup
-                    debug!("memory contents are marked as public-pointer-to-parent with a backup; since {}, using the backup", match parent {
+                    debug!("memory contents are marked as public-pointer-to-parent with a backup; since {}, using the backup", match initialization_ctx.parent {
                         Some(_) => "parent type doesn't match",
                         None => "there is no immediate parent",
                     });
-                    initialize_data_in_memory_rec(state, addr, &CompleteAbstractData::pub_pointer_to((**pointee).to_owned()), ty, cur_struct, parent, within_structs, ctx)
+                    initialize_data_in_memory(state, ctx, addr, &CompleteAbstractData::pub_pointer_to((**pointee).to_owned()), ty, initialization_ctx)
                 },
                 (None, None) => {
                     // parent type mismatches, but we have no backup
-                    error_backtrace(&within_structs);
-                    match parent {
+                    initialization_ctx.error_backtrace();
+                    match initialization_ctx.parent {
                         None => panic!("CompleteAbstractData specifies pointer-to-parent (with no backup), but there is no immediate parent"),
                         Some((_, parent_ty)) => match ty {
                             Some(Type::PointerType { pointee_type, .. }) =>
@@ -722,7 +734,7 @@ fn initialize_data_in_memory_rec(
                 Type::ArrayType { element_type, num_elements: found_num_elements } => {
                     if *found_num_elements != 0 {
                         if num_elements != found_num_elements {
-                            error_backtrace(&within_structs);
+                            initialization_ctx.error_backtrace();
                             panic!( "Type mismatch: CompleteAbstractData specifies an array with {} elements, but found an array with {} elements", num_elements, found_num_elements);
                         }
                     } else {
@@ -748,7 +760,7 @@ fn initialize_data_in_memory_rec(
                         let llvm_element_size_bits = layout::size(&element_type.read().unwrap());
                         if llvm_element_size_bits != 0 {
                             if element_size_bits != llvm_element_size_bits {
-                                error_backtrace(&within_structs);
+                                initialization_ctx.error_backtrace();
                                 panic!( "CompleteAbstractData element size of {} bits does not match LLVM element size of {} bits", element_size_bits, llvm_element_size_bits);
                             }
                         }
@@ -760,7 +772,7 @@ fn initialize_data_in_memory_rec(
                     // special-case this, as we can initialize with one big write
                     let array_size_bits = element_size_bits * *num_elements;
                     debug!("initializing the entire array as {} secret bits", array_size_bits);
-                    initialize_data_in_memory_rec(state, &addr, &CompleteAbstractData::sec_integer(array_size_bits), ty, cur_struct, parent, within_structs, ctx)
+                    initialize_data_in_memory(state, ctx, &addr, &CompleteAbstractData::sec_integer(array_size_bits), ty, initialization_ctx)
                 },
                 CompleteAbstractData::PublicValue { bits, value: AbstractValue::Unconstrained } => {
                     // special-case this, as no initialization is necessary for the entire array
@@ -770,7 +782,7 @@ fn initialize_data_in_memory_rec(
                 _ => {
                     // the general case. This would work in all cases, but would be slower than the optimized special-case above
                     if element_size_bits % 8 != 0 {
-                        error_backtrace(&within_structs);
+                        initialization_ctx.error_backtrace();
                         panic!("Array element size is not a multiple of 8 bits: {}", element_size_bits);
                     }
                     let element_size_bytes = element_size_bits / 8;
@@ -778,13 +790,13 @@ fn initialize_data_in_memory_rec(
                         // it might seem like we could just do nothing here, but
                         // actually there's no way to return the correct value
                         // (Boolector doesn't support 0-width BVs), so we have to panic
-                        error_backtrace(&within_structs);
+                        initialization_ctx.error_backtrace();
                         panic!("Array with 0 elements (and element type {:?})", element_type);
                     }
                     for i in 0 .. *num_elements {
                         debug!("initializing element {} of the array", i);
                         let element_addr = addr.add(&state.bv_from_u64((i*element_size_bytes) as u64, addr.get_width()));
-                        initialize_data_in_memory_rec(state, &element_addr, element_abstractdata, element_type, cur_struct, parent, within_structs.clone(), ctx)?;
+                        initialize_data_in_memory(state, ctx, &element_addr, element_abstractdata, element_type, initialization_ctx.clone())?;
                     }
                     debug!("done initializing the array at {:?}", addr);
                     Ok(element_size_bits * *num_elements)
@@ -803,7 +815,7 @@ fn initialize_data_in_memory_rec(
                                 match actual_ty {
                                     Type::StructType { element_types, .. } => element_types.iter().cloned().map(Some).collect::<Vec<_>>(),
                                     ty => {
-                                        error_backtrace(&within_structs);
+                                        initialization_ctx.error_backtrace();
                                         panic!("NamedStructType referred to type {:?} which is not a StructType variant", ty)
                                     },
                                 }
@@ -817,43 +829,43 @@ fn initialize_data_in_memory_rec(
                         }
                     },
                     _ => {
-                        error_backtrace(&within_structs);
+                        initialization_ctx.error_backtrace();
                         panic!("Type mismatch: CompleteAbstractData specifies a struct named {}, but found type {:?}", name, ty)
                     },
                 },
                 None => itertools::repeat_n(None, elements.len()).collect(),
             };
             if elements.len() != element_types.len() {
-                error_backtrace(&within_structs);
+                initialization_ctx.error_backtrace();
                 panic!("Have {} struct elements but {} element types", elements.len(), element_types.len());
             }
-            within_structs.push(WithinStruct { name: name.clone(), element_index: 0 });
+            initialization_ctx.within_structs.push(WithinStruct { name: name.clone(), element_index: 0 });
+            initialization_ctx.parent = initialization_ctx.cur_struct;
+            initialization_ctx.cur_struct = ty.map(|ty| (addr, ty));
             let mut total_bits = 0;
             for (element_idx, (element, element_ty)) in elements.iter().zip(element_types).enumerate() {
-                let within_structs_len = within_structs.len();
-                within_structs.get_mut(within_structs_len - 1).unwrap().element_index = element_idx;
+                let within_structs_len = initialization_ctx.within_structs.len();
+                initialization_ctx.within_structs.get_mut(within_structs_len - 1).unwrap().element_index = element_idx;
                 let element_size_bits = element.size_in_bits();
                 if let Some(element_ty) = &element_ty {
                     let llvm_element_size_bits = layout::size(&element_ty);
                     if llvm_element_size_bits != 0 {
                         if element_size_bits != llvm_element_size_bits {
-                            error_backtrace(&within_structs);
+                            initialization_ctx.error_backtrace();
                             panic!("CompleteAbstractData element size of {} bits does not match LLVM element size of {} bits", element_size_bits, llvm_element_size_bits);
                         }
                     }
                 }
                 if element_size_bits % 8 != 0 {
-                    error_backtrace(&within_structs);
+                    initialization_ctx.error_backtrace();
                     panic!("Struct element size is not a multiple of 8 bits: {}", element_size_bits);
                 }
                 total_bits += element_size_bits;
                 let element_size_bytes = element_size_bits / 8;
                 debug!("initializing element {} of struct {}; element's address is {:?}", element_idx, name, &cur_addr);
-                let new_cur_struct = ty.map(|ty| (addr, ty));
-                let new_parent = cur_struct;
-                let bits = initialize_data_in_memory_rec(state, &cur_addr, element, element_ty.as_ref(), new_cur_struct, new_parent, within_structs.clone(), ctx)?;
+                let bits = initialize_data_in_memory(state, ctx, &cur_addr, element, element_ty.as_ref(), initialization_ctx.clone())?;
                 if bits != element_size_bits {
-                    error_backtrace(&within_structs);
+                    initialization_ctx.error_backtrace();
                     panic!("Element {} of struct {} should be {} bits based on its type, but we seem to have initialized {} bits", element_idx, name, element_size_bits, bits);
                 }
                 cur_addr = cur_addr.add(&state.bv_from_u64(element_size_bytes as u64, addr.get_width()));
@@ -866,23 +878,23 @@ fn initialize_data_in_memory_rec(
             match ty {
                 Some(Type::IntegerType { bits: 8 }) => {},
                 Some(Type::PointerType { .. }) => {
-                    error_backtrace(&within_structs);
+                    initialization_ctx.error_backtrace();
                     panic!("attempt to use VoidOverride to override LLVM type {:?} rather than i8. You may want to use a pointer to a VoidOverride rather than a VoidOverride directly.", ty)
                 },
                 Some(ty) => {
-                    error_backtrace(&within_structs);
+                    initialization_ctx.error_backtrace();
                     panic!("attempt to use VoidOverride to override LLVM type {:?} rather than i8", ty)
                 },
                 None => {},  // could be a nested VoidOverride, for instance
             }
             match llvm_struct_name {
-                None => initialize_data_in_memory_rec(state, addr, &data, None, cur_struct, parent, within_structs, ctx),
+                None => initialize_data_in_memory(state, ctx, addr, &data, None, initialization_ctx),
                 Some(llvm_struct_name) => {
                     let (llvm_ty, _) = ctx.proj.get_named_struct_type_by_name(&llvm_struct_name)
-                        .unwrap_or_else(|| { error_backtrace(&within_structs); panic!("VoidOverride: llvm_struct_name {:?} not found in Project", llvm_struct_name) });
-                    let arc = llvm_ty.as_ref().unwrap_or_else(|| { error_backtrace(&within_structs); panic!("VoidOverride: llvm_struct_name {:?} is an opaque type", llvm_struct_name) });
+                        .unwrap_or_else(|| { initialization_ctx.error_backtrace(); panic!("VoidOverride: llvm_struct_name {:?} not found in Project", llvm_struct_name) });
+                    let arc = llvm_ty.as_ref().unwrap_or_else(|| { initialization_ctx.error_backtrace(); panic!("VoidOverride: llvm_struct_name {:?} is an opaque type", llvm_struct_name) });
                     let llvm_ty: &Type = &arc.read().unwrap();
-                    initialize_data_in_memory_rec(state, addr, &data, Some(llvm_ty), cur_struct, parent, within_structs, ctx)
+                    initialize_data_in_memory(state, ctx, addr, &data, Some(llvm_ty), initialization_ctx)
                 },
             }
         },
@@ -892,11 +904,11 @@ fn initialize_data_in_memory_rec(
                 Some(ty) => assert_eq!(data.size_in_bits(), layout::size(ty), "same_size_override: size mismatch: specified something of size {} bits, but the LLVM type has size {} bits", data.size_in_bits(), layout::size(ty)),
                 None => {},
             };
-            initialize_data_in_memory_rec(state, addr, &**data, None, cur_struct, parent, within_structs, ctx)
+            initialize_data_in_memory(state, ctx, addr, &**data, None, initialization_ctx)
         }
         CompleteAbstractData::WithWatchpoint { name, data } => {
             if data.is_pointer() {
-                let retval = initialize_data_in_memory_rec(state, addr, &**data, ty, cur_struct, parent, within_structs, ctx)?;
+                let retval = initialize_data_in_memory(state, ctx, addr, &**data, ty, initialization_ctx)?;
                 let ptr = state.read(addr, CompleteAbstractData::POINTER_SIZE_BITS as u32)?;
                 state.add_mem_watchpoint(name, Watchpoint::new(ptr.as_u64().unwrap(), data.pointee_size_in_bits() as u64));
                 Ok(retval)

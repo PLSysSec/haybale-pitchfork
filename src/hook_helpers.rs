@@ -126,7 +126,7 @@ pub fn allocate_and_init_abstractdata(
     let ad = ad.to_complete(ty, proj, sd);
     let ptr = state.allocate(ad.size_in_bits() as u64);
     let mut allocationctx = allocation::Context::new(proj, sd);
-    allocation::initialize_data_in_memory(state, &ptr, &ad, Some(ty), None, None, &mut allocationctx)?;
+    allocation::initialize_data_in_memory(state, &mut allocationctx, &ptr, &ad, Some(ty), allocation::InitializationContext::blank())?;
     Ok(ptr)
 }
 
@@ -146,6 +146,6 @@ pub fn reinitialize_pointee(
     };
     let ad = ad.to_complete(&pointee_ty, proj, struct_descriptions);
     let mut allocationctx = allocation::Context::new(proj, struct_descriptions);
-    allocation::initialize_data_in_memory(state, &ptr, &ad, Some(&pointee_ty), None, None, &mut allocationctx)?;
+    allocation::initialize_data_in_memory(state, &mut allocationctx, &ptr, &ad, Some(&pointee_ty), allocation::InitializationContext::blank())?;
     Ok(())
 }
