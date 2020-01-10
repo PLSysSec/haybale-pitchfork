@@ -899,7 +899,7 @@ impl UnderspecifiedAbstractData {
                     // auto-unwrap LLVM type if it is array or vector of one element
                     Self::PublicPointerTo { pointee, maybe_null }.to_complete_rec(Some(&**element_type), ctx)
                 },
-                None => pointee.to_complete_rec(None, ctx),
+                None => CompleteAbstractData::PublicPointerTo { pointee: Box::new(pointee.to_complete_rec(None, ctx)), maybe_null },
                 _ => {
                     ctx.error_backtrace();
                     panic!("Type mismatch: AbstractData::PublicPointerTo but LLVM type is {:?}", ty);
