@@ -350,6 +350,7 @@ fn initialize_data_in_memory_rec(
 
     // Otherwise, on to normal processing
     debug!("Initializing data in memory at address {:?}", addr);
+    debug!("Memory contents are marked as {:?}", data.to_string());
     match data {
         CompleteAbstractData::Secret { bits } => {
             debug!("marking {} bits secret at address {:?}", bits, addr);
@@ -383,7 +384,6 @@ fn initialize_data_in_memory_rec(
             Ok(*bits)
         }
         CompleteAbstractData::PublicValue { bits, value: AbstractValue::Unconstrained } => {
-            debug!("memory contents are indicated as unconstrained");
             // nothing to do, just check that the type matches
             if let Some(ty) = ty {
                 if *bits != layout::size(ty) {
@@ -569,7 +569,6 @@ fn initialize_data_in_memory_rec(
             Ok(bits as usize)
         },
         CompleteAbstractData::PublicPointerToFunction(funcname) => {
-            debug!("memory contents are marked as a public pointer to the function {:?}", funcname);
             if let Some(ty) = ty {
                 match ty {
                     Type::PointerType { .. } => {},
@@ -588,7 +587,6 @@ fn initialize_data_in_memory_rec(
             Ok(bits as usize)
         }
         CompleteAbstractData::PublicPointerToHook(funcname) => {
-            debug!("memory contents are marked as a public pointer to the active hook for function {:?}", funcname);
             if let Some(ty) = ty {
                 match ty {
                     Type::PointerType { .. } => {},
@@ -607,7 +605,6 @@ fn initialize_data_in_memory_rec(
             Ok(bits as usize)
         }
         CompleteAbstractData::PublicPointerToSelf => {
-            debug!("memory contents are marked as a public pointer to this struct itself");
             match cur_struct {
                 None => {
                     error_backtrace(&within_structs);
@@ -645,7 +642,7 @@ fn initialize_data_in_memory_rec(
                         None => {},
                     };
                     // typecheck passed, write the pointer
-                    debug!("setting th memory contents equal to {:?}", cur_struct_ptr);
+                    debug!("setting the memory contents equal to {:?}", cur_struct_ptr);
                     let bits = cur_struct_ptr.get_width();
                     state.write(&addr, cur_struct_ptr.clone())?;
                     Ok(bits as usize)
@@ -693,7 +690,6 @@ fn initialize_data_in_memory_rec(
             match (parent_ptr, pointee) {
                 (Some(parent_ptr), _) => {
                     // no need for the backup, since the parent type matches
-                    debug!("memory contents are marked as a public pointer to this struct's parent");
                     debug!("setting the memory contents equal to {:?}", parent_ptr);
                     let bits = parent_ptr.get_width();
                     state.write(&addr, parent_ptr.clone())?;
@@ -722,7 +718,6 @@ fn initialize_data_in_memory_rec(
             }
         },
         CompleteAbstractData::Array { element_type: element_abstractdata, num_elements } => {
-            debug!("memory contents are marked as an array of {} elements", num_elements);
             let element_type = ty.map(|ty| match ty {
                 Type::ArrayType { element_type, num_elements: found_num_elements } => {
                     if *found_num_elements != 0 {
@@ -797,7 +792,6 @@ fn initialize_data_in_memory_rec(
             }
         },
         CompleteAbstractData::Struct { name, elements } => {
-            debug!("memory contents are marked as a struct ({})", name);
             let mut cur_addr = addr.clone();
             let element_types = match ty {
                 Some(ty) => match ty {

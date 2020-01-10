@@ -3,6 +3,7 @@ use lazy_static::lazy_static;
 use llvm_ir::Type;
 use log::warn;
 use std::collections::{HashMap, HashSet};
+use std::fmt;
 use std::sync::Mutex;
 
 /// An abstract description of a value: if it is public or not, if it is a
@@ -362,6 +363,47 @@ impl CompleteAbstractData {
     }
 }
 
+/// This `Display` is not meant to completely replace the derived `Debug`
+/// representation, but rather be a much more concise pretty representation
+/// (omitting a lot of the data in some cases)
+impl fmt::Display for CompleteAbstractData {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::PublicValue { bits, .. } => write!(f, "a {}-bit public value", bits),
+            Self::Secret { bits, .. } => write!(f, "a {}-bit secret value", bits),
+            Self::Array { num_elements, .. } => write!(f, "an array of {} elements", num_elements),
+            Self::Struct { name, elements } => write!(f, "a struct named {} with {} elements", name, elements.len()),
+            Self::PublicPointerTo { pointee, .. } => {
+                write!(f, "a pointer to ")?;
+                pointee.fmt(f)?;
+                Ok(())
+            },
+            Self::PublicPointerToFunction(funcname) => write!(f, "a pointer to a function named {}", funcname),
+            Self::PublicPointerToHook(funcname) => write!(f, "a pointer to the active hook for a function named {}", funcname),
+            Self::PublicPointerToSelf => write!(f, "a pointer to this struct itself"),
+            Self::PublicPointerToParentOr(opt) => match opt {
+                Some(_) => write!(f, "a pointer to this struct's parent, with a backup"),
+                None => write!(f, "a pointer to this struct's parent, with no backup"),
+            },
+            Self::VoidOverride { data, .. } => {
+                write!(f, "a void override containing ")?;
+                data.fmt(f)?;
+                Ok(())
+            },
+            Self::SameSizeOverride { data, .. } => {
+                write!(f, "a same-size override containing ")?;
+                data.fmt(f)?;
+                Ok(())
+            },
+            Self::WithWatchpoint { name, data } => {
+                data.fmt(f)?;
+                write!(f, ", with a watchpoint named {}", name)?;
+                Ok(())
+            },
+        }
+    }
+}
+
 /// An abstract description of a value: if it is public or not, if it is a
 /// pointer or not, does it point to data that is public/secret, maybe it's a
 /// struct with some public and some secret fields, etc.
@@ -619,6 +661,56 @@ impl AbstractData {
     /// points to. (The `data` here must be a pointer of some kind.)
     pub fn with_watchpoint(name: impl Into<String>, data: Self) -> Self {
         Self(UnderspecifiedAbstractData::WithWatchpoint { name: name.into(), data: Box::new(data) })
+    }
+}
+
+/// This `Display` is not meant to completely replace the derived `Debug`
+/// representation, but rather be a much more concise pretty representation
+/// (omitting a lot of the data in some cases)
+impl fmt::Display for AbstractData {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+/// This `Display` is not meant to completely replace the derived `Debug`
+/// representation, but rather be a much more concise pretty representation
+/// (omitting a lot of the data in some cases)
+impl fmt::Display for UnderspecifiedAbstractData {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            UnderspecifiedAbstractData::Unspecified => write!(f, "an unspecified value"),
+            UnderspecifiedAbstractData::Unconstrained => write!(f, "an unconstrained value"),
+            UnderspecifiedAbstractData::Complete(cad) => {
+                write!(f, "a complete value: ")?;
+                cad.fmt(f)?;
+                Ok(())
+            },
+            UnderspecifiedAbstractData::PublicPointerTo { pointee, .. } => {
+                write!(f, "a pointer to ")?;
+                pointee.fmt(f)?;
+                Ok(())
+            },
+            UnderspecifiedAbstractData::PublicPointerToParentOr(_) => write!(f, "a public pointer to parent, with a backup"),
+            UnderspecifiedAbstractData::Array { num_elements, .. } => write!(f, "an array of {} elements", num_elements),
+            UnderspecifiedAbstractData::Struct { name, elements } => write!(f, "a struct named {} with {} elements", name, elements.len()),
+            UnderspecifiedAbstractData::DefaultForLLVMStructName { llvm_struct_name } => write!(f, "the default for the LLVM struct {}", llvm_struct_name),
+            UnderspecifiedAbstractData::VoidOverride { data, .. } => {
+                write!(f, "a void override with data ")?;
+                data.fmt(f)?;
+                Ok(())
+            },
+            UnderspecifiedAbstractData::SameSizeOverride { data, .. } => {
+                write!(f, "a same-size override with data ")?;
+                data.fmt(f)?;
+                Ok(())
+            },
+            UnderspecifiedAbstractData::WithWatchpoint { name, data } => {
+                data.fmt(f)?;
+                write!(f, " with a watchpoint named {}", name)?;
+                Ok(())
+            },
+        }
     }
 }
 
