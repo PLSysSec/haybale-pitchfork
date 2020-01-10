@@ -21,7 +21,7 @@ pub fn allocate_args<'p>(
     params: impl IntoIterator<Item = (&'p function::Parameter, AbstractData)>,
 ) -> Result<Vec<secret::BV>> {
     let mut ctx = Context::new(proj, sd);
-    params.into_iter().map(|(param, arg)| allocate_arg(state, param, arg, &mut ctx)).collect()
+    params.into_iter().map(|(param, arg)| ctx.allocate_arg(state, param, arg)).collect()
 }
 
 /// This `Context` serves two purposes:
@@ -42,205 +42,205 @@ impl<'a> Context<'a> {
             namedvals: HashMap::new(),
         }
     }
-}
 
-/// Returns the `secret::BV` representing the argument. Many callers won't need this, though.
-fn allocate_arg<'p>(state: &mut State<'p, secret::Backend>, param: &'p function::Parameter, arg: AbstractData, ctx: &mut Context) -> Result<secret::BV> {
-    debug!("Allocating function parameter {:?}", &param.name);
-    let arg = arg.to_complete(&param.ty, &ctx.proj, &ctx.sd);
-    allocate_arg_from_cad(state, param, arg, false, ctx)
-}
+    /// Returns the `secret::BV` representing the argument. Many callers won't need this, though.
+    fn allocate_arg<'p>(&mut self, state: &mut State<'p, secret::Backend>, param: &'p function::Parameter, arg: AbstractData) -> Result<secret::BV> {
+        debug!("Allocating function parameter {:?}", &param.name);
+        let arg = arg.to_complete(&param.ty, &self.proj, &self.sd);
+        self.allocate_arg_from_cad(state, param, arg, false)
+    }
 
-/// Same as above, but takes a `CompleteAbstractData` instead of an `AbstractData`.
-///
-/// `type_override`: If `true`, then the parameter type will not be checked against the `CompleteAbstractData`.
-fn allocate_arg_from_cad<'p>(
-    state: &mut State<'p, secret::Backend>,
-    param: &'p function::Parameter,
-    arg: CompleteAbstractData,
-    type_override: bool,
-    ctx: &mut Context,
-) -> Result<secret::BV> {
-    let arg_size = arg.size_in_bits();
-    let param_size = layout::size(&param.ty);
-    assert_eq!(arg_size, param_size, "Parameter size mismatch for parameter {:?}: parameter is {} bits but CompleteAbstractData is {} bits", &param.name, param_size, arg_size);
-    match arg {
-        CompleteAbstractData::Secret { bits } => {
-            debug!("Parameter is marked secret");
-            let bv = secret::BV::Secret { btor: state.solver.clone(), width: bits as u32, symbol: None };
-            state.overwrite_latest_version_of_bv(&param.name, bv.clone());
-            Ok(bv)
-        },
-        CompleteAbstractData::PublicValue { bits, value: AbstractValue::ExactValue(value) } => {
-            debug!("Parameter is marked public, equal to {}", value);
-            let bv = state.bv_from_u64(value, bits as u32);
-            state.overwrite_latest_version_of_bv(&param.name, bv.clone());
-            Ok(bv)
-        },
-        CompleteAbstractData::PublicValue { bits, value: AbstractValue::Range(min, max) } => {
-            debug!("Parameter is marked public, in the range ({}, {}) inclusive", min, max);
-            let parambv = state.new_bv_with_name(param.name.clone(), bits as u32).unwrap();
-            parambv.ugte(&state.bv_from_u64(min, bits as u32)).assert()?;
-            parambv.ulte(&state.bv_from_u64(max, bits as u32)).assert()?;
-            state.overwrite_latest_version_of_bv(&param.name, parambv.clone());
-            Ok(parambv)
-        }
-        CompleteAbstractData::PublicValue { value: AbstractValue::Unconstrained, .. } => {
-            debug!("Parameter is marked public, unconstrained value");
-            // nothing to do, just return the BV representing that parameter
-            let op = Operand::LocalOperand { name: param.name.clone(), ty: param.ty.clone() };
-            state.operand_to_bv(&op)
-        },
-        CompleteAbstractData::PublicValue { bits, value: AbstractValue::Named { name, value } } => {
-            let unwrapped_arg = CompleteAbstractData::pub_integer(bits, *value);
-            let bv = allocate_arg_from_cad(state, param, unwrapped_arg, type_override, ctx)?;
-            match ctx.namedvals.entry(name.to_owned()) {
-                Vacant(v) => {
-                    v.insert(bv.clone());
-                },
-                Occupied(bv_for_name) => {
-                    let bv_for_name = bv_for_name.get();
-                    let width = bv_for_name.get_width();
-                    assert_eq!(width, bits as u32, "AbstractValue::Named {:?}: multiple values with different bitwidths given this name: one with width {} bits, another with width {} bits", name, width, bits);
-                    bv._eq(&bv_for_name).assert()?;
-                },
-            };
-            state.overwrite_latest_version_of_bv(&param.name, bv.clone());
-            Ok(bv)
-        }
-        CompleteAbstractData::PublicValue { bits, value: AbstractValue::EqualTo(name) } => {
-            match ctx.namedvals.get(&name) {
-                None => panic!("AbstractValue::Named {:?} not found", name),
-                Some(bv) => {
-                    let width = bv.get_width();
-                    assert_eq!(width, bits as u32, "AbstractValue::EqualTo {:?}, which has {} bits, but current value has {} bits", name, width, bits);
-                    state.overwrite_latest_version_of_bv(&param.name, bv.clone());
-                    Ok(bv.clone())
-                }
+    /// Same as above, but takes a `CompleteAbstractData` instead of an `AbstractData`.
+    ///
+    /// `type_override`: If `true`, then the parameter type will not be checked against the `CompleteAbstractData`.
+    fn allocate_arg_from_cad<'p>(
+        &mut self,
+        state: &mut State<'p, secret::Backend>,
+        param: &'p function::Parameter,
+        arg: CompleteAbstractData,
+        type_override: bool,
+    ) -> Result<secret::BV> {
+        let arg_size = arg.size_in_bits();
+        let param_size = layout::size(&param.ty);
+        assert_eq!(arg_size, param_size, "Parameter size mismatch for parameter {:?}: parameter is {} bits but CompleteAbstractData is {} bits", &param.name, param_size, arg_size);
+        match arg {
+            CompleteAbstractData::Secret { bits } => {
+                debug!("Parameter is marked secret");
+                let bv = secret::BV::Secret { btor: state.solver.clone(), width: bits as u32, symbol: None };
+                state.overwrite_latest_version_of_bv(&param.name, bv.clone());
+                Ok(bv)
+            },
+            CompleteAbstractData::PublicValue { bits, value: AbstractValue::ExactValue(value) } => {
+                debug!("Parameter is marked public, equal to {}", value);
+                let bv = state.bv_from_u64(value, bits as u32);
+                state.overwrite_latest_version_of_bv(&param.name, bv.clone());
+                Ok(bv)
+            },
+            CompleteAbstractData::PublicValue { bits, value: AbstractValue::Range(min, max) } => {
+                debug!("Parameter is marked public, in the range ({}, {}) inclusive", min, max);
+                let parambv = state.new_bv_with_name(param.name.clone(), bits as u32).unwrap();
+                parambv.ugte(&state.bv_from_u64(min, bits as u32)).assert()?;
+                parambv.ulte(&state.bv_from_u64(max, bits as u32)).assert()?;
+                state.overwrite_latest_version_of_bv(&param.name, parambv.clone());
+                Ok(parambv)
             }
-        }
-        CompleteAbstractData::PublicValue { bits, value: AbstractValue::SignedLessThan(name) } => {
-            match ctx.namedvals.get(&name) {
-                None => panic!("AbstractValue::Named {:?} not found", name),
-                Some(bv) => {
-                    let width = bv.get_width();
-                    assert_eq!(width, bits as u32, "AbstractValue::SignedLessThan {:?}, which has {} bits, but current value has {} bits", name, width, bits);
-                    let new_bv = state.new_bv_with_name(Name::from(format!("SignedLessThan{}:", name)), width)?;
-                    new_bv.slt(&bv).assert()?;
-                    state.overwrite_latest_version_of_bv(&param.name, new_bv.clone());
-                    Ok(new_bv)
-                }
-            }
-        }
-        CompleteAbstractData::PublicValue { bits, value: AbstractValue::SignedGreaterThan(name) } => {
-            match ctx.namedvals.get(&name) {
-                None => panic!("AbstractValue::Named {:?} not found", name),
-                Some(bv) => {
-                    let width = bv.get_width();
-                    assert_eq!(width, bits as u32, "AbstractValue::SignedGreaterThan {:?}, which has {} bits, but current value has {} bits", name, width, bits);
-                    let new_bv = state.new_bv_with_name(Name::from(format!("SignedGreaterThan:{}", name)), width)?;
-                    new_bv.sgt(&bv).assert()?;
-                    state.overwrite_latest_version_of_bv(&param.name, new_bv.clone());
-                    Ok(new_bv)
-                }
-            }
-        }
-        CompleteAbstractData::PublicValue { bits, value: AbstractValue::UnsignedLessThan(name) } => {
-            match ctx.namedvals.get(&name) {
-                None => panic!("AbstractValue::Named {:?} not found", name),
-                Some(bv) => {
-                    let width = bv.get_width();
-                    assert_eq!(width, bits as u32, "AbstractValue::UnsignedLessThan {:?}, which has {} bits, but current value has {} bits", name, width, bits);
-                    let new_bv = state.new_bv_with_name(Name::from(format!("UnsignedLessThan:{}", name)), width)?;
-                    new_bv.ult(&bv).assert()?;
-                    state.overwrite_latest_version_of_bv(&param.name, new_bv.clone());
-                    Ok(new_bv)
-                }
-            }
-        }
-        CompleteAbstractData::PublicValue { bits, value: AbstractValue::UnsignedGreaterThan(name) } => {
-            match ctx.namedvals.get(&name) {
-                None => panic!("AbstractValue::Named {:?} not found", name),
-                Some(bv) => {
-                    let width = bv.get_width();
-                    assert_eq!(width, bits as u32, "AbstractValue::UnsignedGreaterThan {:?}, which has {} bits, but current value has {} bits", name, width, bits);
-                    let new_bv = state.new_bv_with_name(Name::from(format!("UnsignedGreaterThan:{}", name)), width)?;
-                    new_bv.ugt(&bv).assert()?;
-                    state.overwrite_latest_version_of_bv(&param.name, new_bv.clone());
-                    Ok(new_bv)
-                }
-            }
-        }
-        CompleteAbstractData::PublicPointerTo { pointee, maybe_null } => {
-            debug!("Parameter is marked as a public pointer which {} be null", if maybe_null { "may" } else { "cannot" });
-            let ptr = state.allocate(pointee.size_in_bits() as u64);
-            debug!("Allocated the parameter at {:?}", ptr);
-            let ptr = if maybe_null {
-                let ptr_width = ptr.get_width();
-                let condition = state.new_bv_with_name(Name::from("pointer_is_null"), 1)?;
-                condition.cond_bv(&state.zero(ptr_width), &ptr)
-            } else {
-                ptr
-            };
-            state.overwrite_latest_version_of_bv(&param.name, ptr.clone());
-            if type_override {
-                InitializationContext::blank().initialize_data_in_memory(state, ctx, &ptr, &*pointee, None)?;
-            } else {
-                let pointee_ty = match &param.ty {
-                    Type::PointerType { pointee_type, .. } => pointee_type,
-                    ty => panic!("Mismatch for parameter {:?}: CompleteAbstractData specifies a pointer but parameter type is {:?}", &param.name, ty),
+            CompleteAbstractData::PublicValue { value: AbstractValue::Unconstrained, .. } => {
+                debug!("Parameter is marked public, unconstrained value");
+                // nothing to do, just return the BV representing that parameter
+                let op = Operand::LocalOperand { name: param.name.clone(), ty: param.ty.clone() };
+                state.operand_to_bv(&op)
+            },
+            CompleteAbstractData::PublicValue { bits, value: AbstractValue::Named { name, value } } => {
+                let unwrapped_arg = CompleteAbstractData::pub_integer(bits, *value);
+                let bv = self.allocate_arg_from_cad(state, param, unwrapped_arg, type_override)?;
+                match self.namedvals.entry(name.to_owned()) {
+                    Vacant(v) => {
+                        v.insert(bv.clone());
+                    },
+                    Occupied(bv_for_name) => {
+                        let bv_for_name = bv_for_name.get();
+                        let width = bv_for_name.get_width();
+                        assert_eq!(width, bits as u32, "AbstractValue::Named {:?}: multiple values with different bitwidths given this name: one with width {} bits, another with width {} bits", name, width, bits);
+                        bv._eq(&bv_for_name).assert()?;
+                    },
                 };
-                InitializationContext::blank().initialize_data_in_memory(state, ctx, &ptr, &*pointee, Some(pointee_ty))?;
+                state.overwrite_latest_version_of_bv(&param.name, bv.clone());
+                Ok(bv)
             }
-            Ok(ptr)
-        },
-        CompleteAbstractData::PublicPointerToFunction(funcname) => {
-            debug!("Parameter is marked as a public pointer to the function {:?}", funcname);
-            if type_override {
-                match &param.ty {
-                    Type::PointerType { .. } => {},
-                    ty => panic!("Mismatch for parameter {:?}: CompleteAbstractData specifies a pointer but parameter type is {:?}", &param.name, ty),
+            CompleteAbstractData::PublicValue { bits, value: AbstractValue::EqualTo(name) } => {
+                match self.namedvals.get(&name) {
+                    None => panic!("AbstractValue::Named {:?} not found", name),
+                    Some(bv) => {
+                        let width = bv.get_width();
+                        assert_eq!(width, bits as u32, "AbstractValue::EqualTo {:?}, which has {} bits, but current value has {} bits", name, width, bits);
+                        state.overwrite_latest_version_of_bv(&param.name, bv.clone());
+                        Ok(bv.clone())
+                    }
+                }
+            }
+            CompleteAbstractData::PublicValue { bits, value: AbstractValue::SignedLessThan(name) } => {
+                match self.namedvals.get(&name) {
+                    None => panic!("AbstractValue::Named {:?} not found", name),
+                    Some(bv) => {
+                        let width = bv.get_width();
+                        assert_eq!(width, bits as u32, "AbstractValue::SignedLessThan {:?}, which has {} bits, but current value has {} bits", name, width, bits);
+                        let new_bv = state.new_bv_with_name(Name::from(format!("SignedLessThan{}:", name)), width)?;
+                        new_bv.slt(&bv).assert()?;
+                        state.overwrite_latest_version_of_bv(&param.name, new_bv.clone());
+                        Ok(new_bv)
+                    }
+                }
+            }
+            CompleteAbstractData::PublicValue { bits, value: AbstractValue::SignedGreaterThan(name) } => {
+                match self.namedvals.get(&name) {
+                    None => panic!("AbstractValue::Named {:?} not found", name),
+                    Some(bv) => {
+                        let width = bv.get_width();
+                        assert_eq!(width, bits as u32, "AbstractValue::SignedGreaterThan {:?}, which has {} bits, but current value has {} bits", name, width, bits);
+                        let new_bv = state.new_bv_with_name(Name::from(format!("SignedGreaterThan:{}", name)), width)?;
+                        new_bv.sgt(&bv).assert()?;
+                        state.overwrite_latest_version_of_bv(&param.name, new_bv.clone());
+                        Ok(new_bv)
+                    }
+                }
+            }
+            CompleteAbstractData::PublicValue { bits, value: AbstractValue::UnsignedLessThan(name) } => {
+                match self.namedvals.get(&name) {
+                    None => panic!("AbstractValue::Named {:?} not found", name),
+                    Some(bv) => {
+                        let width = bv.get_width();
+                        assert_eq!(width, bits as u32, "AbstractValue::UnsignedLessThan {:?}, which has {} bits, but current value has {} bits", name, width, bits);
+                        let new_bv = state.new_bv_with_name(Name::from(format!("UnsignedLessThan:{}", name)), width)?;
+                        new_bv.ult(&bv).assert()?;
+                        state.overwrite_latest_version_of_bv(&param.name, new_bv.clone());
+                        Ok(new_bv)
+                    }
+                }
+            }
+            CompleteAbstractData::PublicValue { bits, value: AbstractValue::UnsignedGreaterThan(name) } => {
+                match self.namedvals.get(&name) {
+                    None => panic!("AbstractValue::Named {:?} not found", name),
+                    Some(bv) => {
+                        let width = bv.get_width();
+                        assert_eq!(width, bits as u32, "AbstractValue::UnsignedGreaterThan {:?}, which has {} bits, but current value has {} bits", name, width, bits);
+                        let new_bv = state.new_bv_with_name(Name::from(format!("UnsignedGreaterThan:{}", name)), width)?;
+                        new_bv.ugt(&bv).assert()?;
+                        state.overwrite_latest_version_of_bv(&param.name, new_bv.clone());
+                        Ok(new_bv)
+                    }
+                }
+            }
+            CompleteAbstractData::PublicPointerTo { pointee, maybe_null } => {
+                debug!("Parameter is marked as a public pointer which {} be null", if maybe_null { "may" } else { "cannot" });
+                let ptr = state.allocate(pointee.size_in_bits() as u64);
+                debug!("Allocated the parameter at {:?}", ptr);
+                let ptr = if maybe_null {
+                    let ptr_width = ptr.get_width();
+                    let condition = state.new_bv_with_name(Name::from("pointer_is_null"), 1)?;
+                    condition.cond_bv(&state.zero(ptr_width), &ptr)
+                } else {
+                    ptr
                 };
-            }
-            let ptr = state.get_pointer_to_function(funcname.clone())
-                .unwrap_or_else(|| panic!("Failed to find function {:?}", &funcname))
-                .clone();
-            state.overwrite_latest_version_of_bv(&param.name, ptr.clone());
-            Ok(ptr)
-        }
-        CompleteAbstractData::PublicPointerToHook(funcname) => {
-            debug!("Parameter is marked as a public pointer to the active hook for function {:?}", funcname);
-            if type_override {
-                match &param.ty {
-                    Type::PointerType { .. } => {},
-                    ty => panic!("Mismatch for parameter {:?}: CompleteAbstractData specifies a pointer but parameter type is {:?}", &param.name, ty),
-                };
-            }
-            let ptr = state.get_pointer_to_function_hook(&funcname)
-                .unwrap_or_else(|| panic!("Failed to find hook for function {:?}", &funcname))
-                .clone();
-            state.overwrite_latest_version_of_bv(&param.name, ptr.clone());
-            Ok(ptr)
-        }
-        CompleteAbstractData::PublicPointerToSelf => panic!("Pointer-to-self is not supported for toplevel parameter (requires support for struct-passed-by-value, which at the time of this writing is also unimplemented)"),
-        CompleteAbstractData::PublicPointerToParentOr(_) => panic!("Pointer-to-parent is not supported for toplevel parameter; we have no way to know what struct it is contained in"),
-        CompleteAbstractData::Array { .. } => unimplemented!("Array passed by value"),
-        CompleteAbstractData::Struct { .. } => unimplemented!("Struct passed by value"),
-        CompleteAbstractData::VoidOverride { .. } => unimplemented!("VoidOverride used as an argument directly.  You probably meant to use a pointer to a VoidOverride"),
-        CompleteAbstractData::SameSizeOverride { data } => {
-            // we already checked above that the param size == the data size; and we will again on the recursive call, actually
-            allocate_arg_from_cad(state, param, *data, true, ctx)
-        },
-        CompleteAbstractData::WithWatchpoint { name, data } => {
-            if data.is_pointer() {
-                let pointee_size = data.pointee_size_in_bits();
-                let ptr = allocate_arg_from_cad(state, param, *data, type_override, ctx)?;
-                state.add_mem_watchpoint(name, Watchpoint::new(ptr.as_u64().unwrap(), pointee_size as u64));
+                state.overwrite_latest_version_of_bv(&param.name, ptr.clone());
+                if type_override {
+                    InitializationContext::blank().initialize_data_in_memory(state, self, &ptr, &*pointee, None)?;
+                } else {
+                    let pointee_ty = match &param.ty {
+                        Type::PointerType { pointee_type, .. } => pointee_type,
+                        ty => panic!("Mismatch for parameter {:?}: CompleteAbstractData specifies a pointer but parameter type is {:?}", &param.name, ty),
+                    };
+                    InitializationContext::blank().initialize_data_in_memory(state, self, &ptr, &*pointee, Some(pointee_ty))?;
+                }
                 Ok(ptr)
-            } else {
-                panic!("WithWatchpoint used with a non-pointer: {:?}", data)
+            },
+            CompleteAbstractData::PublicPointerToFunction(funcname) => {
+                debug!("Parameter is marked as a public pointer to the function {:?}", funcname);
+                if type_override {
+                    match &param.ty {
+                        Type::PointerType { .. } => {},
+                        ty => panic!("Mismatch for parameter {:?}: CompleteAbstractData specifies a pointer but parameter type is {:?}", &param.name, ty),
+                    };
+                }
+                let ptr = state.get_pointer_to_function(funcname.clone())
+                    .unwrap_or_else(|| panic!("Failed to find function {:?}", &funcname))
+                    .clone();
+                state.overwrite_latest_version_of_bv(&param.name, ptr.clone());
+                Ok(ptr)
             }
-        },
+            CompleteAbstractData::PublicPointerToHook(funcname) => {
+                debug!("Parameter is marked as a public pointer to the active hook for function {:?}", funcname);
+                if type_override {
+                    match &param.ty {
+                        Type::PointerType { .. } => {},
+                        ty => panic!("Mismatch for parameter {:?}: CompleteAbstractData specifies a pointer but parameter type is {:?}", &param.name, ty),
+                    };
+                }
+                let ptr = state.get_pointer_to_function_hook(&funcname)
+                    .unwrap_or_else(|| panic!("Failed to find hook for function {:?}", &funcname))
+                    .clone();
+                state.overwrite_latest_version_of_bv(&param.name, ptr.clone());
+                Ok(ptr)
+            }
+            CompleteAbstractData::PublicPointerToSelf => panic!("Pointer-to-self is not supported for toplevel parameter (requires support for struct-passed-by-value, which at the time of this writing is also unimplemented)"),
+            CompleteAbstractData::PublicPointerToParentOr(_) => panic!("Pointer-to-parent is not supported for toplevel parameter; we have no way to know what struct it is contained in"),
+            CompleteAbstractData::Array { .. } => unimplemented!("Array passed by value"),
+            CompleteAbstractData::Struct { .. } => unimplemented!("Struct passed by value"),
+            CompleteAbstractData::VoidOverride { .. } => unimplemented!("VoidOverride used as an argument directly.  You probably meant to use a pointer to a VoidOverride"),
+            CompleteAbstractData::SameSizeOverride { data } => {
+                // we already checked above that the param size == the data size; and we will again on the recursive call, actually
+                self.allocate_arg_from_cad(state, param, *data, true)
+            },
+            CompleteAbstractData::WithWatchpoint { name, data } => {
+                if data.is_pointer() {
+                    let pointee_size = data.pointee_size_in_bits();
+                    let ptr = self.allocate_arg_from_cad(state, param, *data, type_override)?;
+                    state.add_mem_watchpoint(name, Watchpoint::new(ptr.as_u64().unwrap(), pointee_size as u64));
+                    Ok(ptr)
+                } else {
+                    panic!("WithWatchpoint used with a non-pointer: {:?}", data)
+                }
+            },
+        }
     }
 }
 
