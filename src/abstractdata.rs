@@ -90,6 +90,17 @@ pub enum CompleteAbstractData {
     /// and the provided `CompleteAbstractData` will be assumed correct.
     VoidOverride { llvm_struct_name: Option<String>, data: Box<Self> },
 
+    /// Use the given `data`, even though it may not match the LLVM type.
+    /// It still needs to be the same size (number of bits) as the LLVM type.
+    /// For instance, you could specify that some LLVM pointer-size integer
+    /// should actually be initialized to have a pointer value and point to some
+    /// specified data.
+    ///
+    /// To override a `void*` type, see `VoidOverride` - and this probably won't
+    /// work for that anyways because of the same-size restriction. See comments
+    /// on `VoidOverride`.
+    SameSizeOverride { data: Box<Self> },
+
     /// Use the given `data`, but also (during initialization) add a watchpoint
     /// with the given `name` to the `State` covering the memory region which it
     /// points to. (The `data` here must be a pointer of some kind.)
@@ -231,6 +242,19 @@ impl CompleteAbstractData {
         Self::VoidOverride { llvm_struct_name: llvm_struct_name.map(Into::into), data: Box::new(data) }
     }
 
+    /// Use the given `data`, even though it may not match the LLVM type.
+    /// It still needs to be the same size (number of bits) as the LLVM type.
+    /// For instance, you could specify that some LLVM pointer-size integer
+    /// should actually be initialized to have a pointer value and point to some
+    /// specified data.
+    ///
+    /// To override a `void*` type, see `void_override` - and this probably won't
+    /// work for that anyways because of the same-size restriction. See comments
+    /// on `void_override`.
+    pub fn same_size_override(data: Self) -> Self {
+        Self::SameSizeOverride { data: Box::new(data) }
+    }
+
     /// Use the given `data`, but also (during initialization) add a watchpoint
     /// with the given `name` to the `State` covering the memory region which it
     /// points to. (The `data` must be a pointer of some kind.)
@@ -255,6 +279,7 @@ impl CompleteAbstractData {
             Self::PublicPointerToParentOr(_) => Self::POINTER_SIZE_BITS,
             Self::Secret { bits } => *bits,
             Self::VoidOverride { data, .. } => data.size_in_bits(),
+            Self::SameSizeOverride { data, .. } => data.size_in_bits(),
             Self::WithWatchpoint { data, .. } => data.size_in_bits(),
         }
     }
@@ -266,6 +291,7 @@ impl CompleteAbstractData {
             Self::Struct { elements, .. } => Self::size_in_bits(&elements[n]),
             Self::Array { element_type, .. } => Self::size_in_bits(element_type),
             Self::VoidOverride { data, .. } => data.field_size_in_bits(n),
+            Self::SameSizeOverride { data, .. } => data.field_size_in_bits(n),
             Self::WithWatchpoint { data, .. } => data.field_size_in_bits(n),
             _ => panic!("field_size_in_bits called on {:?}", self),
         }
@@ -278,6 +304,7 @@ impl CompleteAbstractData {
             Self::Struct { elements, .. } => elements.iter().take(n).map(Self::size_in_bits).sum(),
             Self::Array { element_type, .. } => element_type.size_in_bits() * n,
             Self::VoidOverride { data, .. } => data.offset_in_bits(n),
+            Self::SameSizeOverride { data, .. } => data.offset_in_bits(n),
             Self::WithWatchpoint { data, .. } => data.offset_in_bits(n),
             _ => panic!("offset_in_bits called on {:?}", self),
         }
@@ -287,6 +314,7 @@ impl CompleteAbstractData {
     pub fn is_pointer(&self) -> bool {
         match self {
             Self::PublicValue { .. } => false,
+            Self::Secret { .. } => panic!("is_pointer on a Secret"),
             Self::Array { .. } => false,
             Self::Struct { .. } => false,
             Self::PublicPointerTo { .. } => true,
@@ -294,8 +322,8 @@ impl CompleteAbstractData {
             Self::PublicPointerToHook(_) => true,
             Self::PublicPointerToSelf => true,
             Self::PublicPointerToParentOr(_) => true,
-            Self::Secret { .. } => panic!("is_pointer on a Secret"),
             Self::VoidOverride { data, .. } => data.is_pointer(),
+            Self::SameSizeOverride { data, .. } => data.is_pointer(),
             Self::WithWatchpoint { data, .. } => data.is_pointer(),
         }
     }
@@ -316,6 +344,7 @@ impl CompleteAbstractData {
             Self::PublicPointerToParentOr(Some(data)) => data.size_in_bits(),  // assume that if the parent typechecks, it's the same size
             Self::Secret { .. } => panic!("pointee_size_in_bits() on a Secret"),
             Self::VoidOverride { data, .. } => data.pointee_size_in_bits(),
+            Self::SameSizeOverride { data, .. } => data.pointee_size_in_bits(),
             Self::WithWatchpoint { data, .. } => data.pointee_size_in_bits(),
         }
     }
@@ -326,6 +355,7 @@ impl CompleteAbstractData {
             Self::Struct { elements, .. } => elements.len() == 1,  // compatible iff the number of elements is 1
             Self::Secret { .. } => true,  // could be compatible with the struct-of-one-element type
             Self::VoidOverride { .. } => true,  // could be compatible with the struct-of-one-element type
+            Self::SameSizeOverride { .. } => true,  // could be compatible with the struct-of-one-element type
             Self::WithWatchpoint { .. } => true,  // could be compatible with the struct-of-one-element type
             _ => false,
         }
@@ -388,6 +418,9 @@ pub(crate) enum UnderspecifiedAbstractData {
     /// `AbstractData` must be fully-specified, and no sanity typechecking will
     /// be performed (the `AbstractData` will be assumed correct).
     VoidOverride { llvm_struct_name: Option<String>, data: Box<AbstractData> },
+
+    /// See notes on [`CompleteAbstractData::SameSizeOverride`](enum.CompleteAbstractData.html).
+    SameSizeOverride { data: Box<AbstractData> },
 
     /// Use the given `data`, but also (during initialization) add a watchpoint
     /// with the given `name` to the `State` covering the memory region which it
@@ -550,6 +583,15 @@ impl AbstractData {
         Self(UnderspecifiedAbstractData::VoidOverride { llvm_struct_name: llvm_struct_name.map(Into::into), data: Box::new(data) })
     }
 
+    /// See notes on [`CompleteAbstractData::same_size_override`](enum.CompleteAbstractData.html#method.same_size_override).
+    ///
+    /// Note that the `AbstractData` here must actually be fully specified,
+    /// perhaps with the help of `StructDescriptions`. If it's not, `to_complete`
+    /// will panic.
+    pub fn same_size_override(data: AbstractData) -> Self {
+        Self(UnderspecifiedAbstractData::SameSizeOverride { data: Box::new(data) })
+    }
+
     /// Use the given `data`, but also (during initialization) add a watchpoint
     /// with the given `name` to the `State` covering the memory region which it
     /// points to. (The `data` here must be a pointer of some kind.)
@@ -644,6 +686,7 @@ impl UnderspecifiedAbstractData {
             Self::Struct { elements, .. } => elements.len() == 1,  // compatible iff the number of elements is 1
             Self::Complete(CompleteAbstractData::Struct { elements, .. }) => elements.len() == 1,  // compatible iff the number of elements is 1
             Self::VoidOverride { .. } => true,  // could be compatible with the struct-of-one-element type
+            Self::SameSizeOverride { .. } => true,  // could be compatible with the struct-of-one-element type
             Self::WithWatchpoint { .. } => true,  // could be compatible with the struct-of-one-element type
             _ => false,
         }
@@ -655,7 +698,7 @@ impl UnderspecifiedAbstractData {
     }
 
     /// If `ty` is `None`, this indicates that either:
-    ///   (1) we are explicitly overriding the LLVM type via `VoidOverride`, or
+    ///   (1) we are explicitly overriding the LLVM type via `VoidOverride` or `SameSizeOverride`, or
     ///   (2) we are initializing a struct via the `StructDescriptions` that we don't have an LLVM type for because it's opaque
     fn to_complete_rec<'a>(self, ty: Option<&'a Type>, mut ctx: ToCompleteContext<'a, '_>) -> CompleteAbstractData {
         // Set of struct names which have been detected to have infinite recursion,
@@ -716,6 +759,7 @@ impl UnderspecifiedAbstractData {
                     CompleteAbstractData::void_override(Some(&llvm_struct_name), data.to_complete_rec(Some(ty), ctx))
                 },
             }
+            Self::SameSizeOverride { data } => CompleteAbstractData::same_size_override(data.to_complete_rec(None, ctx)),
             Self::PublicPointerTo { pointee, maybe_null } => match ty {
                 Some(Type::PointerType { pointee_type, .. }) =>
                     CompleteAbstractData::PublicPointerTo { pointee: Box::new(match &pointee.0 {
@@ -811,7 +855,7 @@ impl UnderspecifiedAbstractData {
             Self::Unspecified => match ty {
                 None => {
                     ctx.error_backtrace();
-                    panic!("Encountered an AbstractData::default() but don't have an LLVM type to use; this is either because (1) void_override was used with llvm_struct_name == None but the specified AbstractData contained a default() somewhere; or (2) a struct in the StructDescriptions is opaque in this Project, but the specified AbstractData contained a default() somewhere");
+                    panic!("Encountered an AbstractData::default() but don't have an LLVM type to use; this is either because:\n  (1) either same_size_override or void_override with llvm_struct_name == None were used, but the specified AbstractData contained a default() somewhere; or\n  (2) a struct in the StructDescriptions is opaque in this Project, but the specified AbstractData contained a default() somewhere");
                 },
                 Some(ty) => match ty {
                     ty@Type::IntegerType { .. } =>

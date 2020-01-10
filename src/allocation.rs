@@ -48,6 +48,19 @@ impl<'a> Context<'a> {
 fn allocate_arg<'p>(state: &mut State<'p, secret::Backend>, param: &'p function::Parameter, arg: AbstractData, ctx: &mut Context) -> Result<secret::BV> {
     debug!("Allocating function parameter {:?}", &param.name);
     let arg = arg.to_complete(&param.ty, &ctx.proj, &ctx.sd);
+    allocate_arg_from_cad(state, param, arg, false, ctx)
+}
+
+/// Same as above, but takes a `CompleteAbstractData` instead of an `AbstractData`.
+///
+/// `type_override`: If `true`, then the parameter type will not be checked against the `CompleteAbstractData`.
+fn allocate_arg_from_cad<'p>(
+    state: &mut State<'p, secret::Backend>,
+    param: &'p function::Parameter,
+    arg: CompleteAbstractData,
+    type_override: bool,
+    ctx: &mut Context,
+) -> Result<secret::BV> {
     let arg_size = arg.size_in_bits();
     let param_size = layout::size(&param.ty);
     assert_eq!(arg_size, param_size, "Parameter size mismatch for parameter {:?}: parameter is {} bits but CompleteAbstractData is {} bits", &param.name, param_size, arg_size);
@@ -79,8 +92,8 @@ fn allocate_arg<'p>(state: &mut State<'p, secret::Backend>, param: &'p function:
             state.operand_to_bv(&op)
         },
         CompleteAbstractData::PublicValue { bits, value: AbstractValue::Named { name, value } } => {
-            let unwrapped_arg = AbstractData(UnderspecifiedAbstractData::Complete(CompleteAbstractData::pub_integer(bits, *value)));
-            let bv = allocate_arg(state, param, unwrapped_arg, ctx)?;
+            let unwrapped_arg = CompleteAbstractData::pub_integer(bits, *value);
+            let bv = allocate_arg_from_cad(state, param, unwrapped_arg, type_override, ctx)?;
             match ctx.namedvals.entry(name.to_owned()) {
                 Vacant(v) => {
                     v.insert(bv.clone());
@@ -170,19 +183,25 @@ fn allocate_arg<'p>(state: &mut State<'p, secret::Backend>, param: &'p function:
                 ptr
             };
             state.overwrite_latest_version_of_bv(&param.name, ptr.clone());
-            let pointee_ty = match &param.ty {
-                Type::PointerType { pointee_type, .. } => pointee_type,
-                ty => panic!("Mismatch for parameter {:?}: CompleteAbstractData specifies a pointer but parameter type is {:?}", &param.name, ty),
-            };
-            initialize_data_in_memory(state, &ptr, &*pointee, Some(pointee_ty), None, None, ctx)?;
+            if type_override {
+                initialize_data_in_memory(state, &ptr, &*pointee, None, None, None, ctx)?;
+            } else {
+                let pointee_ty = match &param.ty {
+                    Type::PointerType { pointee_type, .. } => pointee_type,
+                    ty => panic!("Mismatch for parameter {:?}: CompleteAbstractData specifies a pointer but parameter type is {:?}", &param.name, ty),
+                };
+                initialize_data_in_memory(state, &ptr, &*pointee, Some(pointee_ty), None, None, ctx)?;
+            }
             Ok(ptr)
         },
         CompleteAbstractData::PublicPointerToFunction(funcname) => {
             debug!("Parameter is marked as a public pointer to the function {:?}", funcname);
-            match &param.ty {
-                Type::PointerType { .. } => {},
-                ty => panic!("Mismatch for parameter {:?}: CompleteAbstractData specifies a pointer but parameter type is {:?}", &param.name, ty),
-            };
+            if type_override {
+                match &param.ty {
+                    Type::PointerType { .. } => {},
+                    ty => panic!("Mismatch for parameter {:?}: CompleteAbstractData specifies a pointer but parameter type is {:?}", &param.name, ty),
+                };
+            }
             let ptr = state.get_pointer_to_function(funcname.clone())
                 .unwrap_or_else(|| panic!("Failed to find function {:?}", &funcname))
                 .clone();
@@ -191,10 +210,12 @@ fn allocate_arg<'p>(state: &mut State<'p, secret::Backend>, param: &'p function:
         }
         CompleteAbstractData::PublicPointerToHook(funcname) => {
             debug!("Parameter is marked as a public pointer to the active hook for function {:?}", funcname);
-            match &param.ty {
-                Type::PointerType { .. } => {},
-                ty => panic!("Mismatch for parameter {:?}: CompleteAbstractData specifies a pointer but parameter type is {:?}", &param.name, ty),
-            };
+            if type_override {
+                match &param.ty {
+                    Type::PointerType { .. } => {},
+                    ty => panic!("Mismatch for parameter {:?}: CompleteAbstractData specifies a pointer but parameter type is {:?}", &param.name, ty),
+                };
+            }
             let ptr = state.get_pointer_to_function_hook(&funcname)
                 .unwrap_or_else(|| panic!("Failed to find hook for function {:?}", &funcname))
                 .clone();
@@ -206,11 +227,14 @@ fn allocate_arg<'p>(state: &mut State<'p, secret::Backend>, param: &'p function:
         CompleteAbstractData::Array { .. } => unimplemented!("Array passed by value"),
         CompleteAbstractData::Struct { .. } => unimplemented!("Struct passed by value"),
         CompleteAbstractData::VoidOverride { .. } => unimplemented!("VoidOverride used as an argument directly.  You probably meant to use a pointer to a VoidOverride"),
+        CompleteAbstractData::SameSizeOverride { data } => {
+            // we already checked above that the param size == the data size; and we will again on the recursive call, actually
+            allocate_arg_from_cad(state, param, *data, true, ctx)
+        },
         CompleteAbstractData::WithWatchpoint { name, data } => {
             if data.is_pointer() {
                 let pointee_size = data.pointee_size_in_bits();
-                let abstractdata = AbstractData(UnderspecifiedAbstractData::Complete(*data));
-                let ptr = allocate_arg(state, param, abstractdata, ctx)?;
+                let ptr = allocate_arg_from_cad(state, param, *data, type_override, ctx)?;
                 state.add_mem_watchpoint(name, Watchpoint::new(ptr.as_u64().unwrap(), pointee_size as u64));
                 Ok(ptr)
             } else {
@@ -868,6 +892,14 @@ fn initialize_data_in_memory_rec(
                 },
             }
         },
+        CompleteAbstractData::SameSizeOverride { data } => {
+            // first check that the type we're overriding is the right size
+            match ty {
+                Some(ty) => assert_eq!(data.size_in_bits(), layout::size(ty), "same_size_override: size mismatch: specified something of size {} bits, but the LLVM type has size {} bits", data.size_in_bits(), layout::size(ty)),
+                None => {},
+            };
+            initialize_data_in_memory_rec(state, addr, &**data, None, cur_struct, parent, within_structs, ctx)
+        }
         CompleteAbstractData::WithWatchpoint { name, data } => {
             if data.is_pointer() {
                 let retval = initialize_data_in_memory_rec(state, addr, &**data, ty, cur_struct, parent, within_structs, ctx)?;
