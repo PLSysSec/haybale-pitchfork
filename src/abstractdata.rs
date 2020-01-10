@@ -410,6 +410,16 @@ pub(crate) enum UnderspecifiedAbstractData {
     /// (for instance, some unspecified and some fully-specified fields)
     Struct { name: String, elements: Vec<AbstractData> },
 
+    /// Use the default structure for the given LLVM struct name.
+    ///
+    /// If we are not in the middle of an override, this struct name must match
+    /// the actual LLVM type's struct name.
+    ///
+    /// If we are in the middle of an override and therefore don't have an
+    /// LLVM type at the moment, this will act like `Unspecified` with the
+    /// LLVM type being the one for the given LLVM struct name.
+    DefaultForLLVMStructName { llvm_struct_name: String },
+
     /// See notes on [`CompleteAbstractData::VoidOverride`](enum.CompleteAbstractData.html).
     ///
     /// If the optional `llvm_struct_name` is included, it will lookup that
@@ -556,6 +566,18 @@ impl AbstractData {
     /// See [`AbstractData::to_complete`](struct.AbstractData.html#method.to_complete)
     pub fn default() -> Self {
         Self(UnderspecifiedAbstractData::Unspecified)
+    }
+
+    /// Use the default structure for the given LLVM struct name.
+    ///
+    /// If we are not in the middle of an override, this struct name must match
+    /// the actual LLVM type's struct name.
+    ///
+    /// If we are in the middle of an override and therefore don't have an
+    /// LLVM type at the moment, this will act like `default()` with the
+    /// LLVM type being the one for the given LLVM struct name.
+    pub fn default_for_llvm_struct_name(llvm_struct_name: impl Into<String>) -> Self {
+        Self(UnderspecifiedAbstractData::DefaultForLLVMStructName { llvm_struct_name: llvm_struct_name.into() })
     }
 
     /// A (public) pointer which may point anywhere, including being `NULL`
@@ -850,6 +872,36 @@ impl UnderspecifiedAbstractData {
                 _ => {
                     ctx.error_backtrace();
                     panic!("Type mismatch: AbstractData::Struct {}, but LLVM type is {:?}", name, ty);
+                },
+            },
+            Self::DefaultForLLVMStructName { llvm_struct_name } => match ty {
+                Some(Type::NamedStructType { name, .. }) => {
+                    if name == &llvm_struct_name {
+                        // all's normal, just treat this as an Unspecified
+                        Self::Unspecified.to_complete_rec(ty, ctx)
+                    } else {
+                        ctx.error_backtrace();
+                        panic!("default_for_llvm_struct_name {:?}, but LLVM type is a struct named {:?}", llvm_struct_name, name)
+                    }
+                },
+                Some(Type::StructType { .. }) => {
+                    ctx.error_backtrace();
+                    panic!("default_for_llvm_struct_name {:?}, but LLVM type is an anonymous/literal struct", llvm_struct_name)
+                },
+                Some(ty) => {
+                    ctx.error_backtrace();
+                    panic!("default_for_llvm_struct_name {:?}, but LLVM type is not a structure type: {:?}", llvm_struct_name, ty)
+                },
+                None => {
+                    // working as intended - use this `llvm_struct_name` as the type from here on out
+                    let (llvm_struct_ty_arc, _) = ctx.proj.get_named_struct_type_by_name(&llvm_struct_name)
+                        .unwrap_or_else(|| { ctx.error_backtrace(); panic!("default_for_llvm_struct_name: struct name {:?} not found in the Project", llvm_struct_name); });
+                    let llvm_struct_ty_arc = llvm_struct_ty_arc
+                        .as_ref()
+                        .unwrap_or_else(|| { ctx.error_backtrace(); panic!("default_for_llvm_struct_name: struct name {:?} is entirely opaque in this Project", llvm_struct_name); })
+                        .clone();
+                    let llvm_struct_ty: &Type = &llvm_struct_ty_arc.read().unwrap();
+                    Self::Unspecified.to_complete_rec(Some(llvm_struct_ty), ctx)
                 },
             },
             Self::Unspecified => match ty {
