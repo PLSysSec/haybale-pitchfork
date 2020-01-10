@@ -24,6 +24,12 @@ impl Deref for BtorRef {
     }
 }
 
+impl AsRef<Btor> for BtorRef {
+    fn as_ref(&self) -> &Btor {
+        &self.0
+    }
+}
+
 impl haybale::backend::SolverRef for BtorRef {
     type BV = BV;
     type Array = boolector::Array<Rc<Btor>>;
@@ -50,7 +56,7 @@ impl haybale::backend::SolverRef for BtorRef {
 
 impl From<BtorRef> for Rc<Btor> {
     fn from(btor: BtorRef) -> Rc<Btor> {
-        btor.0.into()
+        btor.0
     }
 }
 
@@ -142,40 +148,40 @@ impl haybale::backend::BV for BV {
     type SolverRef = BtorRef;
 
     fn new(btor: BtorRef, width: u32, name: Option<&str>) -> Self {
-        BV::Public(boolector::BV::new(btor.0.into(), width, name))
+        BV::Public(boolector::BV::new(btor.0, width, name))
     }
     fn from_bool(btor: BtorRef, b: bool) -> Self {
-        BV::Public(boolector::BV::from_bool(btor.0.into(), b))
+        BV::Public(boolector::BV::from_bool(btor.0, b))
     }
     fn from_i32(btor: BtorRef, i: i32, width: u32) -> Self {
-        BV::Public(boolector::BV::from_i32(btor.0.into(), i, width))
+        BV::Public(boolector::BV::from_i32(btor.0, i, width))
     }
     fn from_u32(btor: BtorRef, u: u32, width: u32) -> Self {
-        BV::Public(boolector::BV::from_u32(btor.0.into(), u, width))
+        BV::Public(boolector::BV::from_u32(btor.0, u, width))
     }
     fn from_i64(btor: BtorRef, i: i64, width: u32) -> Self {
-        BV::Public(boolector::BV::from_i64(btor.0.into(), i, width))
+        BV::Public(boolector::BV::from_i64(btor.0, i, width))
     }
     fn from_u64(btor: BtorRef, u: u64, width: u32) -> Self {
-        BV::Public(boolector::BV::from_u64(btor.0.into(), u, width))
+        BV::Public(boolector::BV::from_u64(btor.0, u, width))
     }
     fn zero(btor: BtorRef, width: u32) -> Self {
-        BV::Public(boolector::BV::zero(btor.0.into(), width))
+        BV::Public(boolector::BV::zero(btor.0, width))
     }
     fn one(btor: BtorRef, width: u32) -> Self {
-        BV::Public(boolector::BV::one(btor.0.into(), width))
+        BV::Public(boolector::BV::one(btor.0, width))
     }
     fn ones(btor: BtorRef, width: u32) -> Self {
-        BV::Public(boolector::BV::ones(btor.0.into(), width))
+        BV::Public(boolector::BV::ones(btor.0, width))
     }
     fn from_binary_str(btor: BtorRef, bits: &str) -> Self {
-        BV::Public(boolector::BV::from_binary_str(btor.0.into(), bits))
+        BV::Public(boolector::BV::from_binary_str(btor.0, bits))
     }
     fn from_dec_str(btor: BtorRef, num: &str, width: u32) -> Self {
-        BV::Public(boolector::BV::from_dec_str(btor.0.into(), num, width))
+        BV::Public(boolector::BV::from_dec_str(btor.0, num, width))
     }
     fn from_hex_str(btor: BtorRef, num: &str, width: u32) -> Self {
-        BV::Public(boolector::BV::from_hex_str(btor.0.into(), num, width))
+        BV::Public(boolector::BV::from_hex_str(btor.0, num, width))
     }
     fn as_binary_str(&self) -> Option<String> {
         match self {
@@ -198,7 +204,7 @@ impl haybale::backend::BV for BV {
     fn get_a_solution(&self) -> Result<BVSolution> {
         match self {
             BV::Public(bv) => Ok(bv.get_a_solution()),
-            BV::Secret { .. } => Err(Error::OtherError(format!("Possible constant-time violation: get_a_solution() on a Secret value"))),
+            BV::Secret { .. } => Err(Error::OtherError("Possible constant-time violation: get_a_solution() on a Secret value".to_owned())),
         }
     }
     fn get_id(&self) -> i32 {
