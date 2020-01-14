@@ -176,13 +176,22 @@ pub fn check_for_ct_violation<'f, 'p>(
                 info!("Finished a path");
                 blocks_seen.update_with_current_path(&em);
             },
-            Some(Err(s)) if s.contains("Constant-time violation:") => return ConstantTimeResultForFunction {
-                funcname,
-                ct_result: ConstantTimeResult::NotConstantTime { violation_message: s },
-            },
-            Some(Err(s)) => return ConstantTimeResultForFunction {
-                funcname,
-                ct_result: ConstantTimeResult::OtherError { error_message: s },
+            Some(Err(mut s)) => {
+                if s.contains("RUST_LOG=haybale") {
+                    // add our own Pitchfork-specific logging advice
+                    s.push_str("For pitchfork-related issues, you might try `RUST_LOG=info,pitchfork,haybale`.");
+                }
+                if s.contains("Constant-time violation:") {
+                    return ConstantTimeResultForFunction {
+                        funcname,
+                        ct_result: ConstantTimeResult::NotConstantTime { violation_message: s },
+                    };
+                } else {
+                    return ConstantTimeResultForFunction {
+                        funcname,
+                        ct_result: ConstantTimeResult::OtherError { error_message: s },
+                    };
+                }
             },
             None => break,
         }
