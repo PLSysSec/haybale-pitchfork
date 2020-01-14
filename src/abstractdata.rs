@@ -977,8 +977,9 @@ impl UnderspecifiedAbstractData {
                     }
                 },
                 Some(Type::StructType { .. }) => {
-                    ctx.error_backtrace();
-                    panic!("default_for_llvm_struct_name {:?}, but LLVM type is an anonymous/literal struct", llvm_struct_name)
+                    // just treat this as an Unspecified and try to proceed.
+                    // If the struct types don't match, we'll get the type error later
+                    Self::Unspecified.to_complete_rec(ty, ctx)
                 },
                 Some(ty) => {
                     ctx.error_backtrace();
