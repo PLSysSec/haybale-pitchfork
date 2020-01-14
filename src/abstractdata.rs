@@ -419,13 +419,18 @@ pub struct AbstractData(pub(crate) UnderspecifiedAbstractData);
 /// Enum which backs `AbstractData`; see comments there
 #[derive(PartialEq, Eq, Clone, Debug)]
 pub(crate) enum UnderspecifiedAbstractData {
-    /// Just use the default structure based on the LLVM type.
+    /// Just use the default structure based on the LLVM type, making all
+    /// contents public.
     ///
     /// See [`AbstractData::to_complete`](enum.AbstractData.html#method.to_complete)
     Unspecified,
 
-    /// Just fill with the appropriate number of unconstrained bytes based on the LLVM type
+    /// Just fill with the appropriate number of unconstrained public bytes based
+    /// on the LLVM type
     Unconstrained,
+
+    /// Fill with the appropriate number of secret bytes based on the LLVM type
+    Secret,
 
     /// Use the given `CompleteAbstractData`, which gives a complete description
     Complete(CompleteAbstractData),
@@ -632,6 +637,11 @@ impl AbstractData {
         Self(UnderspecifiedAbstractData::Unconstrained)
     }
 
+    /// Fill with the appropriate number of secret bytes based on the LLVM type
+    pub fn secret() -> Self {
+        Self(UnderspecifiedAbstractData::Secret)
+    }
+
     /// See notes on [`CompleteAbstractData::void_override`](enum.CompleteAbstractData.html#method.void_override).
     ///
     /// Note that the `AbstractData` here must actually be fully specified,
@@ -681,6 +691,7 @@ impl fmt::Display for UnderspecifiedAbstractData {
         match self {
             UnderspecifiedAbstractData::Unspecified => write!(f, "an unspecified value"),
             UnderspecifiedAbstractData::Unconstrained => write!(f, "an unconstrained value"),
+            UnderspecifiedAbstractData::Secret => write!(f, "a secret value"),
             UnderspecifiedAbstractData::Complete(cad) => {
                 write!(f, "a complete value: ")?;
                 cad.fmt(f)?;
@@ -797,6 +808,7 @@ impl UnderspecifiedAbstractData {
         match self {
             Self::Unspecified => true,  // compatible with the struct-of-one-element type
             Self::Unconstrained => true,  // compatible with the struct-of-one-element type
+            Self::Secret => true,  // compatible with the struct-of-one-element type
             Self::Struct { elements, .. } => elements.len() == 1,  // compatible iff the number of elements is 1
             Self::Complete(CompleteAbstractData::Struct { elements, .. }) => elements.len() == 1,  // compatible iff the number of elements is 1
             Self::VoidOverride { .. } => true,  // could be compatible with the struct-of-one-element type
@@ -860,6 +872,13 @@ impl UnderspecifiedAbstractData {
                 None => {
                     ctx.error_backtrace();
                     panic!("Encountered an AbstractData::unconstrained() but don't have an LLVM type to use");
+                },
+            },
+            Self::Secret => match ty {
+                Some(ty) => CompleteAbstractData::Secret { bits: layout::size(ty) },
+                None => {
+                    ctx.error_backtrace();
+                    panic!("Encountered an AbstractData::secret() but don't have an LLVM type to use");
                 },
             },
             Self::WithWatchpoint { name, data } => CompleteAbstractData::with_watchpoint(name, data.to_complete_rec(ty, ctx)),
