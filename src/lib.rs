@@ -179,7 +179,7 @@ pub fn check_for_ct_violation<'f, 'p>(
             Some(Err(mut s)) => {
                 if s.contains("RUST_LOG=haybale") {
                     // add our own Pitchfork-specific logging advice
-                    s.push_str("For pitchfork-related issues, you might try `RUST_LOG=info,pitchfork,haybale`.");
+                    s.push_str("note: for pitchfork-related issues, you might try `RUST_LOG=info,pitchfork,haybale`.");
                 }
                 if s.contains("Constant-time violation:") {
                     return ConstantTimeResultForFunction {
