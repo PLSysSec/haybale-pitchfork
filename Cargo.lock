@@ -94,7 +94,7 @@ checksum = "9b919933a397b79c37e33b77bb2aa3dc8eb6e165ad809e58ff75bc7db2e34574"
 
 [[package]]
 name = "haybale"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "boolector",
  "cpp_demangle",
@@ -139,9 +139,9 @@ checksum = "d515b1f41455adea1313a4a2ac8a8a477634fbae63cc6100e3aebb207ce61558"
 
 [[package]]
 name = "llvm-ir"
-version = "0.4.1"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ddaad5edb79e9ce5aa417397759209f77c386cbb40da037cb159501074361c8f"
+checksum = "9679031a9aec5088ffe725b354e37041778c6b75c1af934dda74e47c82adaf7f"
 dependencies = [
  "either",
  "llvm-sys",
