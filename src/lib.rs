@@ -106,7 +106,7 @@ impl<'a> fmt::Display for ConstantTimeResultForFunction<'a> {
                 writeln!(f, "{}", violation_message)?;
             },
             ConstantTimeResult::OtherError { error_message } => {
-                writeln!(f, "While analyzing {}, {}", self.funcname, "received a fatal error:".red())?;
+                writeln!(f, "While analyzing {}, {}\n", self.funcname, "received a fatal error:".red())?;
                 writeln!(f, "{}", error_message)?;
             },
         }

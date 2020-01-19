@@ -19,9 +19,9 @@ impl BlocksSeen {
 
     pub fn update_with_current_path<B: Backend>(&mut self, em: &ExecutionManager<B>) {
         self.0.extend(em.state().get_path().iter().map(|pathentry| BB {
-            modname: pathentry.0.modname.clone(),
-            funcname: pathentry.0.funcname.clone(),
-            bbname: pathentry.0.bbname.clone(),
+            modname: pathentry.0.module.name.clone(),
+            funcname: pathentry.0.func.name.clone(),
+            bbname: pathentry.0.bb.name.clone(),
         }));
     }
 
