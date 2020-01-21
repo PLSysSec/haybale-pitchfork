@@ -61,16 +61,6 @@ impl From<BtorRef> for Rc<Btor> {
 }
 
 #[derive(PartialEq, Eq, Clone, Debug)]
-pub enum CTViolation {
-    /// `Secret` values influenced an address calculation
-    AddressCalculation,
-    /// `Secret` values influenced control flow
-    ControlFlowDecision,
-    /// `Secret` values leaked externally, e.g. influenced arguments to a logging function
-    LeakedExternally,
-}
-
-#[derive(PartialEq, Eq, Clone, Debug)]
 pub enum BV {
     Public(boolector::BV<Rc<Btor>>),
     /// `Secret` values are opaque because we don't care about their actual value, only how they are used.
