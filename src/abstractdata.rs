@@ -103,8 +103,8 @@ pub enum CompleteAbstractData {
     SameSizeOverride { data: Box<Self> },
 
     /// Use the given `data`, but also (during initialization) add a watchpoint
-    /// with the given `name` to the `State` covering the memory region which it
-    /// points to. (The `data` here must be a pointer of some kind.)
+    /// with the given `name` to the `State` covering the memory region it
+    /// occupies.
     WithWatchpoint { name: String, data: Box<Self> },
 }
 
@@ -257,8 +257,8 @@ impl CompleteAbstractData {
     }
 
     /// Use the given `data`, but also (during initialization) add a watchpoint
-    /// with the given `name` to the `State` covering the memory region which it
-    /// points to. (The `data` must be a pointer of some kind.)
+    /// with the given `name` to the `State` covering the memory region it
+    /// occupies.
     pub fn with_watchpoint(name: impl Into<String>, data: Self) -> Self {
         Self::WithWatchpoint { name: name.into(), data: Box::new(data) }
     }
@@ -480,8 +480,8 @@ pub(crate) enum UnderspecifiedAbstractData {
     SameSizeOverride { data: Box<AbstractData> },
 
     /// Use the given `data`, but also (during initialization) add a watchpoint
-    /// with the given `name` to the `State` covering the memory region which it
-    /// points to. (The `data` here must be a pointer of some kind.)
+    /// with the given `name` to the `State` covering the memory region it
+    /// occupies.
     WithWatchpoint { name: String, data: Box<AbstractData> },
 }
 
@@ -667,8 +667,8 @@ impl AbstractData {
     }
 
     /// Use the given `data`, but also (during initialization) add a watchpoint
-    /// with the given `name` to the `State` covering the memory region which it
-    /// points to. (The `data` here must be a pointer of some kind.)
+    /// with the given `name` to the `State` covering the memory region it
+    /// occupies.
     pub fn with_watchpoint(name: impl Into<String>, data: Self) -> Self {
         Self(UnderspecifiedAbstractData::WithWatchpoint { name: name.into(), data: Box::new(data) })
     }

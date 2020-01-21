@@ -231,16 +231,7 @@ impl<'p, 's> Context<'p, 's> {
                 // we already checked above that the param size == the data size; and we will again on the recursive call, actually
                 self.allocate_arg_from_cad(param, *data, true)
             },
-            CompleteAbstractData::WithWatchpoint { name, data } => {
-                if data.is_pointer() {
-                    let pointee_size = data.pointee_size_in_bits();
-                    let ptr = self.allocate_arg_from_cad(param, *data, type_override)?;
-                    self.state.add_mem_watchpoint(name, Watchpoint::new(ptr.as_u64().unwrap(), pointee_size as u64));
-                    Ok(ptr)
-                } else {
-                    panic!("WithWatchpoint used with a non-pointer: {:?}", data)
-                }
-            },
+            CompleteAbstractData::WithWatchpoint { .. } => unimplemented!("WithWatchpoint is not supported for toplevel parameter (its value usually does not reside in memory). You may want a pointer to a WithWatchpoint instead"),
         }
     }
 }
@@ -907,14 +898,10 @@ impl<'a> InitializationContext<'a> {
                 self.initialize_data_in_memory(ctx, addr, &**data, None)
             }
             CompleteAbstractData::WithWatchpoint { name, data } => {
-                if data.is_pointer() {
-                    let retval = self.initialize_data_in_memory(ctx, addr, &**data, ty)?;
-                    let ptr = ctx.state.read(addr, CompleteAbstractData::POINTER_SIZE_BITS as u32)?;
-                    ctx.state.add_mem_watchpoint(name, Watchpoint::new(ptr.as_u64().unwrap(), data.pointee_size_in_bits() as u64));
-                    Ok(retval)
-                } else {
-                    panic!("WithWatchpoint used with a non-pointer: {:?}", data)
-                }
+                let watch_addr = addr.as_u64().expect("WithWatchpoint not compatible with a non-constant initialization address");
+                let watch_size_in_bytes = data.size_in_bits() / 8;
+                ctx.state.add_mem_watchpoint(name, Watchpoint::new(watch_addr, watch_size_in_bytes as u64));
+                self.initialize_data_in_memory(ctx, addr, &**data, ty)
             }
         }
     }

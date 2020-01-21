@@ -103,7 +103,6 @@ dependencies = [
  "boolector",
  "cpp_demangle",
  "either",
- "env_logger",
  "itertools",
  "llvm-ir",
  "log",
