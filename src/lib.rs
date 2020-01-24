@@ -55,12 +55,7 @@ pub fn is_constant_time<'p>(
 }
 
 pub enum ConstantTimeResult {
-    IsConstantTime {
-        /// Map from function names to statistics on the block coverage of those
-        /// functions. Functions not appearing in the map were not encountered on
-        /// any path, or were hooked.
-        block_coverage: HashMap<String, BlockCoverage>,
-    },
+    IsConstantTime,
     NotConstantTime {
         /// A `String` describing the violation. (If there is more than one
         /// violation, this will simply be the first violation found.)
@@ -77,6 +72,15 @@ pub struct ConstantTimeResultForFunction<'a> {
     pub funcname: &'a str,
     /// the `ConstantTimeResult` for that function
     pub ct_result: ConstantTimeResult,
+    /// Map from function names to statistics on the block coverage of those
+    /// functions. Functions not appearing in the map were not encountered on
+    /// any path, or were hooked.
+    ///
+    /// Note that in the case of `ConstantTimeResult::NotConstantTime` or
+    /// `ConstantTimeResult::OtherError`, the coverage stats consider the block
+    /// in which the error occurred to be covered, even if the portion of the
+    /// block after where the error occurred was not covered.
+    block_coverage: HashMap<String, BlockCoverage>,
 }
 
 /// Produces a pretty (even colored!) description of the
@@ -86,16 +90,16 @@ impl<'a> fmt::Display for ConstantTimeResultForFunction<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         writeln!(f)?;
         match &self.ct_result {
-            ConstantTimeResult::IsConstantTime { block_coverage } => {
+            ConstantTimeResult::IsConstantTime => {
                 writeln!(f, "{} {}", self.funcname, "is constant-time".green())?;
                 writeln!(f)?;
-                let toplevel_coverage = block_coverage.get(self.funcname).unwrap();
+                let toplevel_coverage = self.block_coverage.get(self.funcname).unwrap();
                 writeln!(f, "  Block coverage of toplevel function ({}): {:.1}%", self.funcname, 100.0 * toplevel_coverage.percentage)?;
                 if toplevel_coverage.percentage < 1.0 {
                     writeln!(f, "  Missed blocks in toplevel function: {:?}", toplevel_coverage.missed_blocks.iter())?;
                 }
                 writeln!(f)?;
-                for (fname, coverage) in block_coverage {
+                for (fname, coverage) in &self.block_coverage {
                     if fname != self.funcname {
                         writeln!(f, "  Block coverage of {}: {:.1}%", fname, 100.0 * coverage.percentage)?;
                     }
@@ -170,6 +174,10 @@ pub fn check_for_ct_violation<'f, 'p>(
     debug!("Done allocating memory for function parameters");
 
     let mut blocks_seen = BlocksSeen::new();
+    let mangled_funcname = {
+        let (func, _) = project.get_func_by_name(funcname).unwrap();
+        &func.name
+    };
     loop {
         match em.next() {
             Some(Ok(_)) => {
@@ -177,6 +185,9 @@ pub fn check_for_ct_violation<'f, 'p>(
                 blocks_seen.update_with_current_path(&em);
             },
             Some(Err(mut s)) => {
+                blocks_seen.update_with_current_path(&em);
+                let block_coverage = compute_coverage_stats(project, &blocks_seen);
+                info!("Block coverage of toplevel function ({:?}): {:.1}%", funcname, 100.0 * block_coverage.get(mangled_funcname).unwrap().percentage);
                 if s.contains("RUST_LOG=haybale") {
                     // add our own Pitchfork-specific logging advice
                     s.push_str("note: for pitchfork-related issues, you might try `RUST_LOG=info,pitchfork,haybale`.");
@@ -185,11 +196,13 @@ pub fn check_for_ct_violation<'f, 'p>(
                     return ConstantTimeResultForFunction {
                         funcname,
                         ct_result: ConstantTimeResult::NotConstantTime { violation_message: s },
+                        block_coverage,
                     };
                 } else {
                     return ConstantTimeResultForFunction {
                         funcname,
                         ct_result: ConstantTimeResult::OtherError { error_message: s },
+                        block_coverage,
                     };
                 }
             },
@@ -201,11 +214,12 @@ pub fn check_for_ct_violation<'f, 'p>(
     info!("Done checking function {:?}; no ct violations found", funcname);
 
     let block_coverage = compute_coverage_stats(project, &blocks_seen);
-    info!("Block coverage of toplevel function ({:?}): {:.1}%", funcname, 100.0 * block_coverage.get(funcname).unwrap().percentage);
+    info!("Block coverage of toplevel function ({:?}): {:.1}%", funcname, 100.0 * block_coverage.get(mangled_funcname).unwrap().percentage);
 
     ConstantTimeResultForFunction {
         funcname,
-        ct_result: ConstantTimeResult::IsConstantTime { block_coverage },
+        ct_result: ConstantTimeResult::IsConstantTime,
+        block_coverage,
     }
 }
 

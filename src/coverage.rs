@@ -3,10 +3,10 @@ use haybale::backend::Backend;
 use llvm_ir::Name;
 use std::collections::{BTreeSet, HashMap, HashSet};
 
-#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Hash)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Debug, Hash)]
 struct BB {
     pub modname: String,
-    pub funcname: String,
+    pub funcname: String,  // always the mangled name here (as appears in the LLVM)
     pub bbname: Name,
 }
 
@@ -27,6 +27,8 @@ impl BlocksSeen {
 
     /// Returns an iterator of all the (unique) `BB`s in the given function which
     /// were seen at least once by this `BlocksSeen`.
+    ///
+    /// `funcname` must be a fully mangled name, as appears in the LLVM.
     fn seen_blocks_in_fn<'a, 'b>(&'a self, funcname: &'a str) -> impl Iterator<Item = &'a BB> {
         self.0.iter().filter(move |bb| bb.funcname == funcname)
     }
@@ -55,10 +57,11 @@ pub struct BlockCoverage {
 }
 
 impl BlockCoverage {
+    /// `funcname` may be either a mangled or demangled name here.
     pub fn new(proj: &Project, funcname: &str, blocks_seen: &BlocksSeen) -> Self {
         let (func, _) = proj.get_func_by_name(funcname).unwrap_or_else(|| panic!("Failed to find function {:?} to compute block coverage", funcname));
         let seen_blocks: BTreeSet<_> = blocks_seen
-            .seen_blocks_in_fn(funcname)
+            .seen_blocks_in_fn(&func.name)  // the mangled name, even if `funcname` is demangled
             .map(|bb| bb.bbname.clone())
             .collect();
         let missed_blocks: BTreeSet<_> = func
@@ -75,8 +78,8 @@ impl BlockCoverage {
     }
 }
 
-/// Returns a map from function names to the `BlockCoverage` of that function, as
-/// seen by the given `BlocksSeen`.
+/// Returns a map from (mangled) function names to the `BlockCoverage` of that
+/// function, as seen by the given `BlocksSeen`.
 pub fn compute_coverage_stats(proj: &Project, blocks_seen: &BlocksSeen) -> HashMap<String, BlockCoverage> {
     let funcs_seen: HashSet<String> = blocks_seen.0.iter().map(|bb| bb.funcname.clone()).collect();
     funcs_seen.into_iter().map(|funcname| {
