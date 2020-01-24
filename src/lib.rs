@@ -103,11 +103,11 @@ impl<'a> fmt::Display for ConstantTimeResultForFunction<'a> {
             },
             ConstantTimeResult::NotConstantTime { violation_message } => {
                 writeln!(f, "{} {}", self.funcname, "is not constant-time".red())?;
-                writeln!(f, "{}", violation_message)?;
+                writeln!(f, "\n{}", violation_message)?;
             },
             ConstantTimeResult::OtherError { error_message } => {
                 writeln!(f, "While analyzing {}, {}\n", self.funcname, "received a fatal error:".red())?;
-                writeln!(f, "{}", error_message)?;
+                writeln!(f, "\n{}", error_message)?;
             },
         }
         Ok(())
