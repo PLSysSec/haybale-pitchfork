@@ -29,21 +29,25 @@ fn assert_no_ct_violation(res: ConstantTimeResultForFunction) {
         Some(ConstantTimeResultForPath::IsConstantTime) => panic!("first_error_or_violation should return an error or violation"),
         Some(ConstantTimeResultForPath::NotConstantTime { violation_message }) =>
             panic!("Expected no ct violation, but found one:\n  {}", violation_message),
-        Some(ConstantTimeResultForPath::OtherError { error_message }) =>
-            panic!("Received this error:\n  {}", error_message),
+        Some(ConstantTimeResultForPath::OtherError { full_message, .. }) =>
+            panic!("Encountered an unexpected error:\n  {}", full_message),
     }
 }
 
 fn assert_is_ct_violation(res: ConstantTimeResultForFunction) {
     // we check for other-errors first, and fail if any are encountered,
     // even if there was also a ct violation reported
-    match res.first_other_error() {
-        Some(error_message) => panic!("Expected a ct violation but got a different error:\n  {}", error_message),
-        None => match res.first_ct_violation() {
-            Some(_) => {},  // pass
-            None => panic!("Expected a ct violation but didn't get one"),
-        },
+    for path_result in &res.path_results {
+        match path_result {
+            ConstantTimeResultForPath::IsConstantTime => {},
+            ConstantTimeResultForPath::NotConstantTime { .. } => {},
+            ConstantTimeResultForPath::OtherError { full_message, .. } => {
+                panic!("Encountered an unexpected error: {}", full_message);
+            }
+        }
     }
+    // If we get here, there are no `OtherError`s, so just check for the ct violation we're interested in
+    let _ = res.first_ct_violation().expect("Expected a ct violation but didn't get one");
 }
 
 #[test]
@@ -124,7 +128,13 @@ fn two_ct_violations() {
     let path_stats = result.path_statistics();
     assert_eq!(path_stats.num_ct_paths, 1, "Expected exactly one 'passing' path, but found {}", path_stats.num_ct_paths);
     assert_eq!(path_stats.num_ct_violations, 2, "Expected exactly two ct violations, but found {}", path_stats.num_ct_violations);
-    assert_eq!(path_stats.num_other_errors, 0, "Encountered an unexpected error: {}", result.first_other_error().unwrap());
+    assert_eq!(result.path_results.len(), 3, "Encountered an unexpected error: {}",
+        result.path_results.iter().find_map(|res| match res {
+            ConstantTimeResultForPath::IsConstantTime => None,
+            ConstantTimeResultForPath::NotConstantTime { .. } => None,
+            ConstantTimeResultForPath::OtherError { full_message, .. } => Some(full_message),
+        }).expect("Expected to find a non-ct-violation error here, but didn't")
+    );
 
     // with keep_going = false, we should get only one violation
     let result = check_for_ct_violation(
@@ -137,7 +147,15 @@ fn two_ct_violations() {
     );
     let path_stats = result.path_statistics();
     assert_eq!(path_stats.num_ct_violations, 1, "Expected exactly one ct violation, but found {}", path_stats.num_ct_violations);
-    assert_eq!(path_stats.num_other_errors, 0, "Encountered an unexpected error: {}", result.first_other_error().unwrap());
+    for res in &result.path_results {
+         match res {
+            ConstantTimeResultForPath::IsConstantTime => {},
+            ConstantTimeResultForPath::NotConstantTime { .. } => {},
+            ConstantTimeResultForPath::OtherError { full_message, .. } => {
+                panic!("Encountered an unexpected error: {}", full_message);
+            },
+         }
+    }
 }
 
 #[test]

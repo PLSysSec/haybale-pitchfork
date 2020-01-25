@@ -55,13 +55,14 @@ pub fn is_constant_time<'p>(
 pub enum ConstantTimeResultForPath {
     IsConstantTime,
     NotConstantTime {
-        /// A `String` describing the violation. (If there is more than one
-        /// violation, this will simply be the first violation found.)
+        /// A `String` describing the violation found on this path.
         violation_message: String,
     },
     OtherError {
-        /// A `String` describing the error
-        error_message: String,
+        /// The `Error` encountered on this path.
+        error: Error,
+        /// The full error message with "rich context" (backtrace, full path, etc)
+        full_message: String,
     },
 }
 
@@ -100,16 +101,6 @@ impl<'a> ConstantTimeResultForFunction<'a> {
         })
     }
 
-    /// Return the `error_message` for the first `OtherError` result
-    /// encountered, if there is one.
-    pub fn first_other_error(&self) -> Option<&str> {
-        self.path_results.iter().find_map(|path_result| match path_result {
-            ConstantTimeResultForPath::IsConstantTime => None,
-            ConstantTimeResultForPath::NotConstantTime { .. } => None,
-            ConstantTimeResultForPath::OtherError { error_message } => Some(error_message as &str),
-        })
-    }
-
     /// Return the first `NotConstantTime` or `OtherError` result encountered,
     /// if there is one.
     pub fn first_error_or_violation(&self) -> Option<&ConstantTimeResultForPath> {
@@ -121,17 +112,33 @@ impl<'a> ConstantTimeResultForFunction<'a> {
     }
 
     pub fn path_statistics(&self) -> PathStatistics {
-        let mut num_ct_paths = 0;
-        let mut num_ct_violations = 0;
-        let mut num_other_errors = 0;
+        let mut path_stats = PathStatistics {
+            num_ct_paths: 0,
+            num_ct_violations: 0,
+            num_unsats: 0,
+            num_loop_bound_exceeded: 0,
+            num_null_ptr_deref: 0,
+            num_function_not_found: 0,
+            num_solver_errors: 0,
+            num_unsupported_instruction: 0,
+            num_malformed_instruction: 0,
+            num_other_errors: 0,
+        };
         for result in &self.path_results {
             match result {
-                ConstantTimeResultForPath::IsConstantTime => num_ct_paths += 1,
-                ConstantTimeResultForPath::NotConstantTime { .. } => num_ct_violations += 1,
-                ConstantTimeResultForPath::OtherError { .. } => num_other_errors += 1,
+                ConstantTimeResultForPath::IsConstantTime => path_stats.num_ct_paths += 1,
+                ConstantTimeResultForPath::NotConstantTime { .. } => path_stats.num_ct_violations += 1,
+                ConstantTimeResultForPath::OtherError { error: Error::Unsat, .. } => path_stats.num_unsats += 1,
+                ConstantTimeResultForPath::OtherError { error: Error::LoopBoundExceeded, .. } => path_stats.num_loop_bound_exceeded += 1,
+                ConstantTimeResultForPath::OtherError { error: Error::NullPointerDereference, .. } => path_stats.num_null_ptr_deref += 1,
+                ConstantTimeResultForPath::OtherError { error: Error::FunctionNotFound(_), .. } => path_stats.num_function_not_found += 1,
+                ConstantTimeResultForPath::OtherError { error: Error::SolverError(_), .. } => path_stats.num_solver_errors += 1,
+                ConstantTimeResultForPath::OtherError { error: Error::UnsupportedInstruction(_), .. } => path_stats.num_unsupported_instruction += 1,
+                ConstantTimeResultForPath::OtherError { error: Error::MalformedInstruction(_), .. } => path_stats.num_malformed_instruction += 1,
+                ConstantTimeResultForPath::OtherError { error: Error::OtherError(_), .. } => path_stats.num_other_errors += 1,
             }
         }
-        PathStatistics { num_ct_paths, num_ct_violations, num_other_errors }
+        path_stats
     }
 }
 
@@ -140,6 +147,20 @@ pub struct PathStatistics {
     pub num_ct_paths: usize,
     /// How many constant-time violations did we find
     pub num_ct_violations: usize,
+    /// How many Unsat errors did we find
+    pub num_unsats: usize,
+    /// How many LoopBoundExceeded errors did we find
+    pub num_loop_bound_exceeded: usize,
+    /// How many NullPointerDereference errors did we find
+    pub num_null_ptr_deref: usize,
+    /// How many FunctionNotFound errors did we find
+    pub num_function_not_found: usize,
+    /// How many solver errors (including timeouts) did we find
+    pub num_solver_errors: usize,
+    /// How many UnsupportedInstruction errors did we find
+    pub num_unsupported_instruction: usize,
+    /// How many MalformedInstruction errors did we find
+    pub num_malformed_instruction: usize,
     /// How many other errors (including solver timeouts) did we encounter
     pub num_other_errors: usize,
 }
@@ -157,6 +178,7 @@ impl<'a> fmt::Display for ConstantTimeResultForFunction<'a> {
 
         let path_stats = self.path_statistics();
 
+        // We always show "verified paths" and "constant-time violations found"
         writeln!(f, "verified paths: {}",
             if path_stats.num_ct_paths > 0 {
                 path_stats.num_ct_paths.to_string().green()
@@ -171,33 +193,72 @@ impl<'a> fmt::Display for ConstantTimeResultForFunction<'a> {
                 path_stats.num_ct_violations.to_string().normal()
             }
         )?;
-        writeln!(f, "other errors, including solver timeouts: {}",
-            if path_stats.num_other_errors > 0 {
+
+        // For the other error types, we only show the entry if it's > 0
+        if path_stats.num_null_ptr_deref > 0 {
+            writeln!(f, "null-pointer dereferences found: {}",
+                path_stats.num_null_ptr_deref.to_string().red()
+            )?;
+        }
+        if path_stats.num_function_not_found > 0 {
+            writeln!(f, "function-not-found errors: {}",
+                path_stats.num_function_not_found.to_string().red()
+            )?;
+        }
+        if path_stats.num_unsupported_instruction > 0 {
+            writeln!(f, "unsupported-instruction errors: {}",
+                path_stats.num_unsupported_instruction.to_string().red()
+            )?;
+        }
+        if path_stats.num_malformed_instruction > 0 {
+            writeln!(f, "malformed-instruction errors: {}",
+                path_stats.num_malformed_instruction.to_string().red()
+            )?;
+        }
+        if path_stats.num_unsats > 0 {
+            writeln!(f, "unsat errors: {}",
+                path_stats.num_unsats.to_string().red()
+            )?;
+        }
+        if path_stats.num_loop_bound_exceeded > 0 {
+            writeln!(f, "paths exceeding the loop bound: {}",
+                path_stats.num_loop_bound_exceeded.to_string().red()
+            )?;
+        }
+        if path_stats.num_solver_errors > 0 {
+            writeln!(f, "solver errors, including timeouts: {}",
+                path_stats.num_solver_errors.to_string().red()
+            )?;
+        }
+        if path_stats.num_other_errors > 0 {
+            writeln!(f, "other errors: {}",
                 path_stats.num_other_errors.to_string().red()
-            } else {
-                path_stats.num_other_errors.to_string().normal()
-            }
-        )?;
+            )?;
+        }
         writeln!(f)?;
 
-        match std::env::var("PITCHFORK_COVERAGE_STATS") {
-            Ok(val) if val == "1" => {
-                writeln!(f, "Coverage stats:\n")?;
-                let toplevel_coverage = self.block_coverage.get(self.mangled_funcname).unwrap();
-                writeln!(f, "  Block coverage of toplevel function ({}): {:.1}%", self.funcname, 100.0 * toplevel_coverage.percentage)?;
-                if toplevel_coverage.percentage < 1.0 {
-                    writeln!(f, "  Missed blocks in toplevel function: {:?}", toplevel_coverage.missed_blocks.iter())?;
+        // is the function entirely verified (no CT violations or other errors)?
+        let is_ct = self.path_results.len() == path_stats.num_ct_paths;
+
+        let show_coverage_stats = is_ct || match std::env::var("PITCHFORK_COVERAGE_STATS") {
+            Ok(val) if val == "1" => true,
+            _ => false,
+        };
+        if show_coverage_stats {
+            writeln!(f, "Coverage stats:\n")?;
+            let toplevel_coverage = self.block_coverage.get(self.mangled_funcname).unwrap();
+            writeln!(f, "  Block coverage of toplevel function ({}): {:.1}%", self.funcname, 100.0 * toplevel_coverage.percentage)?;
+            if toplevel_coverage.percentage < 1.0 {
+                writeln!(f, "  Missed blocks in toplevel function: {:?}", toplevel_coverage.missed_blocks.iter())?;
+            }
+            writeln!(f)?;
+            for (fname, coverage) in &self.block_coverage {
+                if fname != self.mangled_funcname {
+                    writeln!(f, "  Block coverage of {}: {:.1}%", fname, 100.0 * coverage.percentage)?;
                 }
-                writeln!(f)?;
-                for (fname, coverage) in &self.block_coverage {
-                    if fname != self.mangled_funcname {
-                        writeln!(f, "  Block coverage of {}: {:.1}%", fname, 100.0 * coverage.percentage)?;
-                    }
-                }
-            },
-            _ => {
-                writeln!(f, "(for detailed block-coverage stats, rerun with PITCHFORK_COVERAGE_STATS=1 environment variable.)")?;
-            },
+            }
+        } else {
+            writeln!(f, "(for detailed block-coverage stats, rerun with PITCHFORK_COVERAGE_STATS=1 environment variable.)")?;
         }
         writeln!(f)?;
 
@@ -209,11 +270,13 @@ impl<'a> fmt::Display for ConstantTimeResultForFunction<'a> {
                     writeln!(f, "First constant-time violation encountered:\n\n{}", violation_message)?;
                 },
             }
-        } else if path_stats.num_other_errors > 0 {
-            match self.first_other_error() {
-                None => panic!("we counted an other-error, but now can't find one"),
-                Some(error_message) => {
-                    writeln!(f, "First error encountered:\n\n{}", error_message)?;
+        } else if !is_ct {
+            match self.first_error_or_violation() {
+                None => panic!("we counted a non-ct path, but now can't find one"),
+                Some(ConstantTimeResultForPath::IsConstantTime) => panic!("first_error_or_violation shouldn't return an IsConstantTime"),
+                Some(ConstantTimeResultForPath::NotConstantTime { .. }) => panic!("we counted no ct violations, but now somehow found one"),
+                Some(ConstantTimeResultForPath::OtherError { full_message, .. }) => {
+                    writeln!(f, "First error encountered:\n\n{}", full_message)?;
                 },
             }
         } else {
@@ -307,21 +370,22 @@ pub fn check_for_ct_violation<'p>(
                 blocks_seen.update_with_current_path(&em);
                 path_results.push(ConstantTimeResultForPath::IsConstantTime);
             },
-            Some(Err(mut s)) => {
+            Some(Err(error)) => {
                 blocks_seen.update_with_current_path(&em);
-                if s.contains("RUST_LOG=haybale") {
+                let mut full_message = em.state().full_error_message_with_context(error.clone());
+                if full_message.contains("RUST_LOG=haybale") {
                     // add our own Pitchfork-specific logging advice
-                    s.push_str("note: for pitchfork-related issues, you might try `RUST_LOG=info,pitchfork,haybale`.");
+                    full_message.push_str("note: for pitchfork-related issues, you might try `RUST_LOG=info,pitchfork,haybale`.");
                 }
-                if s.contains("Constant-time violation:") {
+                if full_message.contains("Constant-time violation:") {
                     info!("Found a constant-time violation on this path");
-                    path_results.push(ConstantTimeResultForPath::NotConstantTime { violation_message: s });
+                    path_results.push(ConstantTimeResultForPath::NotConstantTime { violation_message: full_message });
                     if !keep_going {
                         break;
                     }
                 } else {
                     info!("Encountered an error (other than a constant-time violation) on this path");
-                    path_results.push(ConstantTimeResultForPath::OtherError { error_message: s });
+                    path_results.push(ConstantTimeResultForPath::OtherError { error, full_message });
                     if !keep_going {
                         break;
                     }
