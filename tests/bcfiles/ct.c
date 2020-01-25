@@ -28,14 +28,41 @@ int notct_mem(int x) {
   return z[x % 3];
 }
 
-// not constant-time due to memory access on one path
-int notct_onepath(int x, int y) {
+// not constant-time due to memory access on the "true" path; but no violation
+// on the "else" path
+int notct_truepath(int x, int y, int notsecret) {
   volatile int z[3] = { 0, 2, 300 };
   z[2] = y;
-  if (z[2] > 3) {
-    return z[x % 3];
+  if (notsecret > 3) {
+    return z[x % 3];  // address depends on x, which is a violation
   } else {
     return z[1];
+  }
+}
+
+// not constant-time due to memory access on the "else" path; but no violation
+// on the "true" path
+int notct_falsepath(int x, int y, int notsecret) {
+  volatile int z[3] = { 0, 2, 300 };
+  z[2] = y;
+  if (notsecret > 3) {
+    return z[1];
+  } else {
+    return z[x % 3];  // address depends on x, which is a violation
+  }
+}
+
+// constant-time violations on two different paths
+// (although no violation on the third)
+int two_ct_violations(int x, int y, int notsecret) {
+  volatile int z[3] = { 0, 2, 300 };
+  z[2] = y;
+  if (notsecret < 3) {
+    return z[x % 3];  // address depends on x, which is a violation
+  } else if (notsecret > 100) {
+    return z[0];
+  } else {
+    return z[y - 2];  // address depends on y, which is a violation
   }
 }
 

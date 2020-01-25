@@ -35,6 +35,7 @@ impl BlocksSeen {
 
     /// Returns the percentage of basic blocks in the given function which were seen at least
     /// once by this `BlocksSeen`.  The returned number will be in the range [0,1].
+    #[allow(dead_code)]  // this code is currently dead (as of this writing), but seems like a thing we might want in the future
     pub fn block_coverage_of_fn_as_percent(&self, proj: &Project, funcname: &str) -> f64 {
         let blocks_seen: usize = self.seen_blocks_in_fn(funcname).count();
         let (func, _) = proj.get_func_by_name(funcname).unwrap_or_else(|| panic!("Failed to find function {:?} to compute block coverage", funcname));

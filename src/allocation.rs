@@ -17,7 +17,7 @@ use std::sync::{Arc, RwLock};
 pub fn allocate_args<'p>(
     proj: &'p Project,
     state: &mut State<'p, secret::Backend>,
-    sd: &'p StructDescriptions,
+    sd: &StructDescriptions,
     params: impl IntoIterator<Item = (&'p function::Parameter, AbstractData)>,
 ) -> Result<Vec<secret::BV>> {
     let mut ctx = Context::new(proj, state, sd);
@@ -31,12 +31,12 @@ pub fn allocate_args<'p>(
 pub struct Context<'p, 's> {
     proj: &'p Project,
     state: &'s mut State<'p, secret::Backend>,
-    sd: &'p StructDescriptions,
+    sd: &'s StructDescriptions,
     namedvals: HashMap<String, secret::BV>,
 }
 
 impl<'p, 's> Context<'p, 's> {
-    pub fn new(proj: &'p Project, state: &'s mut State<'p, secret::Backend>, sd: &'p StructDescriptions) -> Self {
+    pub fn new(proj: &'p Project, state: &'s mut State<'p, secret::Backend>, sd: &'s StructDescriptions) -> Self {
         Self {
             proj,
             state,

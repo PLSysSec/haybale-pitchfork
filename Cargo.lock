@@ -21,9 +21,9 @@ dependencies = [
 
 [[package]]
 name = "boolector"
-version = "0.1.2"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "77af749eedde3f8082de48a11572e4d9c6480b56e0f41c397e0580d9da487fd2"
+checksum = "31443e3e1b79151f6dac2b21ef43f67ef8c0132fefd1ca62238b6db7872d6cc8"
 dependencies = [
  "boolector-sys",
  "libc",
