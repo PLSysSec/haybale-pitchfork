@@ -384,7 +384,7 @@ pub fn check_for_ct_violation<'p>(
                         break;
                     }
                 } else {
-                    info!("Encountered an error (other than a constant-time violation) on this path");
+                    info!("Encountered an error (other than a constant-time violation) on this path: {}", error);
                     path_results.push(ConstantTimeResultForPath::OtherError { error, full_message });
                     if !keep_going {
                         break;
