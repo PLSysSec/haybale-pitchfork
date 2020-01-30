@@ -599,14 +599,15 @@ impl haybale::backend::Memory for Memory {
             BV::Public(index) => {
                 use haybale::solver_utils::{bvs_must_be_equal, bvs_can_be_equal, max_possible_solution_for_bv_as_binary_str};
                 let shadow_cell = haybale::backend::Memory::read(&self.shadow_mem, index, bits)?;
-                // In Boolector, reads on a constant array that return the default value are
-                // nonetheless not constant (they are merely constrained to be equal to the
-                // default value). So, we actually need to do a solve here.
+                // In Boolector, (at least when this comment was originally written) reads
+                // on a constant array that return the default value are nonetheless not
+                // constant (they are merely constrained to be equal to the default value).
+                // So, we actually need to do a solve here.
                 //
-                // However, we really only care whether the shadow value is all zeroes (all
-                // public) or not-all-zeroes (some or all secret). This means we can get away
-                // with using a faster `bvs_must_be_equal` check rather than a slow
-                // `get_possible_solutions_for_bv()` check.
+                // However, in the common case the shadow value is either all zeroes (all
+                // public) or all ones (all secret). This means that usually we can get away
+                // with using faster `bvs_must_be_equal` / `bvs_can_be_equal` checks rather
+                // than a slow `get_possible_solutions_for_bv()` check.
                 let rc: Rc<Btor> = self.btor.clone().into();
                 let all_zeroes = boolector::BV::zero(rc.clone(), shadow_cell.get_width());
                 let all_ones = boolector::BV::ones(rc.clone(), shadow_cell.get_width());
@@ -626,6 +627,9 @@ impl haybale::backend::Memory for Memory {
                     // We get a mask of which can be secret by finding the
                     // (unsigned) maximum value of the shadow cell; this will
                     // have 1s everywhere possible.
+                    // (We assume that the secrecy of each bit is independent;
+                    // that is, that there is not a situation where a bit could
+                    // be secret, but only if some other bit isn't.)
                     // Any bits that have 0s in that mask must be public.
                     let secret_mask_as_str = max_possible_solution_for_bv_as_binary_str(rc, &shadow_cell)?.ok_or(Error::Unsat)?;
                     let secret_mask = secret_mask_as_str.chars().rev().map(|c| c == '1').collect();
