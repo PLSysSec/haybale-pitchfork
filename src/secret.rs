@@ -371,6 +371,14 @@ impl haybale::backend::BV for BV {
     impl_binop_as_functor_return_bool!(slt);
     impl_binop_as_functor_return_bool!(slte);
 
+    // we could just use the default implementations for these
+    // saturating-arithmetic operations, but the functor implementation will be
+    // slightly more efficient
+    impl_binop_as_functor!(uadds);
+    impl_binop_as_functor!(sadds);
+    impl_binop_as_functor!(usubs);
+    impl_binop_as_functor!(ssubs);
+
     fn zext(&self, i: u32) -> Self {
         match self {
             BV::Public(bv) => BV::Public(bv.zext(i)),
