@@ -543,7 +543,14 @@ impl haybale::backend::BV for BV {
     impl_binop_as_functor!(implies);
 
     fn cond_bv(&self, truebv: &Self, falsebv: &Self) -> Self {
-        assert_eq!(truebv.get_width(), falsebv.get_width());
+        let dest_width = {
+            let width = truebv.get_width();
+            assert_eq!(width, falsebv.get_width());
+            width
+        };
+        if self.is_secret() {
+            warn!("'select' operation with a secret condition and {}-bit operands. This may not be constant-time, depending on the target architecture and other factors.", dest_width);
+        }
         match (self, truebv, falsebv) {
             (BV::Public(bv), BV::Public(truebv), BV::Public(falsebv))
                 => BV::Public(bv.cond_bv(truebv, falsebv)),
