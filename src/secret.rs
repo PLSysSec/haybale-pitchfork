@@ -243,6 +243,13 @@ impl haybale::backend::BV for BV {
             BV::PartiallySecret { .. } => Err(Error::OtherError("Possible constant-time violation: get_a_solution() on a PartiallySecret value".to_owned())),
         }
     }
+    fn get_solver(&self) -> Self::SolverRef {
+       match self {
+           BV::Public(bv) => bv.get_solver().into(),
+           BV::Secret { btor, .. } => btor.clone(),
+           BV::PartiallySecret { data, .. } => data.get_solver().into(),
+       }
+    }
     fn get_id(&self) -> i32 {
         match self {
             BV::Public(bv) => bv.get_id(),
