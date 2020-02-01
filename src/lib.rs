@@ -395,7 +395,7 @@ pub fn check_for_ct_violation<'p>(
         }
     }
 
-    let block_coverage = compute_coverage_stats(&blocks_seen);
+    let block_coverage = blocks_seen.full_coverage_stats();
     info!("Block coverage of toplevel function ({:?}): {:.1}%", funcname, 100.0 * block_coverage.get(mangled_funcname).unwrap().percentage);
 
     ConstantTimeResultForFunction {

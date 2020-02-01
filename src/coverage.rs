@@ -72,6 +72,15 @@ impl<'p> BlocksSeen<'p> {
         let blocks_total: usize = func.basic_blocks.len();
         blocks_seen as f64 / blocks_total as f64
     }
+
+    /// Returns a map from (mangled) function names to the `BlockCoverage` of that
+    /// function, as seen by this `BlocksSeen`.
+    pub fn full_coverage_stats(&self) -> HashMap<String, BlockCoverage> {
+        let funcs_seen: HashSet<String> = self.0.iter().map(|bb| bb.func.name.clone()).collect();
+        funcs_seen.into_iter().filter_map(|funcname| {
+            BlockCoverage::new(&funcname, self).map(|bc| (funcname, bc))
+        }).collect()
+    }
 }
 
 /// This struct describes block coverage of a single function.
@@ -109,13 +118,4 @@ impl BlockCoverage {
             missed_blocks,
         })
     }
-}
-
-/// Returns a map from (mangled) function names to the `BlockCoverage` of that
-/// function, as seen by the given `BlocksSeen`.
-pub fn compute_coverage_stats(blocks_seen: &BlocksSeen) -> HashMap<String, BlockCoverage> {
-    let funcs_seen: HashSet<String> = blocks_seen.0.iter().map(|bb| bb.func.name.clone()).collect();
-    funcs_seen.into_iter().filter_map(|funcname| {
-        BlockCoverage::new(&funcname, blocks_seen).map(|bc| (funcname, bc))
-    }).collect()
 }
