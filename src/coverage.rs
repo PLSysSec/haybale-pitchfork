@@ -1,26 +1,53 @@
-use haybale::{ExecutionManager, Project};
+use haybale::ExecutionManager;
 use haybale::backend::Backend;
-use llvm_ir::Name;
+use llvm_ir::{Function, Module, Name};
 use std::collections::{BTreeSet, HashMap, HashSet};
 
-#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Debug, Hash)]
-struct BB {
-    pub modname: String,
-    pub funcname: String,  // always the mangled name here (as appears in the LLVM)
+#[derive(Clone)]
+struct BB<'p> {
+    pub module: &'p Module,
+    pub func: &'p Function,
     pub bbname: Name,
 }
 
-pub struct BlocksSeen(HashSet<BB>);
+// Our implementations of PartialEq, Eq, PartialOrd, Ord assume that module
+// names are unique, and that function names are unique within modules
 
-impl BlocksSeen {
+impl<'p> PartialEq for BB<'p> {
+    fn eq(&self, other: &Self) -> bool {
+        self.module.name == other.module.name
+            && self.func.name == other.func.name
+            && self.bbname == other.bbname
+    }
+}
+
+impl<'p> Eq for BB<'p> { }
+
+impl<'p> PartialOrd for BB<'p> {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))  // defer to the Ord implementation
+    }
+}
+
+impl<'p> Ord for BB<'p> {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        (&self.module.name, &self.func.name, &self.bbname).cmp(
+            &(&other.module.name, &other.func.name, &other.bbname)
+        )
+    }
+}
+
+pub struct BlocksSeen<'p>(BTreeSet<BB<'p>>);
+
+impl<'p> BlocksSeen<'p> {
     pub fn new() -> Self {
-        Self(HashSet::new())
+        Self(BTreeSet::new())
     }
 
-    pub fn update_with_current_path<B: Backend>(&mut self, em: &ExecutionManager<B>) {
+    pub fn update_with_current_path<B: Backend>(&mut self, em: &ExecutionManager<'p, B>) {
         self.0.extend(em.state().get_path().iter().map(|pathentry| BB {
-            modname: pathentry.0.module.name.clone(),
-            funcname: pathentry.0.func.name.clone(),
+            module: pathentry.0.module,
+            func: pathentry.0.func,
             bbname: pathentry.0.bb.name.clone(),
         }));
     }
@@ -29,16 +56,19 @@ impl BlocksSeen {
     /// were seen at least once by this `BlocksSeen`.
     ///
     /// `funcname` must be a fully mangled name, as appears in the LLVM.
-    fn seen_blocks_in_fn<'a, 'b>(&'a self, funcname: &'a str) -> impl Iterator<Item = &'a BB> {
-        self.0.iter().filter(move |bb| bb.funcname == funcname)
+    fn seen_blocks_in_fn<'a>(&'a self, funcname: &'a str) -> impl Iterator<Item = &'a BB> {
+        self.0.iter().filter(move |bb| bb.func.name == funcname)
     }
 
     /// Returns the percentage of basic blocks in the given function which were seen at least
     /// once by this `BlocksSeen`.  The returned number will be in the range [0,1].
     #[allow(dead_code)]  // this code is currently dead (as of this writing), but seems like a thing we might want in the future
-    pub fn block_coverage_of_fn_as_percent(&self, proj: &Project, funcname: &str) -> f64 {
+    pub fn block_coverage_of_fn_as_percent(&self, funcname: &str) -> f64 {
         let blocks_seen: usize = self.seen_blocks_in_fn(funcname).count();
-        let (func, _) = proj.get_func_by_name(funcname).unwrap_or_else(|| panic!("Failed to find function {:?} to compute block coverage", funcname));
+        let func = match self.seen_blocks_in_fn(funcname).next() {
+            Some(bb) => bb.func,
+            None => return 0.0,  // we haven't seen any blocks in that function, so coverage is 0%
+        };
         let blocks_total: usize = func.basic_blocks.len();
         blocks_seen as f64 / blocks_total as f64
     }
@@ -58,11 +88,13 @@ pub struct BlockCoverage {
 }
 
 impl BlockCoverage {
-    /// `funcname` may be either a mangled or demangled name here.
-    pub fn new(proj: &Project, funcname: &str, blocks_seen: &BlocksSeen) -> Self {
-        let (func, _) = proj.get_func_by_name(funcname).unwrap_or_else(|| panic!("Failed to find function {:?} to compute block coverage", funcname));
+    /// `funcname` must be a fully mangled name, as appears in the LLVM.
+    ///
+    /// Returns `None` if we seem to have seen no blocks from functions named `funcname`.
+    pub fn new(funcname: &str, blocks_seen: &BlocksSeen) -> Option<Self> {
+        let func = blocks_seen.seen_blocks_in_fn(funcname).next()?.func;
         let seen_blocks: BTreeSet<_> = blocks_seen
-            .seen_blocks_in_fn(&func.name)  // the mangled name, even if `funcname` is demangled
+            .seen_blocks_in_fn(funcname)
             .map(|bb| bb.bbname.clone())
             .collect();
         let missed_blocks: BTreeSet<_> = func
@@ -71,20 +103,19 @@ impl BlockCoverage {
             .filter(|bb| !seen_blocks.contains(&bb.name))
             .map(|bb| bb.name.clone())
             .collect();
-        Self {
+        Some(Self {
             percentage: seen_blocks.len() as f64 / (seen_blocks.len() + missed_blocks.len()) as f64,
             seen_blocks,
             missed_blocks,
-        }
+        })
     }
 }
 
 /// Returns a map from (mangled) function names to the `BlockCoverage` of that
 /// function, as seen by the given `BlocksSeen`.
-pub fn compute_coverage_stats(proj: &Project, blocks_seen: &BlocksSeen) -> HashMap<String, BlockCoverage> {
-    let funcs_seen: HashSet<String> = blocks_seen.0.iter().map(|bb| bb.funcname.clone()).collect();
-    funcs_seen.into_iter().map(|funcname| {
-        let bc = BlockCoverage::new(proj, &funcname, blocks_seen);
-        (funcname, bc)
+pub fn compute_coverage_stats(blocks_seen: &BlocksSeen) -> HashMap<String, BlockCoverage> {
+    let funcs_seen: HashSet<String> = blocks_seen.0.iter().map(|bb| bb.func.name.clone()).collect();
+    funcs_seen.into_iter().filter_map(|funcname| {
+        BlockCoverage::new(&funcname, blocks_seen).map(|bc| (funcname, bc))
     }).collect()
 }
