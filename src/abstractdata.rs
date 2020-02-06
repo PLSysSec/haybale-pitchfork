@@ -13,7 +13,8 @@ use std::sync::Mutex;
 /// Unlike `AbstractData`, these may never be "underspecified" - that is, they
 /// must be a complete description of the data structure.
 #[derive(PartialEq, Eq, Clone, Debug)]
-pub enum CompleteAbstractData {
+#[allow(dead_code)]  // as of this writing, we get warnings about many members being never constructed, which I believe is false
+pub(crate) enum CompleteAbstractData {
     /// A public value, of the given size in bits. The `AbstractValue` is used to
     /// indicate whether the value should have a particular concrete value, be
     /// unconstrained, etc.
@@ -108,6 +109,8 @@ pub enum CompleteAbstractData {
     WithWatchpoint { name: String, data: Box<Self> },
 }
 
+// methods which mirror the ones on `AbstractData` for the most part
+#[allow(dead_code)]
 impl CompleteAbstractData {
     /// an 8-bit public value
     pub fn pub_i8(value: AbstractValue) -> Self {
@@ -264,6 +267,7 @@ impl CompleteAbstractData {
     }
 }
 
+#[allow(dead_code)]
 impl CompleteAbstractData {
     pub const POINTER_SIZE_BITS: usize = 64;
 
@@ -663,8 +667,8 @@ impl AbstractData {
     /// See notes on [`CompleteAbstractData::void_override`](enum.CompleteAbstractData.html#method.void_override).
     ///
     /// Note that the `AbstractData` here must actually be fully specified,
-    /// perhaps with the help of `StructDescriptions`. If it's not, `to_complete`
-    /// will panic.
+    /// perhaps with the help of `StructDescriptions`. If it's not, users of
+    /// the `AbstractData` may panic.
     ///
     /// If the optional `llvm_struct_name` is included, it will lookup that
     /// struct's type and use that both for any underspecified elements in the
@@ -678,8 +682,8 @@ impl AbstractData {
     /// See notes on [`CompleteAbstractData::same_size_override`](enum.CompleteAbstractData.html#method.same_size_override).
     ///
     /// Note that the `AbstractData` here must actually be fully specified,
-    /// perhaps with the help of `StructDescriptions`. If it's not, `to_complete`
-    /// will panic.
+    /// perhaps with the help of `StructDescriptions`. If it's not, users of
+    /// the `AbstractData` may panic.
     pub fn same_size_override(data: AbstractData) -> Self {
         Self(UnderspecifiedAbstractData::SameSizeOverride { data: Box::new(data) })
     }
@@ -757,7 +761,7 @@ impl AbstractData {
     /// type.
     ///
     /// For more information, see [`AbstractData::default()`](struct.AbstractData.html#method.default).
-    pub fn to_complete(self, ty: &Type, proj: &Project, sd: &StructDescriptions) -> CompleteAbstractData {
+    pub(crate) fn to_complete(self, ty: &Type, proj: &Project, sd: &StructDescriptions) -> CompleteAbstractData {
         self.0.to_complete(ty, proj, sd)
     }
 
@@ -820,7 +824,7 @@ impl UnderspecifiedAbstractData {
     }
 
     /// See method description on [`AbstractData::to_complete`](enum.AbstractData.html#method.to_complete)
-    pub fn to_complete(self, ty: &Type, proj: &Project, sd: &StructDescriptions) -> CompleteAbstractData {
+    pub(crate) fn to_complete(self, ty: &Type, proj: &Project, sd: &StructDescriptions) -> CompleteAbstractData {
         self.to_complete_rec(Some(ty), ToCompleteContext::new(proj, sd))
     }
 

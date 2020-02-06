@@ -126,7 +126,7 @@ pub fn allocate_and_init_abstractdata<'p>(
     let ad = ad.to_complete(ty, proj, sd);
     let ptr = state.allocate(ad.size_in_bits() as u64);
     let mut allocationctx = allocation::Context::new(proj, state, sd);
-    allocation::InitializationContext::blank().initialize_data_in_memory(&mut allocationctx, &ptr, &ad, Some(ty))?;
+    allocation::InitializationContext::blank().initialize_cad_in_memory(&mut allocationctx, &ptr, &ad, Some(ty))?;
     Ok(ptr)
 }
 
@@ -137,15 +137,14 @@ pub fn reinitialize_pointee<'p>(
     state: &mut State<'p, secret::Backend>,
     pointer: &Operand,  // we'll reinitialize the [struct, array, whatever] that this points to
     ad: AbstractData,  // `AbstractData` describing the _pointee_ (not the pointer) and how to reinitialize it
-    struct_descriptions: &'p StructDescriptions,
+    sd: &'p StructDescriptions,
 ) -> Result<()> {
     let ptr = state.operand_to_bv(pointer)?;
     let pointee_ty = match pointer.get_type() {
         Type::PointerType { pointee_type, .. } => pointee_type,
         ty => return Err(Error::OtherError(format!("reinitialize_pointee: expected `pointer` to be a pointer, got {:?}", ty))),
     };
-    let ad = ad.to_complete(&pointee_ty, proj, struct_descriptions);
-    let mut allocationctx = allocation::Context::new(proj, state, struct_descriptions);
-    allocation::InitializationContext::blank().initialize_data_in_memory(&mut allocationctx, &ptr, &ad, Some(&pointee_ty))?;
+    let mut allocationctx = allocation::Context::new(proj, state, sd);
+    allocation::InitializationContext::blank().initialize_data_in_memory(&mut allocationctx, &ptr, ad, &pointee_ty, proj, sd)?;
     Ok(())
 }

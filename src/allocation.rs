@@ -184,13 +184,13 @@ impl<'p, 's> Context<'p, 's> {
                 };
                 self.state.overwrite_latest_version_of_bv(&param.name, ptr.clone());
                 if type_override {
-                    InitializationContext::blank().initialize_data_in_memory(self, &ptr, &*pointee, None)?;
+                    InitializationContext::blank().initialize_cad_in_memory(self, &ptr, &*pointee, None)?;
                 } else {
                     let pointee_ty = match &param.ty {
                         Type::PointerType { pointee_type, .. } => pointee_type,
                         ty => panic!("Mismatch for parameter {:?}: CompleteAbstractData specifies a pointer but parameter type is {:?}", &param.name, ty),
                     };
-                    InitializationContext::blank().initialize_data_in_memory(self, &ptr, &*pointee, Some(pointee_ty))?;
+                    InitializationContext::blank().initialize_cad_in_memory(self, &ptr, &*pointee, Some(pointee_ty))?;
                 }
                 Ok(ptr)
             },
@@ -294,14 +294,34 @@ impl<'a> InitializationContext<'a> {
         }
     }
 
-    /// Initialize the data in memory at `addr` according to the given `CompleteAbstractData`.
+    /// Initialize the data in memory at `addr` according to the given `AbstractData`.
     ///
-    /// `ty` should be the type of the pointed-to object, not the type of `addr`.
-    /// It is used only for type-checking, to ensure that the `CompleteAbstractData` actually matches the intended LLVM type.
-    /// Setting `ty` to `None` disables this type-checking.
+    /// `ty` should be the type of the pointed-to object (i.e., the type of the
+    /// `AbstractData`), not the type of `addr`.
     ///
     /// Returns the number of _bits_ (not bytes) the initialized data takes. Many callers won't need this, though.
     pub fn initialize_data_in_memory(
+        self,
+        ctx: &mut Context,
+        addr: &'a secret::BV,
+        data: AbstractData,
+        ty: &'a Type,
+        project: &Project,
+        sd: &StructDescriptions,
+    ) -> Result<usize> {
+        self.initialize_cad_in_memory(ctx, addr, &data.to_complete(ty, project, sd), Some(ty))
+    }
+
+    /// Like `initialize_data_in_memory`, but takes a `CompleteAbstractData`
+    /// instead of an `AbstractData`, and thus doesn't need the `Project` or
+    /// `StructDescriptions`.
+    ///
+    /// Also, `ty` is optional here. As before, `ty` represents the type of the
+    /// pointed-to object, not the type of `addr`. In this function, `ty` is used
+    /// only for type-checking, to ensure that the `CompleteAbstractData`
+    /// actually matches the intended LLVM type.
+    /// Setting `ty` to `None` disables this type-checking.
+    pub(crate) fn initialize_cad_in_memory(
         mut self,
         ctx: &mut Context,
         addr: &'a secret::BV,
@@ -313,11 +333,11 @@ impl<'a> InitializationContext<'a> {
             match data {
                 CompleteAbstractData::Array { num_elements: 1, element_type: element_abstractdata } => {
                     // both LLVM and CAD type are array-of-one-element.  Unwrap and call recursively
-                    return self.initialize_data_in_memory(ctx, addr, element_abstractdata, Some(element_type));
+                    return self.initialize_cad_in_memory(ctx, addr, element_abstractdata, Some(element_type));
                 },
                 data => {
                     // LLVM type is array-of-one-element but CAD type is not.  Unwrap the LLVM type and call recursively
-                    return self.initialize_data_in_memory(ctx, addr, data, Some(element_type));
+                    return self.initialize_cad_in_memory(ctx, addr, data, Some(element_type));
                 },
             }
         };
@@ -327,7 +347,7 @@ impl<'a> InitializationContext<'a> {
             Some(Type::StructType { element_types, .. }) if element_types.len() == 1 => {
                 if !data.could_describe_a_struct_of_one_element() {
                     // `data` specifies some incompatible type.  Unwrap the LLVM struct and try again.
-                    return self.initialize_data_in_memory(ctx, addr, data, Some(&element_types[0]));
+                    return self.initialize_cad_in_memory(ctx, addr, data, Some(&element_types[0]));
                 }
             },
             Some(ty@Type::NamedStructType { .. }) => {
@@ -341,7 +361,7 @@ impl<'a> InitializationContext<'a> {
                                 if !data.could_describe_a_struct_of_one_element() {
                                     // `data` specifies some incompatible type.  Unwrap the LLVM struct and try again.
                                     // we could consider pushing the named struct name to within_structs here
-                                    return self.initialize_data_in_memory(ctx, addr, data, Some(&element_types[0]));
+                                    return self.initialize_cad_in_memory(ctx, addr, data, Some(&element_types[0]));
                                 }
                             }
                         }
@@ -398,7 +418,7 @@ impl<'a> InitializationContext<'a> {
             },
             CompleteAbstractData::PublicValue { bits, value: AbstractValue::Named { name, value } } => {
                 let unwrapped_data = CompleteAbstractData::pub_integer(*bits, (**value).clone());
-                let initialized_bits = self.clone().initialize_data_in_memory(ctx, addr, &unwrapped_data, ty)?;
+                let initialized_bits = self.clone().initialize_cad_in_memory(ctx, addr, &unwrapped_data, ty)?;
                 if *bits != initialized_bits {
                     self.error_backtrace();
                     panic!("AbstractValue::Named {:?}: specified {} bits, but value is {} bits", name, bits, initialized_bits);
@@ -567,7 +587,7 @@ impl<'a> InitializationContext<'a> {
                 ctx.state.write(&addr, inner_ptr.clone())?;
 
                 // initialize the pointee
-                self.initialize_data_in_memory(ctx, &inner_ptr, &**pointee, pointee_ty)?;
+                self.initialize_cad_in_memory(ctx, &inner_ptr, &**pointee, pointee_ty)?;
 
                 Ok(bits as usize)
             },
@@ -704,7 +724,7 @@ impl<'a> InitializationContext<'a> {
                             Some(_) => "parent type doesn't match",
                             None => "there is no immediate parent",
                         });
-                        self.initialize_data_in_memory(ctx, addr, &CompleteAbstractData::pub_pointer_to((**pointee).to_owned()), ty)
+                        self.initialize_cad_in_memory(ctx, addr, &CompleteAbstractData::pub_pointer_to((**pointee).to_owned()), ty)
                     },
                     (None, None) => {
                         // parent type mismatches, but we have no backup
@@ -763,7 +783,7 @@ impl<'a> InitializationContext<'a> {
                         // special-case this, as we can initialize with one big write
                         let array_size_bits = element_size_bits * *num_elements;
                         debug!("initializing the entire array as {} secret bits", array_size_bits);
-                        self.initialize_data_in_memory(ctx, &addr, &CompleteAbstractData::sec_integer(array_size_bits), ty)
+                        self.initialize_cad_in_memory(ctx, &addr, &CompleteAbstractData::sec_integer(array_size_bits), ty)
                     },
                     CompleteAbstractData::PublicValue { bits, value: AbstractValue::Unconstrained } => {
                         // special-case this, as no initialization is necessary for the entire array
@@ -787,7 +807,7 @@ impl<'a> InitializationContext<'a> {
                         for i in 0 .. *num_elements {
                             debug!("initializing element {} of the array", i);
                             let element_addr = addr.add(&ctx.state.bv_from_u64((i*element_size_bytes) as u64, addr.get_width()));
-                            self.clone().initialize_data_in_memory(ctx, &element_addr, element_abstractdata, element_type)?;
+                            self.clone().initialize_cad_in_memory(ctx, &element_addr, element_abstractdata, element_type)?;
                         }
                         debug!("done initializing the array at {:?}", addr);
                         Ok(element_size_bits * *num_elements)
@@ -854,7 +874,7 @@ impl<'a> InitializationContext<'a> {
                     total_bits += element_size_bits;
                     let element_size_bytes = element_size_bits / 8;
                     debug!("initializing element {} of struct {}; element's address is {:?}", element_idx, name, &cur_addr);
-                    let bits = self.clone().initialize_data_in_memory(ctx, &cur_addr, element, element_ty.as_ref())?;
+                    let bits = self.clone().initialize_cad_in_memory(ctx, &cur_addr, element, element_ty.as_ref())?;
                     if bits != element_size_bits {
                         self.error_backtrace();
                         panic!("Element {} of struct {} should be {} bits based on its type, but we seem to have initialized {} bits", element_idx, name, element_size_bits, bits);
@@ -879,13 +899,13 @@ impl<'a> InitializationContext<'a> {
                     None => {},  // could be a nested VoidOverride, for instance
                 }
                 match llvm_struct_name {
-                    None => self.initialize_data_in_memory(ctx, addr, &data, None),
+                    None => self.initialize_cad_in_memory(ctx, addr, &data, None),
                     Some(llvm_struct_name) => {
                         let (llvm_ty, _) = ctx.proj.get_named_struct_type_by_name(&llvm_struct_name)
                             .unwrap_or_else(|| { self.error_backtrace(); panic!("VoidOverride: llvm_struct_name {:?} not found in Project", llvm_struct_name) });
                         let arc = llvm_ty.as_ref().unwrap_or_else(|| { self.error_backtrace(); panic!("VoidOverride: llvm_struct_name {:?} is an opaque type", llvm_struct_name) });
                         let llvm_ty: &Type = &arc.read().unwrap();
-                        self.initialize_data_in_memory(ctx, addr, &data, Some(llvm_ty))
+                        self.initialize_cad_in_memory(ctx, addr, &data, Some(llvm_ty))
                     },
                 }
             },
@@ -895,13 +915,13 @@ impl<'a> InitializationContext<'a> {
                     Some(ty) => assert_eq!(data.size_in_bits(), layout::size_opaque_aware(ty, ctx.proj), "same_size_override: size mismatch: specified something of size {} bits, but the LLVM type has size {} bits", data.size_in_bits(), layout::size_opaque_aware(ty, ctx.proj)),
                     None => {},
                 };
-                self.initialize_data_in_memory(ctx, addr, &**data, None)
+                self.initialize_cad_in_memory(ctx, addr, &**data, None)
             }
             CompleteAbstractData::WithWatchpoint { name, data } => {
                 let watch_addr = addr.as_u64().expect("WithWatchpoint not compatible with a non-constant initialization address");
                 let watch_size_in_bytes = data.size_in_bits() / 8;
                 ctx.state.add_mem_watchpoint(name, Watchpoint::new(watch_addr, watch_size_in_bytes as u64));
-                self.initialize_data_in_memory(ctx, addr, &**data, ty)
+                self.initialize_cad_in_memory(ctx, addr, &**data, ty)
             }
         }
     }
