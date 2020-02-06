@@ -1,6 +1,6 @@
 //! Whether each of the functions in haybale's test suite are constant-time
 
-use pitchfork::*;
+use haybale_pitchfork::*;
 use std::path::Path;
 
 fn init_logging() {

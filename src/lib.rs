@@ -375,7 +375,7 @@ pub fn check_for_ct_violation<'p>(
                 let mut full_message = em.state().full_error_message_with_context(error.clone());
                 if full_message.contains("RUST_LOG=haybale") {
                     // add our own Pitchfork-specific logging advice
-                    full_message.push_str("note: for pitchfork-related issues, you might try `RUST_LOG=info,pitchfork,haybale`.");
+                    full_message.push_str("note: for pitchfork-related issues, you might try `RUST_LOG=info,haybale_pitchfork,haybale`.");
                 }
                 if full_message.contains("Constant-time violation:") {
                     info!("Found a constant-time violation on this path");

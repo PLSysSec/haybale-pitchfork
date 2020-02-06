@@ -1,4 +1,4 @@
-use pitchfork::*;
+use haybale_pitchfork::*;
 use std::path::Path;
 
 fn main() {
