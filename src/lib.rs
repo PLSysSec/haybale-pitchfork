@@ -16,42 +16,6 @@ use log::{debug, info};
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 
-/// Is a function "constant-time" in its inputs. That is, does the function ever
-/// make branching decisions, or perform address calculations, based on its inputs.
-///
-/// For argument descriptions, see `haybale::symex_function()`.
-pub fn is_constant_time_in_inputs<'p>(
-    funcname: &'p str,
-    project: &'p Project,
-    config: Config<'p, secret::Backend>
-) -> bool {
-    check_for_ct_violation_in_inputs(funcname, project, config, false)
-        .first_error_or_violation()
-        .is_none()
-}
-
-/// Is a function "constant-time" in the secrets identified by the `args` data
-/// structure. That is, does the function ever make branching decisions, or
-/// perform address calculations, based on secrets.
-///
-/// `args`: for each function parameter, an `AbstractData` describing whether the
-/// parameter is secret data itself, public data, a public pointer to secret data
-/// (and if so how much), etc; or `AbstractData::default()` to use the default
-/// based on the LLVM parameter type and/or the struct descriptions in `sd`.
-///
-/// Other arguments are the same as for `is_constant_time_in_inputs()` above.
-pub fn is_constant_time<'p>(
-    funcname: &'p str,
-    project: &'p Project,
-    args: impl IntoIterator<Item = AbstractData>,
-    sd: &StructDescriptions,
-    config: Config<'p, secret::Backend>
-) -> bool {
-    check_for_ct_violation(funcname, project, args, sd, config, false)
-        .first_error_or_violation()
-        .is_none()
-}
-
 pub enum ConstantTimeResultForPath {
     IsConstantTime,
     NotConstantTime {
@@ -301,7 +265,8 @@ impl<'a> fmt::Display for ConstantTimeResultForFunction<'a> {
 /// It is recommended to only use `keep_going == true` in conjunction with solver
 /// query timeouts; see the `solver_query_timeout` setting in `Config`.
 ///
-/// Other arguments are the same as for `is_constant_time_in_inputs()`.
+/// Other arguments are the same as for
+/// [`haybale::symex_function()`](https://PLSysSec.github.io/haybale/haybale/fn.symex_function.html).
 pub fn check_for_ct_violation_in_inputs<'p>(
     funcname: &'p str,
     project: &'p Project,
@@ -326,10 +291,16 @@ pub fn check_for_ct_violation_in_inputs<'p>(
 /// (and if so how much), etc; or `AbstractData::default()` to use the default
 /// based on the LLVM parameter type and/or the struct descriptions in `sd`.
 ///
-/// `keep_going`: see the description of the `keep_going` argument to
-/// `check_for_ct_violation_in_inputs()`.
+/// `sd`: a mapping of LLVM struct names to `AbstractData` descriptions of those
+/// structs. These will be used whenever a struct of the appropriate type is
+/// found while processing an `AbstractData::default()`; for more details, see
+/// [docs on `AbstractData::default()`](struct.AbstractData.html#method.default).
 ///
-/// Other arguments are the same as for `is_constant_time()`.
+/// `keep_going`: see the description of the `keep_going` argument to
+/// [`check_for_ct_violation_in_inputs()`](fn.check_for_ct_violation_in_inputs.html).
+///
+/// Other arguments are the same as for
+/// [`haybale::symex_function()`](https://PLSysSec.github.io/haybale/haybale/fn.symex_function.html).
 pub fn check_for_ct_violation<'p>(
     funcname: &'p str,
     project: &'p Project,

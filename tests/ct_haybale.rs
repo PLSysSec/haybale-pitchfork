@@ -8,6 +8,16 @@ fn init_logging() {
     let _ = env_logger::builder().is_test(true).try_init();
 }
 
+pub fn is_constant_time_in_inputs<'p>(
+    funcname: &'p str,
+    project: &'p Project,
+    config: Config<'p, secret::Backend>
+) -> bool {
+    check_for_ct_violation_in_inputs(funcname, project, config, false)
+        .first_error_or_violation()
+        .is_none()
+}
+
 /// Whether each of the functions in haybale's `basic.bc` are constant-time in their inputs
 #[test]
 fn haybale_basic() {
