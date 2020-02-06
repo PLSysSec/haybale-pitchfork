@@ -1,6 +1,6 @@
 mod abstractdata;
 pub use abstractdata::*;
-pub mod allocation;
+mod allocation;
 mod coverage;
 use coverage::*;
 pub mod hook_helpers;
