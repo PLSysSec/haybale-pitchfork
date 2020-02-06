@@ -16,6 +16,8 @@ use log::{debug, info};
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 
+/// Holds information about the results of a constant-time analysis of a single
+/// path.
 pub enum ConstantTimeResultForPath {
     IsConstantTime,
     NotConstantTime {
@@ -30,6 +32,8 @@ pub enum ConstantTimeResultForPath {
     },
 }
 
+/// Holds information about the results of a constant-time analysis of a
+/// particular function.
 pub struct ConstantTimeResultForFunction<'a> {
     /// Name of the toplevel function we analyzed
     pub funcname: &'a str,
@@ -106,6 +110,8 @@ impl<'a> ConstantTimeResultForFunction<'a> {
     }
 }
 
+/// Some statistics which can be computed from a
+/// [`ConstantTimeResultForFunction`](struct.ConstantTimeResultForFunction.html).
 pub struct PathStatistics {
     /// How many paths "passed", that is, had no error or constant-time violation
     pub num_ct_paths: usize,

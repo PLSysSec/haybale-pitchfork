@@ -1,7 +1,11 @@
+//! This module contains the dynamic taint-tracking layer implemented on
+//! top of `haybale`. It provides a `haybale::backend::Backend` which
+//! performs dynamic taint tracking and reports constant-time violations.
+//!
 //! The `BV`, `Memory`, and `Backend` in this module are
 //! intended to be used qualified whenever there is a chance of confusing
 //! them with `haybale::backend::{BV, Memory, Backend}`,
-//! `haybale::memory::Memory`, or `boolector::BV`.
+//! `haybale::{memory,simple_memory}::Memory`, or `boolector::BV`.
 
 use boolector::{Btor, BVSolution};
 use haybale::{Error, Result};
@@ -11,7 +15,7 @@ use std::rc::Rc;
 
 /// This wrapper around `Rc<Btor>` exists simply so we can give it a different
 /// implementation of `haybale::backend::SolverRef` than the one provided by
-/// `haybale::backend`
+/// `haybale::backend`.
 #[derive(PartialEq, Eq, Clone, Debug)]
 pub struct BtorRef(pub(crate) Rc<Btor>);
 
@@ -72,6 +76,8 @@ impl From<Rc<Btor>> for BtorRef {
     }
 }
 
+/// A wrapper around `boolector::BV` which can represent either public or secret
+/// data.
 #[derive(PartialEq, Eq, Clone, Debug)]
 pub enum BV {
     Public(boolector::BV<Rc<Btor>>),
@@ -576,6 +582,12 @@ impl haybale::backend::BV for BV {
     }
 }
 
+/// A `Memory` which tracks which of its contents are public or secret, and
+/// reports constant-time violations whenever secret data is used as an address
+/// for operations on it.
+///
+/// All the contents of the `Memory` are initially marked public, until secret
+/// data is written to the `Memory`.
 #[derive(PartialEq, Eq, Clone, Debug)]
 pub struct Memory {
     btor: BtorRef,
@@ -710,6 +722,8 @@ impl haybale::backend::Memory for Memory {
     }
 }
 
+/// A `Backend` which performs dynamic taint tracking and reports constant-time
+/// violations.
 #[derive(Clone, Debug)]
 pub struct Backend {}
 

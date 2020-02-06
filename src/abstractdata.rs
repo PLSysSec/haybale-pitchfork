@@ -6,9 +6,10 @@ use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::sync::Mutex;
 
-/// An abstract description of a value: if it is public or not, if it is a
-/// pointer or not, does it point to data that is public/secret, maybe it's a
-/// struct with some public and some secret fields, etc.
+/// An abstract description of a value: its size, whether it is a pointer or
+/// not, whether it is public or secret (or maybe it's a struct with some
+/// public and some secret fields, or maybe it's a public pointer that points
+/// to some secret data), etc.
 ///
 /// Unlike `AbstractData`, these may never be "underspecified" - that is, they
 /// must be a complete description of the data structure.
@@ -408,13 +409,15 @@ impl fmt::Display for CompleteAbstractData {
     }
 }
 
-/// An abstract description of a value: if it is public or not, if it is a
-/// pointer or not, does it point to data that is public/secret, maybe it's a
-/// struct with some public and some secret fields, etc.
+/// An abstract description of a value: its size, whether it is a pointer or
+/// not, whether it is public or secret (or maybe it's a struct with some
+/// public and some secret fields, or maybe it's a public pointer that points
+/// to some secret data), etc.
 ///
 /// Unlike `CompleteAbstractData`, these may be "underspecified": parts of the
-/// value (or the whole value) may be `Unspecified`, meaning to just use the
-/// default based on the LLVM type.
+/// value (or the whole value) may be marked
+/// [`default()`](struct.AbstractData.html#method.default), meaning to just use
+/// the default based on the LLVM type.
 #[derive(PartialEq, Eq, Clone, Debug)]
 // we wrap the actual enum so that external users can't rely on the actual enum
 // variants, and only see the (nicer and more stable) function constructors
@@ -426,7 +429,7 @@ pub(crate) enum UnderspecifiedAbstractData {
     /// Just use the default structure based on the LLVM type, making all
     /// contents public.
     ///
-    /// See [`AbstractData::to_complete`](enum.AbstractData.html#method.to_complete)
+    /// See [`AbstractData::default`](struct.AbstractData.html#method.default)
     Unspecified,
 
     /// Just fill with the appropriate number of unconstrained public bytes based
@@ -664,7 +667,12 @@ impl AbstractData {
         Self(UnderspecifiedAbstractData::Secret)
     }
 
-    /// See notes on [`CompleteAbstractData::void_override`](enum.CompleteAbstractData.html#method.void_override).
+    /// When C code uses `void*`, this often becomes `i8*` in LLVM. However,
+    /// within Pitchfork, we may want to specify some type other than `i8*` for
+    /// the purposes of allocating and analyzing the data behind the `void*`.
+    ///
+    /// This says to use the provided `AbstractData` even though the LLVM type is
+    /// `i8`.
     ///
     /// Note that the `AbstractData` here must actually be fully specified,
     /// perhaps with the help of `StructDescriptions`. If it's not, users of
@@ -679,7 +687,15 @@ impl AbstractData {
         Self(UnderspecifiedAbstractData::VoidOverride { llvm_struct_name: llvm_struct_name.map(Into::into), data: Box::new(data) })
     }
 
-    /// See notes on [`CompleteAbstractData::same_size_override`](enum.CompleteAbstractData.html#method.same_size_override).
+    /// Use the given `data`, even though it may not match the LLVM type.
+    /// It still needs to be the same size (number of bits) as the LLVM type.
+    /// For instance, you could specify that some LLVM pointer-size integer
+    /// should actually be initialized to have a pointer value and point to some
+    /// specified data.
+    ///
+    /// To override a `void*` type, see `void_override` - and this probably won't
+    /// work for that anyways because of the same-size restriction. See comments
+    /// on `void_override`.
     ///
     /// Note that the `AbstractData` here must actually be fully specified,
     /// perhaps with the help of `StructDescriptions`. If it's not, users of
@@ -1107,6 +1123,8 @@ impl UnderspecifiedAbstractData {
     }
 }
 
+/// A variety of ways to specify a numerical value, from completely unconstrained
+/// to fully constrained.
 #[derive(PartialEq, Eq, Clone, Debug)]
 pub enum AbstractValue {
     /// This exact numerical value

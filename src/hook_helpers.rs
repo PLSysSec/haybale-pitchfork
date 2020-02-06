@@ -6,7 +6,7 @@ use haybale::{Error, Project, Result, State};
 use haybale::backend::*;
 use llvm_ir::*;
 
-/// This utility function fills a buffer with unconstrained data, and also outputs the number of bytes written.
+/// Fills a buffer with unconstrained data, and also outputs the number of bytes written.
 ///
 /// The entire `max_buffer_len_bytes`-byte buffer will be written, but the output number of bytes will be constrained to be any number between 0 and `max_buffer_len_bytes`.
 ///
@@ -60,7 +60,7 @@ pub fn fill_unconstrained_with_length<B: Backend>(
     Ok(())
 }
 
-/// This utility function fills a buffer with secret data, and also outputs the number of bytes written.
+/// Fills a buffer with secret data, and also outputs the number of bytes written.
 ///
 /// The entire `max_buffer_len_bytes`-byte buffer will be written, but the output number of bytes will be constrained to be any number between 0 and `max_buffer_len_bytes`.
 ///
@@ -114,8 +114,8 @@ pub fn fill_secret_with_length(
     Ok(())
 }
 
-/// This helper function allocates space for the given `AbstractData`,
-/// initializes it, and returns a pointer to the newly-allocated space.
+/// Allocates space for the given `AbstractData`, initializes it, and returns a
+/// pointer to the newly-allocated space.
 pub fn allocate_and_init_abstractdata<'p>(
     proj: &'p Project,
     state: &mut State<'p, secret::Backend>,
@@ -130,8 +130,8 @@ pub fn allocate_and_init_abstractdata<'p>(
     Ok(ptr)
 }
 
-/// This helper function reinitializes whatever is pointed to by the given
-/// pointer, according to the given `AbstractData`.
+/// Reinitializes whatever is pointed to by the given pointer, according to the
+/// given `AbstractData`.
 pub fn reinitialize_pointee<'p>(
     proj: &'p Project,
     state: &mut State<'p, secret::Backend>,
