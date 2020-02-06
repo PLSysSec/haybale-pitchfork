@@ -51,16 +51,6 @@ your code, you can use Cargo's [dependency renaming] feature:
 pitchfork = { package = "haybale-pitchfork", version = "0.1.0" }
 ```
 
-In either case, you'll probably also want to add [`haybale`] as a dependency
-in your `Cargo.toml`, for instance so you can create a [`Project`] and
-[`Config`] to pass to `pitchfork`'s functions.
-The current version of `pitchfork` depends on `haybale` 0.3.1:
-
-```toml
-[dependencies]
-haybale = "0.3.1"
-```
-
 Because it is built on [`haybale`], `pitchfork` also depends (indirectly) on
 the LLVM 9 and Boolector libraries, which must both be available on your
 system.
