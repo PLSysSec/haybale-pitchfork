@@ -384,35 +384,6 @@
 <span id="384">384</span>
 <span id="385">385</span>
 <span id="386">386</span>
-<span id="387">387</span>
-<span id="388">388</span>
-<span id="389">389</span>
-<span id="390">390</span>
-<span id="391">391</span>
-<span id="392">392</span>
-<span id="393">393</span>
-<span id="394">394</span>
-<span id="395">395</span>
-<span id="396">396</span>
-<span id="397">397</span>
-<span id="398">398</span>
-<span id="399">399</span>
-<span id="400">400</span>
-<span id="401">401</span>
-<span id="402">402</span>
-<span id="403">403</span>
-<span id="404">404</span>
-<span id="405">405</span>
-<span id="406">406</span>
-<span id="407">407</span>
-<span id="408">408</span>
-<span id="409">409</span>
-<span id="410">410</span>
-<span id="411">411</span>
-<span id="412">412</span>
-<span id="413">413</span>
-<span id="414">414</span>
-<span id="415">415</span>
 </pre><div class="example-wrap"><pre class="rust ">
 <span class="kw">mod</span> <span class="ident">abstractdata</span>;
 <span class="kw">pub</span> <span class="kw">use</span> <span class="ident">abstractdata</span>::<span class="kw-2">*</span>;
@@ -431,42 +402,6 @@
 <span class="kw">use</span> <span class="ident">log</span>::{<span class="ident">debug</span>, <span class="ident">info</span>};
 <span class="kw">use</span> <span class="ident">std</span>::<span class="ident">collections</span>::{<span class="ident">HashMap</span>, <span class="ident">HashSet</span>};
 <span class="kw">use</span> <span class="ident">std</span>::<span class="ident">fmt</span>;
-
-<span class="doccomment">/// Is a function &quot;constant-time&quot; in its inputs. That is, does the function ever</span>
-<span class="doccomment">/// make branching decisions, or perform address calculations, based on its inputs.</span>
-<span class="doccomment">///</span>
-<span class="doccomment">/// For argument descriptions, see `haybale::symex_function()`.</span>
-<span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">is_constant_time_in_inputs</span><span class="op">&lt;</span><span class="lifetime">&#39;p</span><span class="op">&gt;</span>(
-    <span class="ident">funcname</span>: <span class="kw-2">&amp;</span><span class="lifetime">&#39;p</span> <span class="ident">str</span>,
-    <span class="ident">project</span>: <span class="kw-2">&amp;</span><span class="lifetime">&#39;p</span> <span class="ident">Project</span>,
-    <span class="ident">config</span>: <span class="ident">Config</span><span class="op">&lt;</span><span class="lifetime">&#39;p</span>, <span class="ident">secret</span>::<span class="ident">Backend</span><span class="op">&gt;</span>
-) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">bool</span> {
-    <span class="ident">check_for_ct_violation_in_inputs</span>(<span class="ident">funcname</span>, <span class="ident">project</span>, <span class="ident">config</span>, <span class="bool-val">false</span>)
-        .<span class="ident">first_error_or_violation</span>()
-        .<span class="ident">is_none</span>()
-}
-
-<span class="doccomment">/// Is a function &quot;constant-time&quot; in the secrets identified by the `args` data</span>
-<span class="doccomment">/// structure. That is, does the function ever make branching decisions, or</span>
-<span class="doccomment">/// perform address calculations, based on secrets.</span>
-<span class="doccomment">///</span>
-<span class="doccomment">/// `args`: for each function parameter, an `AbstractData` describing whether the</span>
-<span class="doccomment">/// parameter is secret data itself, public data, a public pointer to secret data</span>
-<span class="doccomment">/// (and if so how much), etc; or `AbstractData::default()` to use the default</span>
-<span class="doccomment">/// based on the LLVM parameter type and/or the struct descriptions in `sd`.</span>
-<span class="doccomment">///</span>
-<span class="doccomment">/// Other arguments are the same as for `is_constant_time_in_inputs()` above.</span>
-<span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">is_constant_time</span><span class="op">&lt;</span><span class="lifetime">&#39;p</span><span class="op">&gt;</span>(
-    <span class="ident">funcname</span>: <span class="kw-2">&amp;</span><span class="lifetime">&#39;p</span> <span class="ident">str</span>,
-    <span class="ident">project</span>: <span class="kw-2">&amp;</span><span class="lifetime">&#39;p</span> <span class="ident">Project</span>,
-    <span class="ident">args</span>: <span class="kw">impl</span> <span class="ident">IntoIterator</span><span class="op">&lt;</span><span class="ident">Item</span> <span class="op">=</span> <span class="ident">AbstractData</span><span class="op">&gt;</span>,
-    <span class="ident">sd</span>: <span class="kw-2">&amp;</span><span class="ident">StructDescriptions</span>,
-    <span class="ident">config</span>: <span class="ident">Config</span><span class="op">&lt;</span><span class="lifetime">&#39;p</span>, <span class="ident">secret</span>::<span class="ident">Backend</span><span class="op">&gt;</span>
-) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">bool</span> {
-    <span class="ident">check_for_ct_violation</span>(<span class="ident">funcname</span>, <span class="ident">project</span>, <span class="ident">args</span>, <span class="ident">sd</span>, <span class="ident">config</span>, <span class="bool-val">false</span>)
-        .<span class="ident">first_error_or_violation</span>()
-        .<span class="ident">is_none</span>()
-}
 
 <span class="kw">pub</span> <span class="kw">enum</span> <span class="ident">ConstantTimeResultForPath</span> {
     <span class="ident">IsConstantTime</span>,
@@ -717,7 +652,8 @@
 <span class="doccomment">/// It is recommended to only use `keep_going == true` in conjunction with solver</span>
 <span class="doccomment">/// query timeouts; see the `solver_query_timeout` setting in `Config`.</span>
 <span class="doccomment">///</span>
-<span class="doccomment">/// Other arguments are the same as for `is_constant_time_in_inputs()`.</span>
+<span class="doccomment">/// Other arguments are the same as for</span>
+<span class="doccomment">/// [`haybale::symex_function()`](https://PLSysSec.github.io/haybale/haybale/fn.symex_function.html).</span>
 <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">check_for_ct_violation_in_inputs</span><span class="op">&lt;</span><span class="lifetime">&#39;p</span><span class="op">&gt;</span>(
     <span class="ident">funcname</span>: <span class="kw-2">&amp;</span><span class="lifetime">&#39;p</span> <span class="ident">str</span>,
     <span class="ident">project</span>: <span class="kw-2">&amp;</span><span class="lifetime">&#39;p</span> <span class="ident">Project</span>,
@@ -742,10 +678,16 @@
 <span class="doccomment">/// (and if so how much), etc; or `AbstractData::default()` to use the default</span>
 <span class="doccomment">/// based on the LLVM parameter type and/or the struct descriptions in `sd`.</span>
 <span class="doccomment">///</span>
-<span class="doccomment">/// `keep_going`: see the description of the `keep_going` argument to</span>
-<span class="doccomment">/// `check_for_ct_violation_in_inputs()`.</span>
+<span class="doccomment">/// `sd`: a mapping of LLVM struct names to `AbstractData` descriptions of those</span>
+<span class="doccomment">/// structs. These will be used whenever a struct of the appropriate type is</span>
+<span class="doccomment">/// found while processing an `AbstractData::default()`; for more details, see</span>
+<span class="doccomment">/// [docs on `AbstractData::default()`](struct.AbstractData.html#method.default).</span>
 <span class="doccomment">///</span>
-<span class="doccomment">/// Other arguments are the same as for `is_constant_time()`.</span>
+<span class="doccomment">/// `keep_going`: see the description of the `keep_going` argument to</span>
+<span class="doccomment">/// [`check_for_ct_violation_in_inputs()`](fn.check_for_ct_violation_in_inputs.html).</span>
+<span class="doccomment">///</span>
+<span class="doccomment">/// Other arguments are the same as for</span>
+<span class="doccomment">/// [`haybale::symex_function()`](https://PLSysSec.github.io/haybale/haybale/fn.symex_function.html).</span>
 <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">check_for_ct_violation</span><span class="op">&lt;</span><span class="lifetime">&#39;p</span><span class="op">&gt;</span>(
     <span class="ident">funcname</span>: <span class="kw-2">&amp;</span><span class="lifetime">&#39;p</span> <span class="ident">str</span>,
     <span class="ident">project</span>: <span class="kw-2">&amp;</span><span class="lifetime">&#39;p</span> <span class="ident">Project</span>,
