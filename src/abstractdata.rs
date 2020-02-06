@@ -609,8 +609,26 @@ impl AbstractData {
     }
 
     /// Just use the default structure based on the LLVM type and/or the `StructDescriptions`.
+    /// (The `StructDescriptions` override the LLVM type when they apply.)
     ///
-    /// See [`AbstractData::to_complete`](struct.AbstractData.html#method.to_complete)
+    /// The default structure based on the LLVM type is:
+    ///
+    /// - for LLVM integer type: public unconstrained value of the appropriate size
+    /// - for LLVM pointer type (except function pointer): public concrete pointer value to allocated memory, depending on pointer type:
+    ///   - pointee is an integer type: pointer to allocated array of `DEFAULT_ARRAY_LENGTH` pointees
+    ///       (e.g., default for `char*` is pointer to array of 1024 chars)
+    ///   - pointee is an array type with 0 elements: pointer to allocated array of `DEFAULT_ARRAY_LENGTH` elements
+    ///   - pointee is any other type: pointer to one of that other type
+    ///   - (then in any case, apply these rules recursively to each pointee type)
+    /// - for LLVM function pointer type: concrete function pointer value which, when called, will raise an error
+    /// - for LLVM vector or array type: array of the appropriate length, containing public values
+    ///   - (then apply these rules recursively to each element)
+    /// - for LLVM structure type:
+    ///   - if this struct is one of those named in the `StructDescriptions`, then use the appropriate struct description
+    ///   - if the structure type is entirely opaque (no definition anywhere in the `Project`), then allocate
+    ///       `OPAQUE_STRUCT_SIZE_BYTES` unconstrained bytes for it and assume that's enough
+    ///       (probably most of that memory will go unused, but that's fine)
+    ///   - else, apply these rules recursively to each field
     pub fn default() -> Self {
         Self(UnderspecifiedAbstractData::Unspecified)
     }
@@ -734,28 +752,11 @@ impl AbstractData {
     pub const OPAQUE_STRUCT_SIZE_BYTES: usize = 1024 * 64;
 
     /// Fill in the default `CompleteAbstractData` for any parts of the
-    /// `AbstractData` which are marked `Default`, using the information in the
+    /// `AbstractData` which are marked `default()`, using the information in the
     /// [`StructDescriptions`](struct.StructDescriptions.html) and the given LLVM
     /// type.
     ///
-    /// The default `CompleteAbstractData` based on the LLVM type is:
-    ///
-    /// - for LLVM integer type: public unconstrained value of the appropriate size
-    /// - for LLVM pointer type (except function pointer): public concrete pointer value to allocated memory, depending on pointer type:
-    ///   - pointee is an integer type: pointer to allocated array of `DEFAULT_ARRAY_LENGTH` pointees
-    ///       (e.g., default for `char*` is pointer to array of 1024 chars)
-    ///   - pointee is an array type with 0 elements: pointer to allocated array of `DEFAULT_ARRAY_LENGTH` elements
-    ///   - pointee is any other type: pointer to one of that other type
-    ///   - (then in any case, apply these rules recursively to each pointee type)
-    /// - for LLVM function pointer type: concrete function pointer value which, when called, will raise an error
-    /// - for LLVM vector or array type: array of the appropriate length, containing public values
-    ///   - (then apply these rules recursively to each element)
-    /// - for LLVM structure type:
-    ///   - if this struct is one of those named in `sd`, then use the appropriate struct description
-    ///   - if the structure type is entirely opaque (no definition anywhere in the `Project`), then allocate
-    ///       `OPAQUE_STRUCT_SIZE_BYTES` unconstrained bytes for it and assume that's enough
-    ///       (probably most of that memory will go unused, but that's fine)
-    ///   - else, apply these rules recursively to each field
+    /// For more information, see [`AbstractData::default()`](struct.AbstractData.html#method.default).
     pub fn to_complete(self, ty: &Type, proj: &Project, sd: &StructDescriptions) -> CompleteAbstractData {
         self.0.to_complete(ty, proj, sd)
     }
