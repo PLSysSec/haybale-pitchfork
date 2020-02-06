@@ -384,10 +384,16 @@
 <span id="384">384</span>
 <span id="385">385</span>
 <span id="386">386</span>
+<span id="387">387</span>
+<span id="388">388</span>
+<span id="389">389</span>
+<span id="390">390</span>
+<span id="391">391</span>
+<span id="392">392</span>
 </pre><div class="example-wrap"><pre class="rust ">
 <span class="kw">mod</span> <span class="ident">abstractdata</span>;
 <span class="kw">pub</span> <span class="kw">use</span> <span class="ident">abstractdata</span>::<span class="kw-2">*</span>;
-<span class="kw">pub</span> <span class="kw">mod</span> <span class="ident">allocation</span>;
+<span class="kw">mod</span> <span class="ident">allocation</span>;
 <span class="kw">mod</span> <span class="ident">coverage</span>;
 <span class="kw">use</span> <span class="ident">coverage</span>::<span class="kw-2">*</span>;
 <span class="kw">pub</span> <span class="kw">mod</span> <span class="ident">hook_helpers</span>;
@@ -403,6 +409,8 @@
 <span class="kw">use</span> <span class="ident">std</span>::<span class="ident">collections</span>::{<span class="ident">HashMap</span>, <span class="ident">HashSet</span>};
 <span class="kw">use</span> <span class="ident">std</span>::<span class="ident">fmt</span>;
 
+<span class="doccomment">/// Holds information about the results of a constant-time analysis of a single</span>
+<span class="doccomment">/// path.</span>
 <span class="kw">pub</span> <span class="kw">enum</span> <span class="ident">ConstantTimeResultForPath</span> {
     <span class="ident">IsConstantTime</span>,
     <span class="ident">NotConstantTime</span> {
@@ -417,6 +425,8 @@
     },
 }
 
+<span class="doccomment">/// Holds information about the results of a constant-time analysis of a</span>
+<span class="doccomment">/// particular function.</span>
 <span class="kw">pub</span> <span class="kw">struct</span> <span class="ident">ConstantTimeResultForFunction</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span><span class="op">&gt;</span> {
     <span class="doccomment">/// Name of the toplevel function we analyzed</span>
     <span class="kw">pub</span> <span class="ident">funcname</span>: <span class="kw-2">&amp;</span><span class="lifetime">&#39;a</span> <span class="ident">str</span>,
@@ -493,6 +503,8 @@
     }
 }
 
+<span class="doccomment">/// Some statistics which can be computed from a</span>
+<span class="doccomment">/// [`ConstantTimeResultForFunction`](struct.ConstantTimeResultForFunction.html).</span>
 <span class="kw">pub</span> <span class="kw">struct</span> <span class="ident">PathStatistics</span> {
     <span class="doccomment">/// How many paths &quot;passed&quot;, that is, had no error or constant-time violation</span>
     <span class="kw">pub</span> <span class="ident">num_ct_paths</span>: <span class="ident">usize</span>,
@@ -733,7 +745,7 @@
                 <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">full_message</span> <span class="op">=</span> <span class="ident">em</span>.<span class="ident">state</span>().<span class="ident">full_error_message_with_context</span>(<span class="ident">error</span>.<span class="ident">clone</span>());
                 <span class="kw">if</span> <span class="ident">full_message</span>.<span class="ident">contains</span>(<span class="string">&quot;RUST_LOG=haybale&quot;</span>) {
                     <span class="comment">// add our own Pitchfork-specific logging advice</span>
-                    <span class="ident">full_message</span>.<span class="ident">push_str</span>(<span class="string">&quot;note: for pitchfork-related issues, you might try `RUST_LOG=info,pitchfork,haybale`.&quot;</span>);
+                    <span class="ident">full_message</span>.<span class="ident">push_str</span>(<span class="string">&quot;note: for pitchfork-related issues, you might try `RUST_LOG=info,haybale_pitchfork,haybale`.&quot;</span>);
                 }
                 <span class="kw">if</span> <span class="ident">full_message</span>.<span class="ident">contains</span>(<span class="string">&quot;Constant-time violation:&quot;</span>) {
                     <span class="macro">info</span><span class="macro">!</span>(<span class="string">&quot;Found a constant-time violation on this path&quot;</span>);

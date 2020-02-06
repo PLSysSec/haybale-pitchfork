@@ -907,6 +907,26 @@
 <span id="907">907</span>
 <span id="908">908</span>
 <span id="909">909</span>
+<span id="910">910</span>
+<span id="911">911</span>
+<span id="912">912</span>
+<span id="913">913</span>
+<span id="914">914</span>
+<span id="915">915</span>
+<span id="916">916</span>
+<span id="917">917</span>
+<span id="918">918</span>
+<span id="919">919</span>
+<span id="920">920</span>
+<span id="921">921</span>
+<span id="922">922</span>
+<span id="923">923</span>
+<span id="924">924</span>
+<span id="925">925</span>
+<span id="926">926</span>
+<span id="927">927</span>
+<span id="928">928</span>
+<span id="929">929</span>
 </pre><div class="example-wrap"><pre class="rust ">
 <span class="kw">use</span> <span class="kw">crate</span>::<span class="ident">abstractdata</span>::<span class="kw-2">*</span>;
 <span class="kw">use</span> <span class="kw">crate</span>::<span class="ident">secret</span>;
@@ -1094,13 +1114,13 @@
                 };
                 <span class="self">self</span>.<span class="ident">state</span>.<span class="ident">overwrite_latest_version_of_bv</span>(<span class="kw-2">&amp;</span><span class="ident">param</span>.<span class="ident">name</span>, <span class="ident">ptr</span>.<span class="ident">clone</span>());
                 <span class="kw">if</span> <span class="ident">type_override</span> {
-                    <span class="ident">InitializationContext</span>::<span class="ident">blank</span>().<span class="ident">initialize_data_in_memory</span>(<span class="self">self</span>, <span class="kw-2">&amp;</span><span class="ident">ptr</span>, <span class="kw-2">&amp;</span><span class="kw-2">*</span><span class="ident">pointee</span>, <span class="prelude-val">None</span>)<span class="question-mark">?</span>;
+                    <span class="ident">InitializationContext</span>::<span class="ident">blank</span>().<span class="ident">initialize_cad_in_memory</span>(<span class="self">self</span>, <span class="kw-2">&amp;</span><span class="ident">ptr</span>, <span class="kw-2">&amp;</span><span class="kw-2">*</span><span class="ident">pointee</span>, <span class="prelude-val">None</span>)<span class="question-mark">?</span>;
                 } <span class="kw">else</span> {
                     <span class="kw">let</span> <span class="ident">pointee_ty</span> <span class="op">=</span> <span class="kw">match</span> <span class="kw-2">&amp;</span><span class="ident">param</span>.<span class="ident">ty</span> {
                         <span class="ident">Type</span>::<span class="ident">PointerType</span> { <span class="ident">pointee_type</span>, .. } <span class="op">=</span><span class="op">&gt;</span> <span class="ident">pointee_type</span>,
                         <span class="ident">ty</span> <span class="op">=</span><span class="op">&gt;</span> <span class="macro">panic</span><span class="macro">!</span>(<span class="string">&quot;Mismatch for parameter {:?}: CompleteAbstractData specifies a pointer but parameter type is {:?}&quot;</span>, <span class="kw-2">&amp;</span><span class="ident">param</span>.<span class="ident">name</span>, <span class="ident">ty</span>),
                     };
-                    <span class="ident">InitializationContext</span>::<span class="ident">blank</span>().<span class="ident">initialize_data_in_memory</span>(<span class="self">self</span>, <span class="kw-2">&amp;</span><span class="ident">ptr</span>, <span class="kw-2">&amp;</span><span class="kw-2">*</span><span class="ident">pointee</span>, <span class="prelude-val">Some</span>(<span class="ident">pointee_ty</span>))<span class="question-mark">?</span>;
+                    <span class="ident">InitializationContext</span>::<span class="ident">blank</span>().<span class="ident">initialize_cad_in_memory</span>(<span class="self">self</span>, <span class="kw-2">&amp;</span><span class="ident">ptr</span>, <span class="kw-2">&amp;</span><span class="kw-2">*</span><span class="ident">pointee</span>, <span class="prelude-val">Some</span>(<span class="ident">pointee_ty</span>))<span class="question-mark">?</span>;
                 }
                 <span class="prelude-val">Ok</span>(<span class="ident">ptr</span>)
             },
@@ -1204,14 +1224,34 @@
         }
     }
 
-    <span class="doccomment">/// Initialize the data in memory at `addr` according to the given `CompleteAbstractData`.</span>
+    <span class="doccomment">/// Initialize the data in memory at `addr` according to the given `AbstractData`.</span>
     <span class="doccomment">///</span>
-    <span class="doccomment">/// `ty` should be the type of the pointed-to object, not the type of `addr`.</span>
-    <span class="doccomment">/// It is used only for type-checking, to ensure that the `CompleteAbstractData` actually matches the intended LLVM type.</span>
-    <span class="doccomment">/// Setting `ty` to `None` disables this type-checking.</span>
+    <span class="doccomment">/// `ty` should be the type of the pointed-to object (i.e., the type of the</span>
+    <span class="doccomment">/// `AbstractData`), not the type of `addr`.</span>
     <span class="doccomment">///</span>
     <span class="doccomment">/// Returns the number of _bits_ (not bytes) the initialized data takes. Many callers won&#39;t need this, though.</span>
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">initialize_data_in_memory</span>(
+        <span class="self">self</span>,
+        <span class="ident">ctx</span>: <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">Context</span>,
+        <span class="ident">addr</span>: <span class="kw-2">&amp;</span><span class="lifetime">&#39;a</span> <span class="ident">secret</span>::<span class="ident">BV</span>,
+        <span class="ident">data</span>: <span class="ident">AbstractData</span>,
+        <span class="ident">ty</span>: <span class="kw-2">&amp;</span><span class="lifetime">&#39;a</span> <span class="ident">Type</span>,
+        <span class="ident">project</span>: <span class="kw-2">&amp;</span><span class="ident">Project</span>,
+        <span class="ident">sd</span>: <span class="kw-2">&amp;</span><span class="ident">StructDescriptions</span>,
+    ) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">usize</span><span class="op">&gt;</span> {
+        <span class="self">self</span>.<span class="ident">initialize_cad_in_memory</span>(<span class="ident">ctx</span>, <span class="ident">addr</span>, <span class="kw-2">&amp;</span><span class="ident">data</span>.<span class="ident">to_complete</span>(<span class="ident">ty</span>, <span class="ident">project</span>, <span class="ident">sd</span>), <span class="prelude-val">Some</span>(<span class="ident">ty</span>))
+    }
+
+    <span class="doccomment">/// Like `initialize_data_in_memory`, but takes a `CompleteAbstractData`</span>
+    <span class="doccomment">/// instead of an `AbstractData`, and thus doesn&#39;t need the `Project` or</span>
+    <span class="doccomment">/// `StructDescriptions`.</span>
+    <span class="doccomment">///</span>
+    <span class="doccomment">/// Also, `ty` is optional here. As before, `ty` represents the type of the</span>
+    <span class="doccomment">/// pointed-to object, not the type of `addr`. In this function, `ty` is used</span>
+    <span class="doccomment">/// only for type-checking, to ensure that the `CompleteAbstractData`</span>
+    <span class="doccomment">/// actually matches the intended LLVM type.</span>
+    <span class="doccomment">/// Setting `ty` to `None` disables this type-checking.</span>
+    <span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn</span> <span class="ident">initialize_cad_in_memory</span>(
         <span class="kw-2">mut</span> <span class="self">self</span>,
         <span class="ident">ctx</span>: <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">Context</span>,
         <span class="ident">addr</span>: <span class="kw-2">&amp;</span><span class="lifetime">&#39;a</span> <span class="ident">secret</span>::<span class="ident">BV</span>,
@@ -1223,11 +1263,11 @@
             <span class="kw">match</span> <span class="ident">data</span> {
                 <span class="ident">CompleteAbstractData</span>::<span class="ident">Array</span> { <span class="ident">num_elements</span>: <span class="number">1</span>, <span class="ident">element_type</span>: <span class="ident">element_abstractdata</span> } <span class="op">=</span><span class="op">&gt;</span> {
                     <span class="comment">// both LLVM and CAD type are array-of-one-element.  Unwrap and call recursively</span>
-                    <span class="kw">return</span> <span class="self">self</span>.<span class="ident">initialize_data_in_memory</span>(<span class="ident">ctx</span>, <span class="ident">addr</span>, <span class="ident">element_abstractdata</span>, <span class="prelude-val">Some</span>(<span class="ident">element_type</span>));
+                    <span class="kw">return</span> <span class="self">self</span>.<span class="ident">initialize_cad_in_memory</span>(<span class="ident">ctx</span>, <span class="ident">addr</span>, <span class="ident">element_abstractdata</span>, <span class="prelude-val">Some</span>(<span class="ident">element_type</span>));
                 },
                 <span class="ident">data</span> <span class="op">=</span><span class="op">&gt;</span> {
                     <span class="comment">// LLVM type is array-of-one-element but CAD type is not.  Unwrap the LLVM type and call recursively</span>
-                    <span class="kw">return</span> <span class="self">self</span>.<span class="ident">initialize_data_in_memory</span>(<span class="ident">ctx</span>, <span class="ident">addr</span>, <span class="ident">data</span>, <span class="prelude-val">Some</span>(<span class="ident">element_type</span>));
+                    <span class="kw">return</span> <span class="self">self</span>.<span class="ident">initialize_cad_in_memory</span>(<span class="ident">ctx</span>, <span class="ident">addr</span>, <span class="ident">data</span>, <span class="prelude-val">Some</span>(<span class="ident">element_type</span>));
                 },
             }
         };
@@ -1237,7 +1277,7 @@
             <span class="prelude-val">Some</span>(<span class="ident">Type</span>::<span class="ident">StructType</span> { <span class="ident">element_types</span>, .. }) <span class="kw">if</span> <span class="ident">element_types</span>.<span class="ident">len</span>() <span class="op">=</span><span class="op">=</span> <span class="number">1</span> <span class="op">=</span><span class="op">&gt;</span> {
                 <span class="kw">if</span> <span class="op">!</span><span class="ident">data</span>.<span class="ident">could_describe_a_struct_of_one_element</span>() {
                     <span class="comment">// `data` specifies some incompatible type.  Unwrap the LLVM struct and try again.</span>
-                    <span class="kw">return</span> <span class="self">self</span>.<span class="ident">initialize_data_in_memory</span>(<span class="ident">ctx</span>, <span class="ident">addr</span>, <span class="ident">data</span>, <span class="prelude-val">Some</span>(<span class="kw-2">&amp;</span><span class="ident">element_types</span>[<span class="number">0</span>]));
+                    <span class="kw">return</span> <span class="self">self</span>.<span class="ident">initialize_cad_in_memory</span>(<span class="ident">ctx</span>, <span class="ident">addr</span>, <span class="ident">data</span>, <span class="prelude-val">Some</span>(<span class="kw-2">&amp;</span><span class="ident">element_types</span>[<span class="number">0</span>]));
                 }
             },
             <span class="prelude-val">Some</span>(<span class="ident">ty</span>@<span class="ident">Type</span>::<span class="ident">NamedStructType</span> { .. }) <span class="op">=</span><span class="op">&gt;</span> {
@@ -1251,7 +1291,7 @@
                                 <span class="kw">if</span> <span class="op">!</span><span class="ident">data</span>.<span class="ident">could_describe_a_struct_of_one_element</span>() {
                                     <span class="comment">// `data` specifies some incompatible type.  Unwrap the LLVM struct and try again.</span>
                                     <span class="comment">// we could consider pushing the named struct name to within_structs here</span>
-                                    <span class="kw">return</span> <span class="self">self</span>.<span class="ident">initialize_data_in_memory</span>(<span class="ident">ctx</span>, <span class="ident">addr</span>, <span class="ident">data</span>, <span class="prelude-val">Some</span>(<span class="kw-2">&amp;</span><span class="ident">element_types</span>[<span class="number">0</span>]));
+                                    <span class="kw">return</span> <span class="self">self</span>.<span class="ident">initialize_cad_in_memory</span>(<span class="ident">ctx</span>, <span class="ident">addr</span>, <span class="ident">data</span>, <span class="prelude-val">Some</span>(<span class="kw-2">&amp;</span><span class="ident">element_types</span>[<span class="number">0</span>]));
                                 }
                             }
                         }
@@ -1308,7 +1348,7 @@
             },
             <span class="ident">CompleteAbstractData</span>::<span class="ident">PublicValue</span> { <span class="ident">bits</span>, <span class="ident">value</span>: <span class="ident">AbstractValue</span>::<span class="ident">Named</span> { <span class="ident">name</span>, <span class="ident">value</span> } } <span class="op">=</span><span class="op">&gt;</span> {
                 <span class="kw">let</span> <span class="ident">unwrapped_data</span> <span class="op">=</span> <span class="ident">CompleteAbstractData</span>::<span class="ident">pub_integer</span>(<span class="kw-2">*</span><span class="ident">bits</span>, (<span class="kw-2">*</span><span class="kw-2">*</span><span class="ident">value</span>).<span class="ident">clone</span>());
-                <span class="kw">let</span> <span class="ident">initialized_bits</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">clone</span>().<span class="ident">initialize_data_in_memory</span>(<span class="ident">ctx</span>, <span class="ident">addr</span>, <span class="kw-2">&amp;</span><span class="ident">unwrapped_data</span>, <span class="ident">ty</span>)<span class="question-mark">?</span>;
+                <span class="kw">let</span> <span class="ident">initialized_bits</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">clone</span>().<span class="ident">initialize_cad_in_memory</span>(<span class="ident">ctx</span>, <span class="ident">addr</span>, <span class="kw-2">&amp;</span><span class="ident">unwrapped_data</span>, <span class="ident">ty</span>)<span class="question-mark">?</span>;
                 <span class="kw">if</span> <span class="kw-2">*</span><span class="ident">bits</span> <span class="op">!</span><span class="op">=</span> <span class="ident">initialized_bits</span> {
                     <span class="self">self</span>.<span class="ident">error_backtrace</span>();
                     <span class="macro">panic</span><span class="macro">!</span>(<span class="string">&quot;AbstractValue::Named {:?}: specified {} bits, but value is {} bits&quot;</span>, <span class="ident">name</span>, <span class="ident">bits</span>, <span class="ident">initialized_bits</span>);
@@ -1477,7 +1517,7 @@
                 <span class="ident">ctx</span>.<span class="ident">state</span>.<span class="ident">write</span>(<span class="kw-2">&amp;</span><span class="ident">addr</span>, <span class="ident">inner_ptr</span>.<span class="ident">clone</span>())<span class="question-mark">?</span>;
 
                 <span class="comment">// initialize the pointee</span>
-                <span class="self">self</span>.<span class="ident">initialize_data_in_memory</span>(<span class="ident">ctx</span>, <span class="kw-2">&amp;</span><span class="ident">inner_ptr</span>, <span class="kw-2">&amp;</span><span class="kw-2">*</span><span class="kw-2">*</span><span class="ident">pointee</span>, <span class="ident">pointee_ty</span>)<span class="question-mark">?</span>;
+                <span class="self">self</span>.<span class="ident">initialize_cad_in_memory</span>(<span class="ident">ctx</span>, <span class="kw-2">&amp;</span><span class="ident">inner_ptr</span>, <span class="kw-2">&amp;</span><span class="kw-2">*</span><span class="kw-2">*</span><span class="ident">pointee</span>, <span class="ident">pointee_ty</span>)<span class="question-mark">?</span>;
 
                 <span class="prelude-val">Ok</span>(<span class="ident">bits</span> <span class="kw">as</span> <span class="ident">usize</span>)
             },
@@ -1614,7 +1654,7 @@
                             <span class="prelude-val">Some</span>(<span class="kw">_</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="string">&quot;parent type doesn&#39;t match&quot;</span>,
                             <span class="prelude-val">None</span> <span class="op">=</span><span class="op">&gt;</span> <span class="string">&quot;there is no immediate parent&quot;</span>,
                         });
-                        <span class="self">self</span>.<span class="ident">initialize_data_in_memory</span>(<span class="ident">ctx</span>, <span class="ident">addr</span>, <span class="kw-2">&amp;</span><span class="ident">CompleteAbstractData</span>::<span class="ident">pub_pointer_to</span>((<span class="kw-2">*</span><span class="kw-2">*</span><span class="ident">pointee</span>).<span class="ident">to_owned</span>()), <span class="ident">ty</span>)
+                        <span class="self">self</span>.<span class="ident">initialize_cad_in_memory</span>(<span class="ident">ctx</span>, <span class="ident">addr</span>, <span class="kw-2">&amp;</span><span class="ident">CompleteAbstractData</span>::<span class="ident">pub_pointer_to</span>((<span class="kw-2">*</span><span class="kw-2">*</span><span class="ident">pointee</span>).<span class="ident">to_owned</span>()), <span class="ident">ty</span>)
                     },
                     (<span class="prelude-val">None</span>, <span class="prelude-val">None</span>) <span class="op">=</span><span class="op">&gt;</span> {
                         <span class="comment">// parent type mismatches, but we have no backup</span>
@@ -1673,7 +1713,7 @@
                         <span class="comment">// special-case this, as we can initialize with one big write</span>
                         <span class="kw">let</span> <span class="ident">array_size_bits</span> <span class="op">=</span> <span class="ident">element_size_bits</span> <span class="op">*</span> <span class="kw-2">*</span><span class="ident">num_elements</span>;
                         <span class="macro">debug</span><span class="macro">!</span>(<span class="string">&quot;initializing the entire array as {} secret bits&quot;</span>, <span class="ident">array_size_bits</span>);
-                        <span class="self">self</span>.<span class="ident">initialize_data_in_memory</span>(<span class="ident">ctx</span>, <span class="kw-2">&amp;</span><span class="ident">addr</span>, <span class="kw-2">&amp;</span><span class="ident">CompleteAbstractData</span>::<span class="ident">sec_integer</span>(<span class="ident">array_size_bits</span>), <span class="ident">ty</span>)
+                        <span class="self">self</span>.<span class="ident">initialize_cad_in_memory</span>(<span class="ident">ctx</span>, <span class="kw-2">&amp;</span><span class="ident">addr</span>, <span class="kw-2">&amp;</span><span class="ident">CompleteAbstractData</span>::<span class="ident">sec_integer</span>(<span class="ident">array_size_bits</span>), <span class="ident">ty</span>)
                     },
                     <span class="ident">CompleteAbstractData</span>::<span class="ident">PublicValue</span> { <span class="ident">bits</span>, <span class="ident">value</span>: <span class="ident">AbstractValue</span>::<span class="ident">Unconstrained</span> } <span class="op">=</span><span class="op">&gt;</span> {
                         <span class="comment">// special-case this, as no initialization is necessary for the entire array</span>
@@ -1697,7 +1737,7 @@
                         <span class="kw">for</span> <span class="ident">i</span> <span class="kw">in</span> <span class="number">0</span> .. <span class="kw-2">*</span><span class="ident">num_elements</span> {
                             <span class="macro">debug</span><span class="macro">!</span>(<span class="string">&quot;initializing element {} of the array&quot;</span>, <span class="ident">i</span>);
                             <span class="kw">let</span> <span class="ident">element_addr</span> <span class="op">=</span> <span class="ident">addr</span>.<span class="ident">add</span>(<span class="kw-2">&amp;</span><span class="ident">ctx</span>.<span class="ident">state</span>.<span class="ident">bv_from_u64</span>((<span class="ident">i</span><span class="kw-2">*</span><span class="ident">element_size_bytes</span>) <span class="kw">as</span> <span class="ident">u64</span>, <span class="ident">addr</span>.<span class="ident">get_width</span>()));
-                            <span class="self">self</span>.<span class="ident">clone</span>().<span class="ident">initialize_data_in_memory</span>(<span class="ident">ctx</span>, <span class="kw-2">&amp;</span><span class="ident">element_addr</span>, <span class="ident">element_abstractdata</span>, <span class="ident">element_type</span>)<span class="question-mark">?</span>;
+                            <span class="self">self</span>.<span class="ident">clone</span>().<span class="ident">initialize_cad_in_memory</span>(<span class="ident">ctx</span>, <span class="kw-2">&amp;</span><span class="ident">element_addr</span>, <span class="ident">element_abstractdata</span>, <span class="ident">element_type</span>)<span class="question-mark">?</span>;
                         }
                         <span class="macro">debug</span><span class="macro">!</span>(<span class="string">&quot;done initializing the array at {:?}&quot;</span>, <span class="ident">addr</span>);
                         <span class="prelude-val">Ok</span>(<span class="ident">element_size_bits</span> <span class="op">*</span> <span class="kw-2">*</span><span class="ident">num_elements</span>)
@@ -1764,7 +1804,7 @@
                     <span class="ident">total_bits</span> <span class="op">+</span><span class="op">=</span> <span class="ident">element_size_bits</span>;
                     <span class="kw">let</span> <span class="ident">element_size_bytes</span> <span class="op">=</span> <span class="ident">element_size_bits</span> <span class="op">/</span> <span class="number">8</span>;
                     <span class="macro">debug</span><span class="macro">!</span>(<span class="string">&quot;initializing element {} of struct {}; element&#39;s address is {:?}&quot;</span>, <span class="ident">element_idx</span>, <span class="ident">name</span>, <span class="kw-2">&amp;</span><span class="ident">cur_addr</span>);
-                    <span class="kw">let</span> <span class="ident">bits</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">clone</span>().<span class="ident">initialize_data_in_memory</span>(<span class="ident">ctx</span>, <span class="kw-2">&amp;</span><span class="ident">cur_addr</span>, <span class="ident">element</span>, <span class="ident">element_ty</span>.<span class="ident">as_ref</span>())<span class="question-mark">?</span>;
+                    <span class="kw">let</span> <span class="ident">bits</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">clone</span>().<span class="ident">initialize_cad_in_memory</span>(<span class="ident">ctx</span>, <span class="kw-2">&amp;</span><span class="ident">cur_addr</span>, <span class="ident">element</span>, <span class="ident">element_ty</span>.<span class="ident">as_ref</span>())<span class="question-mark">?</span>;
                     <span class="kw">if</span> <span class="ident">bits</span> <span class="op">!</span><span class="op">=</span> <span class="ident">element_size_bits</span> {
                         <span class="self">self</span>.<span class="ident">error_backtrace</span>();
                         <span class="macro">panic</span><span class="macro">!</span>(<span class="string">&quot;Element {} of struct {} should be {} bits based on its type, but we seem to have initialized {} bits&quot;</span>, <span class="ident">element_idx</span>, <span class="ident">name</span>, <span class="ident">element_size_bits</span>, <span class="ident">bits</span>);
@@ -1789,13 +1829,13 @@
                     <span class="prelude-val">None</span> <span class="op">=</span><span class="op">&gt;</span> {},  <span class="comment">// could be a nested VoidOverride, for instance</span>
                 }
                 <span class="kw">match</span> <span class="ident">llvm_struct_name</span> {
-                    <span class="prelude-val">None</span> <span class="op">=</span><span class="op">&gt;</span> <span class="self">self</span>.<span class="ident">initialize_data_in_memory</span>(<span class="ident">ctx</span>, <span class="ident">addr</span>, <span class="kw-2">&amp;</span><span class="ident">data</span>, <span class="prelude-val">None</span>),
+                    <span class="prelude-val">None</span> <span class="op">=</span><span class="op">&gt;</span> <span class="self">self</span>.<span class="ident">initialize_cad_in_memory</span>(<span class="ident">ctx</span>, <span class="ident">addr</span>, <span class="kw-2">&amp;</span><span class="ident">data</span>, <span class="prelude-val">None</span>),
                     <span class="prelude-val">Some</span>(<span class="ident">llvm_struct_name</span>) <span class="op">=</span><span class="op">&gt;</span> {
                         <span class="kw">let</span> (<span class="ident">llvm_ty</span>, <span class="kw">_</span>) <span class="op">=</span> <span class="ident">ctx</span>.<span class="ident">proj</span>.<span class="ident">get_named_struct_type_by_name</span>(<span class="kw-2">&amp;</span><span class="ident">llvm_struct_name</span>)
                             .<span class="ident">unwrap_or_else</span>(<span class="op">|</span><span class="op">|</span> { <span class="self">self</span>.<span class="ident">error_backtrace</span>(); <span class="macro">panic</span><span class="macro">!</span>(<span class="string">&quot;VoidOverride: llvm_struct_name {:?} not found in Project&quot;</span>, <span class="ident">llvm_struct_name</span>) });
                         <span class="kw">let</span> <span class="ident">arc</span> <span class="op">=</span> <span class="ident">llvm_ty</span>.<span class="ident">as_ref</span>().<span class="ident">unwrap_or_else</span>(<span class="op">|</span><span class="op">|</span> { <span class="self">self</span>.<span class="ident">error_backtrace</span>(); <span class="macro">panic</span><span class="macro">!</span>(<span class="string">&quot;VoidOverride: llvm_struct_name {:?} is an opaque type&quot;</span>, <span class="ident">llvm_struct_name</span>) });
                         <span class="kw">let</span> <span class="ident">llvm_ty</span>: <span class="kw-2">&amp;</span><span class="ident">Type</span> <span class="op">=</span> <span class="kw-2">&amp;</span><span class="ident">arc</span>.<span class="ident">read</span>().<span class="ident">unwrap</span>();
-                        <span class="self">self</span>.<span class="ident">initialize_data_in_memory</span>(<span class="ident">ctx</span>, <span class="ident">addr</span>, <span class="kw-2">&amp;</span><span class="ident">data</span>, <span class="prelude-val">Some</span>(<span class="ident">llvm_ty</span>))
+                        <span class="self">self</span>.<span class="ident">initialize_cad_in_memory</span>(<span class="ident">ctx</span>, <span class="ident">addr</span>, <span class="kw-2">&amp;</span><span class="ident">data</span>, <span class="prelude-val">Some</span>(<span class="ident">llvm_ty</span>))
                     },
                 }
             },
@@ -1805,13 +1845,13 @@
                     <span class="prelude-val">Some</span>(<span class="ident">ty</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="macro">assert_eq</span><span class="macro">!</span>(<span class="ident">data</span>.<span class="ident">size_in_bits</span>(), <span class="ident">layout</span>::<span class="ident">size_opaque_aware</span>(<span class="ident">ty</span>, <span class="ident">ctx</span>.<span class="ident">proj</span>), <span class="string">&quot;same_size_override: size mismatch: specified something of size {} bits, but the LLVM type has size {} bits&quot;</span>, <span class="ident">data</span>.<span class="ident">size_in_bits</span>(), <span class="ident">layout</span>::<span class="ident">size_opaque_aware</span>(<span class="ident">ty</span>, <span class="ident">ctx</span>.<span class="ident">proj</span>)),
                     <span class="prelude-val">None</span> <span class="op">=</span><span class="op">&gt;</span> {},
                 };
-                <span class="self">self</span>.<span class="ident">initialize_data_in_memory</span>(<span class="ident">ctx</span>, <span class="ident">addr</span>, <span class="kw-2">&amp;</span><span class="kw-2">*</span><span class="kw-2">*</span><span class="ident">data</span>, <span class="prelude-val">None</span>)
+                <span class="self">self</span>.<span class="ident">initialize_cad_in_memory</span>(<span class="ident">ctx</span>, <span class="ident">addr</span>, <span class="kw-2">&amp;</span><span class="kw-2">*</span><span class="kw-2">*</span><span class="ident">data</span>, <span class="prelude-val">None</span>)
             }
             <span class="ident">CompleteAbstractData</span>::<span class="ident">WithWatchpoint</span> { <span class="ident">name</span>, <span class="ident">data</span> } <span class="op">=</span><span class="op">&gt;</span> {
                 <span class="kw">let</span> <span class="ident">watch_addr</span> <span class="op">=</span> <span class="ident">addr</span>.<span class="ident">as_u64</span>().<span class="ident">expect</span>(<span class="string">&quot;WithWatchpoint not compatible with a non-constant initialization address&quot;</span>);
                 <span class="kw">let</span> <span class="ident">watch_size_in_bytes</span> <span class="op">=</span> <span class="ident">data</span>.<span class="ident">size_in_bits</span>() <span class="op">/</span> <span class="number">8</span>;
                 <span class="ident">ctx</span>.<span class="ident">state</span>.<span class="ident">add_mem_watchpoint</span>(<span class="ident">name</span>, <span class="ident">Watchpoint</span>::<span class="ident">new</span>(<span class="ident">watch_addr</span>, <span class="ident">watch_size_in_bytes</span> <span class="kw">as</span> <span class="ident">u64</span>));
-                <span class="self">self</span>.<span class="ident">initialize_data_in_memory</span>(<span class="ident">ctx</span>, <span class="ident">addr</span>, <span class="kw-2">&amp;</span><span class="kw-2">*</span><span class="kw-2">*</span><span class="ident">data</span>, <span class="ident">ty</span>)
+                <span class="self">self</span>.<span class="ident">initialize_cad_in_memory</span>(<span class="ident">ctx</span>, <span class="ident">addr</span>, <span class="kw-2">&amp;</span><span class="kw-2">*</span><span class="kw-2">*</span><span class="ident">data</span>, <span class="ident">ty</span>)
             }
         }
     }

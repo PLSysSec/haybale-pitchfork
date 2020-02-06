@@ -1138,6 +1138,28 @@
 <span id="1138">1138</span>
 <span id="1139">1139</span>
 <span id="1140">1140</span>
+<span id="1141">1141</span>
+<span id="1142">1142</span>
+<span id="1143">1143</span>
+<span id="1144">1144</span>
+<span id="1145">1145</span>
+<span id="1146">1146</span>
+<span id="1147">1147</span>
+<span id="1148">1148</span>
+<span id="1149">1149</span>
+<span id="1150">1150</span>
+<span id="1151">1151</span>
+<span id="1152">1152</span>
+<span id="1153">1153</span>
+<span id="1154">1154</span>
+<span id="1155">1155</span>
+<span id="1156">1156</span>
+<span id="1157">1157</span>
+<span id="1158">1158</span>
+<span id="1159">1159</span>
+<span id="1160">1160</span>
+<span id="1161">1161</span>
+<span id="1162">1162</span>
 </pre><div class="example-wrap"><pre class="rust ">
 <span class="kw">use</span> <span class="ident">haybale</span>::{<span class="ident">layout</span>, <span class="ident">Project</span>};
 <span class="kw">use</span> <span class="ident">lazy_static</span>::<span class="ident">lazy_static</span>;
@@ -1147,14 +1169,16 @@
 <span class="kw">use</span> <span class="ident">std</span>::<span class="ident">fmt</span>;
 <span class="kw">use</span> <span class="ident">std</span>::<span class="ident">sync</span>::<span class="ident">Mutex</span>;
 
-<span class="doccomment">/// An abstract description of a value: if it is public or not, if it is a</span>
-<span class="doccomment">/// pointer or not, does it point to data that is public/secret, maybe it&#39;s a</span>
-<span class="doccomment">/// struct with some public and some secret fields, etc.</span>
+<span class="doccomment">/// An abstract description of a value: its size, whether it is a pointer or</span>
+<span class="doccomment">/// not, whether it is public or secret (or maybe it&#39;s a struct with some</span>
+<span class="doccomment">/// public and some secret fields, or maybe it&#39;s a public pointer that points</span>
+<span class="doccomment">/// to some secret data), etc.</span>
 <span class="doccomment">///</span>
 <span class="doccomment">/// Unlike `AbstractData`, these may never be &quot;underspecified&quot; - that is, they</span>
 <span class="doccomment">/// must be a complete description of the data structure.</span>
 <span class="attribute">#[<span class="ident">derive</span>(<span class="ident">PartialEq</span>, <span class="ident">Eq</span>, <span class="ident">Clone</span>, <span class="ident">Debug</span>)]</span>
-<span class="kw">pub</span> <span class="kw">enum</span> <span class="ident">CompleteAbstractData</span> {
+<span class="attribute">#[<span class="ident">allow</span>(<span class="ident">dead_code</span>)]</span>  <span class="comment">// as of this writing, we get warnings about many members being never constructed, which I believe is false</span>
+<span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">enum</span> <span class="ident">CompleteAbstractData</span> {
     <span class="doccomment">/// A public value, of the given size in bits. The `AbstractValue` is used to</span>
     <span class="doccomment">/// indicate whether the value should have a particular concrete value, be</span>
     <span class="doccomment">/// unconstrained, etc.</span>
@@ -1249,6 +1273,8 @@
     <span class="ident">WithWatchpoint</span> { <span class="ident">name</span>: <span class="ident">String</span>, <span class="ident">data</span>: <span class="ident">Box</span><span class="op">&lt;</span><span class="self">Self</span><span class="op">&gt;</span> },
 }
 
+<span class="comment">// methods which mirror the ones on `AbstractData` for the most part</span>
+<span class="attribute">#[<span class="ident">allow</span>(<span class="ident">dead_code</span>)]</span>
 <span class="kw">impl</span> <span class="ident">CompleteAbstractData</span> {
     <span class="doccomment">/// an 8-bit public value</span>
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">pub_i8</span>(<span class="ident">value</span>: <span class="ident">AbstractValue</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="self">Self</span> {
@@ -1405,6 +1431,7 @@
     }
 }
 
+<span class="attribute">#[<span class="ident">allow</span>(<span class="ident">dead_code</span>)]</span>
 <span class="kw">impl</span> <span class="ident">CompleteAbstractData</span> {
     <span class="kw">pub</span> <span class="kw">const</span> <span class="ident">POINTER_SIZE_BITS</span>: <span class="ident">usize</span> <span class="op">=</span> <span class="number">64</span>;
 
@@ -1545,13 +1572,15 @@
     }
 }
 
-<span class="doccomment">/// An abstract description of a value: if it is public or not, if it is a</span>
-<span class="doccomment">/// pointer or not, does it point to data that is public/secret, maybe it&#39;s a</span>
-<span class="doccomment">/// struct with some public and some secret fields, etc.</span>
+<span class="doccomment">/// An abstract description of a value: its size, whether it is a pointer or</span>
+<span class="doccomment">/// not, whether it is public or secret (or maybe it&#39;s a struct with some</span>
+<span class="doccomment">/// public and some secret fields, or maybe it&#39;s a public pointer that points</span>
+<span class="doccomment">/// to some secret data), etc.</span>
 <span class="doccomment">///</span>
 <span class="doccomment">/// Unlike `CompleteAbstractData`, these may be &quot;underspecified&quot;: parts of the</span>
-<span class="doccomment">/// value (or the whole value) may be `Unspecified`, meaning to just use the</span>
-<span class="doccomment">/// default based on the LLVM type.</span>
+<span class="doccomment">/// value (or the whole value) may be marked</span>
+<span class="doccomment">/// [`default()`](struct.AbstractData.html#method.default), meaning to just use</span>
+<span class="doccomment">/// the default based on the LLVM type.</span>
 <span class="attribute">#[<span class="ident">derive</span>(<span class="ident">PartialEq</span>, <span class="ident">Eq</span>, <span class="ident">Clone</span>, <span class="ident">Debug</span>)]</span>
 <span class="comment">// we wrap the actual enum so that external users can&#39;t rely on the actual enum</span>
 <span class="comment">// variants, and only see the (nicer and more stable) function constructors</span>
@@ -1563,7 +1592,7 @@
     <span class="doccomment">/// Just use the default structure based on the LLVM type, making all</span>
     <span class="doccomment">/// contents public.</span>
     <span class="doccomment">///</span>
-    <span class="doccomment">/// See [`AbstractData::to_complete`](enum.AbstractData.html#method.to_complete)</span>
+    <span class="doccomment">/// See [`AbstractData::default`](struct.AbstractData.html#method.default)</span>
     <span class="ident">Unspecified</span>,
 
     <span class="doccomment">/// Just fill with the appropriate number of unconstrained public bytes based</span>
@@ -1801,11 +1830,16 @@
         <span class="self">Self</span>(<span class="ident">UnderspecifiedAbstractData</span>::<span class="ident">Secret</span>)
     }
 
-    <span class="doccomment">/// See notes on [`CompleteAbstractData::void_override`](enum.CompleteAbstractData.html#method.void_override).</span>
+    <span class="doccomment">/// When C code uses `void*`, this often becomes `i8*` in LLVM. However,</span>
+    <span class="doccomment">/// within Pitchfork, we may want to specify some type other than `i8*` for</span>
+    <span class="doccomment">/// the purposes of allocating and analyzing the data behind the `void*`.</span>
+    <span class="doccomment">///</span>
+    <span class="doccomment">/// This says to use the provided `AbstractData` even though the LLVM type is</span>
+    <span class="doccomment">/// `i8`.</span>
     <span class="doccomment">///</span>
     <span class="doccomment">/// Note that the `AbstractData` here must actually be fully specified,</span>
-    <span class="doccomment">/// perhaps with the help of `StructDescriptions`. If it&#39;s not, `to_complete`</span>
-    <span class="doccomment">/// will panic.</span>
+    <span class="doccomment">/// perhaps with the help of `StructDescriptions`. If it&#39;s not, users of</span>
+    <span class="doccomment">/// the `AbstractData` may panic.</span>
     <span class="doccomment">///</span>
     <span class="doccomment">/// If the optional `llvm_struct_name` is included, it will lookup that</span>
     <span class="doccomment">/// struct&#39;s type and use that both for any underspecified elements in the</span>
@@ -1816,11 +1850,19 @@
         <span class="self">Self</span>(<span class="ident">UnderspecifiedAbstractData</span>::<span class="ident">VoidOverride</span> { <span class="ident">llvm_struct_name</span>: <span class="ident">llvm_struct_name</span>.<span class="ident">map</span>(<span class="ident">Into</span>::<span class="ident">into</span>), <span class="ident">data</span>: <span class="ident">Box</span>::<span class="ident">new</span>(<span class="ident">data</span>) })
     }
 
-    <span class="doccomment">/// See notes on [`CompleteAbstractData::same_size_override`](enum.CompleteAbstractData.html#method.same_size_override).</span>
+    <span class="doccomment">/// Use the given `data`, even though it may not match the LLVM type.</span>
+    <span class="doccomment">/// It still needs to be the same size (number of bits) as the LLVM type.</span>
+    <span class="doccomment">/// For instance, you could specify that some LLVM pointer-size integer</span>
+    <span class="doccomment">/// should actually be initialized to have a pointer value and point to some</span>
+    <span class="doccomment">/// specified data.</span>
+    <span class="doccomment">///</span>
+    <span class="doccomment">/// To override a `void*` type, see `void_override` - and this probably won&#39;t</span>
+    <span class="doccomment">/// work for that anyways because of the same-size restriction. See comments</span>
+    <span class="doccomment">/// on `void_override`.</span>
     <span class="doccomment">///</span>
     <span class="doccomment">/// Note that the `AbstractData` here must actually be fully specified,</span>
-    <span class="doccomment">/// perhaps with the help of `StructDescriptions`. If it&#39;s not, `to_complete`</span>
-    <span class="doccomment">/// will panic.</span>
+    <span class="doccomment">/// perhaps with the help of `StructDescriptions`. If it&#39;s not, users of</span>
+    <span class="doccomment">/// the `AbstractData` may panic.</span>
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">same_size_override</span>(<span class="ident">data</span>: <span class="ident">AbstractData</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="self">Self</span> {
         <span class="self">Self</span>(<span class="ident">UnderspecifiedAbstractData</span>::<span class="ident">SameSizeOverride</span> { <span class="ident">data</span>: <span class="ident">Box</span>::<span class="ident">new</span>(<span class="ident">data</span>) })
     }
@@ -1898,7 +1940,7 @@
     <span class="doccomment">/// type.</span>
     <span class="doccomment">///</span>
     <span class="doccomment">/// For more information, see [`AbstractData::default()`](struct.AbstractData.html#method.default).</span>
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">to_complete</span>(<span class="self">self</span>, <span class="ident">ty</span>: <span class="kw-2">&amp;</span><span class="ident">Type</span>, <span class="ident">proj</span>: <span class="kw-2">&amp;</span><span class="ident">Project</span>, <span class="ident">sd</span>: <span class="kw-2">&amp;</span><span class="ident">StructDescriptions</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">CompleteAbstractData</span> {
+    <span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn</span> <span class="ident">to_complete</span>(<span class="self">self</span>, <span class="ident">ty</span>: <span class="kw-2">&amp;</span><span class="ident">Type</span>, <span class="ident">proj</span>: <span class="kw-2">&amp;</span><span class="ident">Project</span>, <span class="ident">sd</span>: <span class="kw-2">&amp;</span><span class="ident">StructDescriptions</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">CompleteAbstractData</span> {
         <span class="self">self</span>.<span class="number">0</span>.<span class="ident">to_complete</span>(<span class="ident">ty</span>, <span class="ident">proj</span>, <span class="ident">sd</span>)
     }
 
@@ -1961,7 +2003,7 @@
     }
 
     <span class="doccomment">/// See method description on [`AbstractData::to_complete`](enum.AbstractData.html#method.to_complete)</span>
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">to_complete</span>(<span class="self">self</span>, <span class="ident">ty</span>: <span class="kw-2">&amp;</span><span class="ident">Type</span>, <span class="ident">proj</span>: <span class="kw-2">&amp;</span><span class="ident">Project</span>, <span class="ident">sd</span>: <span class="kw-2">&amp;</span><span class="ident">StructDescriptions</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">CompleteAbstractData</span> {
+    <span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn</span> <span class="ident">to_complete</span>(<span class="self">self</span>, <span class="ident">ty</span>: <span class="kw-2">&amp;</span><span class="ident">Type</span>, <span class="ident">proj</span>: <span class="kw-2">&amp;</span><span class="ident">Project</span>, <span class="ident">sd</span>: <span class="kw-2">&amp;</span><span class="ident">StructDescriptions</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">CompleteAbstractData</span> {
         <span class="self">self</span>.<span class="ident">to_complete_rec</span>(<span class="prelude-val">Some</span>(<span class="ident">ty</span>), <span class="ident">ToCompleteContext</span>::<span class="ident">new</span>(<span class="ident">proj</span>, <span class="ident">sd</span>))
     }
 
@@ -2244,6 +2286,8 @@
     }
 }
 
+<span class="doccomment">/// A variety of ways to specify a numerical value, from completely unconstrained</span>
+<span class="doccomment">/// to fully constrained.</span>
 <span class="attribute">#[<span class="ident">derive</span>(<span class="ident">PartialEq</span>, <span class="ident">Eq</span>, <span class="ident">Clone</span>, <span class="ident">Debug</span>)]</span>
 <span class="kw">pub</span> <span class="kw">enum</span> <span class="ident">AbstractValue</span> {
     <span class="doccomment">/// This exact numerical value</span>
