@@ -96,7 +96,7 @@ let project = Project::from_bc_path(&Path::new("/path/to/file.bc"))?;
 ```
 
 For more ways to create `Project`s, including analyzing entire libraries, see
-the [`Project` documentation] for [`haybale`].
+the [`Project` documentation].
 
 ### 4. Check a function for constant-time violations
 
@@ -305,9 +305,9 @@ points to an array of secret data:
 AbstractData::pub_pointer_to(AbstractData::array_of(AbstractData::secret(), 32))
 ```
 
-We'll also need to raise `haybale`'s "loop bound", which defaults to 10 as of
-this writing. (For more details, see [`haybale`'s docs on
-`Config.loop_bound`](https://PLSysSec.github.io/haybale/haybale/config/struct.Config.html#structfield.loop_bound).)
+We'll also need to raise the "loop bound", which defaults to 10 as of this
+writing. (For more details, see the [docs on
+`Config.loop_bound`](https://PLSysSec.github.io/haybale-pitchfork/haybale_pitchfork/struct.Config.html#structfield.loop_bound).)
 ```rust
 let mut config = Config::default();
 config.loop_bound = 100;
@@ -501,9 +501,9 @@ other arguments will also use this description.
 [dependency renaming]: https://doc.rust-lang.org/cargo/reference/specifying-dependencies.html#renaming-dependencies-in-cargotoml
 [`llvm-sys`]: https://crates.io/crates/llvm-sys
 [`boolector-sys`]: https://crates.io/crates/boolector-sys
-[`Project` documentation]: https://PLSysSec.github.io/haybale/haybale/project/struct.Project.html
-[`Project`]: https://PLSysSec.github.io/haybale/haybale/project/struct.Project.html
-[`Config`]: https://PLSysSec.github.io/haybale/haybale/config/struct.Config.html
+[`Project` documentation]: https://PLSysSec.github.io/haybale-pitchfork/haybale_pitchfork/struct.Project.html
+[`Project`]: https://PLSysSec.github.io/haybale-pitchfork/haybale_pitchfork/struct.Project.html
+[`Config`]: https://PLSysSec.github.io/haybale-pitchfork/haybale_pitchfork/struct.Config.html
 [`check_for_ct_violation_in_inputs()`]: https://PLSysSec.github.io/haybale-pitchfork/haybale_pitchfork/fn.check_for_ct_violation_in_inputs.html
 [`check_for_ct_violation()`]: https://PLSysSec.github.io/haybale-pitchfork/haybale_pitchfork/fn.check_for_ct_violation.html
 [`AbstractData`]: https://PLSysSec.github.io/haybale-pitchfork/haybale_pitchfork/struct.AbstractData.html
