@@ -3,6 +3,8 @@ pub use abstractdata::*;
 mod allocation;
 mod coverage;
 use coverage::*;
+mod default_hook;
+use default_hook::pitchfork_default_hook;
 pub mod hook_helpers;
 pub mod secret;
 
@@ -315,8 +317,16 @@ pub fn check_for_ct_violation<'p>(
     mut config: Config<'p, secret::Backend>,
     keep_going: bool,
 ) -> ConstantTimeResultForFunction<'p> {
+    // add our uninitialized-function-pointer hook, but don't override the user
+    // if they provided a different uninitialized-function-pointer hook
     if !config.function_hooks.is_hooked("hook_uninitialized_function_pointer") {
         config.function_hooks.add("hook_uninitialized_function_pointer", &hook_uninitialized_function_pointer);
+    }
+
+    // insert the `pitchfork_default_hook` as the default function hook, but
+    // don't override the user if they provided a different default function hook
+    if !config.function_hooks.has_default_hook() {
+        config.function_hooks.add_default_hook(&pitchfork_default_hook);
     }
 
     // first sanity-check the StructDescriptions, ensure that all its struct names are valid

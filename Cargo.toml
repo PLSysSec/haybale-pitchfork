@@ -12,7 +12,7 @@ license = "MIT"
 
 [dependencies]
 boolector = "0.3.0"
-haybale = "0.3.1"
+haybale = { git = "https://github.com/PLSysSec/haybale.git" }
 llvm-ir = "0.5.0"
 log = "0.4.8"
 lazy_static = "1.4"
