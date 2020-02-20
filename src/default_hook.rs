@@ -17,17 +17,36 @@ pub fn pitchfork_default_hook(
         Either::Right(Operand::ConstantOperand(Constant::GlobalReference { name, .. })) => panic!("Function with a numbered name: {:?}", name),
         Either::Right(_) => None,  // a function pointer
     };
-    match called_funcname {
-        Some(funcname) => info!("Using Pitchfork default hook for a function named {:?}", state.demangle(funcname)),
-        None => info!("Using Pitchfork default hook for a function pointer"),
+    let pretty_funcname = match called_funcname {
+        Some(funcname) => format!("a function named {:?}", state.demangle(funcname)),
+        None => "a function pointer".into(),
     };
+    info!("Using Pitchfork default hook for {}", pretty_funcname);
 
     for (i, arg) in call.get_arguments().iter().map(|(arg, _)| arg).enumerate() {
         // if the arg is secret, or points to any secret data, then raise an error and require a manually-specified hook or LLVM definition
         let arg_bv = state.operand_to_bv(arg)?;
         match is_or_points_to_secret(proj, state, &arg_bv, &arg.get_type())? {
-            ArgumentKind::Secret => return Err(Error::OtherError(format!("Encountered a call of a function named {:?}, but didn't find an LLVM definition or function hook for it; and its argument #{} (zero-indexed) may refer to secret data.\nTo fix this error, you can do one of these three options:\n  (1) choose to simply ignore this function call by adding it to `config.function_hooks` with `haybale::function_hooks::generic_stub_hook` as the hook;\n  (2) rerun with more bitcode files in the `Project` so that the symbolic execution can find an LLVM definition for {:?};\n  (3) write your own custom hook for {:?}", called_funcname, i, called_funcname, called_funcname))),
-            ArgumentKind::Unknown => return Err(Error::OtherError(format!("Encountered a call of a function named {:?}, but didn't find an LLVM definition or function hook for it; and its argument #{} (zero-indexed) involves an opaque struct type, so we're not sure if it may contain secret data.\nTo fix this error, you can do one of these three options:\n  (1) choose to simply ignore this function call by adding it to `config.function_hooks` with `haybale::function_hooks::generic_stub_hook` as the hook;\n  (2) rerun with more bitcode files in the `Project` so that the symbolic execution can find an LLVM definition for {:?};\n  (3) write your own custom hook for {:?}", called_funcname, i, called_funcname, called_funcname))),
+            ArgumentKind::Secret => match called_funcname {
+                Some(funcname) => {
+                    let demangled = state.demangle(funcname);
+                    return Err(Error::OtherError(format!("Encountered a call of {}, but didn't find an LLVM definition or function hook for it; and its argument #{} (zero-indexed) may refer to secret data.\nTo fix this error, you can do one of these three options:\n  (1) choose to simply ignore this function call by adding it to `config.function_hooks` with `haybale::function_hooks::generic_stub_hook` as the hook;\n  (2) rerun with more bitcode files in the `Project` so that the symbolic execution can find an LLVM definition for {:?};\n  (3) write your own custom hook for {:?}", pretty_funcname, i, demangled, demangled)));
+                },
+                None => {
+                    // TODO: does this situation actually ever come up? What error message / hints are appropriate?
+                    return Err(Error::OtherError(format!("pitchfork_default_hook on a function pointer, and argument #{} (zero-indexed) may refer to secret data", i)));
+                },
+            },
+            ArgumentKind::Unknown => match called_funcname {
+                Some(funcname) => {
+                    let demangled = state.demangle(funcname);
+                    return Err(Error::OtherError(format!("Encountered a call of {}, but didn't find an LLVM definition or function hook for it; and its argument #{} (zero-indexed) involves an opaque struct type, so we're not sure if it may contain secret data.\nTo fix this error, you can do one of these three options:\n  (1) choose to simply ignore this function call by adding it to `config.function_hooks` with `haybale::function_hooks::generic_stub_hook` as the hook;\n  (2) rerun with more bitcode files in the `Project` so that the symbolic execution can find an LLVM definition for {:?};\n  (3) write your own custom hook for {:?}", pretty_funcname, i, demangled, demangled)));
+                },
+                None => {
+                    // TODO: does this situation actually ever come up? What error message / hints are appropriate?
+                    return Err(Error::OtherError(format!("pitchfork_default_hook on a function pointer, and argument #{} (zero-indexed) involves an opaque struct type, so we're not sure if it may contain secret data", i)));
+                },
+            },
             ArgumentKind::Public => {},
         }
     }
