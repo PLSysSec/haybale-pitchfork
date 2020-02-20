@@ -286,8 +286,8 @@ pub fn check_for_ct_violation_in_inputs<'p>(
     }
 
     let (func, _) = project.get_func_by_name(funcname).expect("Failed to find function");
-    let args = func.parameters.iter().map(|p| AbstractData::sec_integer(layout::size(&p.ty)));
-    check_for_ct_violation(funcname, project, args, &BLANK_STRUCT_DESCRIPTIONS, config, keep_going)
+    let args = func.parameters.iter().map(|p| AbstractData::sec_integer(layout::size(&p.ty))).collect();
+    check_for_ct_violation(funcname, project, Some(args), &BLANK_STRUCT_DESCRIPTIONS, config, keep_going)
 }
 
 /// Checks whether a function is "constant-time" in the secrets identified by the
@@ -298,6 +298,8 @@ pub fn check_for_ct_violation_in_inputs<'p>(
 /// parameter is secret data itself, public data, a public pointer to secret data
 /// (and if so how much), etc; or `AbstractData::default()` to use the default
 /// based on the LLVM parameter type and/or the struct descriptions in `sd`.
+/// Specifying `None` for `args` is equivalent to supplying a `Vec` with only
+/// `AbstractData::default()`s.
 ///
 /// `sd`: a mapping of LLVM struct names to `AbstractData` descriptions of those
 /// structs. These will be used whenever a struct of the appropriate type is
@@ -312,7 +314,7 @@ pub fn check_for_ct_violation_in_inputs<'p>(
 pub fn check_for_ct_violation<'p>(
     funcname: &'p str,
     project: &'p Project,
-    args: impl IntoIterator<Item = AbstractData>,
+    args: Option<Vec<AbstractData>>,
     sd: &StructDescriptions,
     mut config: Config<'p, secret::Backend>,
     keep_going: bool,
@@ -341,7 +343,15 @@ pub fn check_for_ct_violation<'p>(
 
     info!("Allocating memory for function parameters");
     let params = em.state().cur_loc.func.parameters.iter();
-    allocation::allocate_args(project, em.mut_state(), sd, params.zip(args.into_iter())).unwrap();
+    match args {
+        Some(args) => {
+            assert_eq!(params.len(), args.len(), "Function {:?} has {} parameters, but we received only {} argument `AbstractData`s", funcname, params.len(), args.len());
+            allocation::allocate_args(project, em.mut_state(), sd, params.zip(args.into_iter())).unwrap();
+        },
+        None => {
+            allocation::allocate_args(project, em.mut_state(), sd, params.zip(std::iter::repeat(AbstractData::default()))).unwrap();
+        },
+    }
     debug!("Done allocating memory for function parameters");
 
     let mut blocks_seen = BlocksSeen::new();
