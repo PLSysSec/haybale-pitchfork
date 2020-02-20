@@ -42,7 +42,7 @@ fn is_or_points_to_secret(proj: &Project, state: &mut State<secret::Backend>, bv
         match ty {
             Type::PointerType { pointee_type, .. } => {
                 // also check if it points to any secret data
-                let pointee = state.read(&bv, haybale::layout::size(&**pointee_type) as u32)?;
+                let pointee = state.read(&bv, haybale::layout::size_opaque_aware(&**pointee_type, proj) as u32)?;
                 is_or_points_to_secret(proj, state, &pointee, &**pointee_type)
             },
             Type::VectorType { element_type, num_elements } | Type::ArrayType { element_type, num_elements } => {
@@ -64,7 +64,7 @@ fn is_or_points_to_secret(proj: &Project, state: &mut State<secret::Backend>, bv
                     if is_or_points_to_secret(proj, state, &ptr_to_element, element_ty)? {
                         return Ok(true);
                     }
-                    offset_bits += haybale::layout::size(element_ty) as u32;
+                    offset_bits += haybale::layout::size_opaque_aware(element_ty, proj) as u32;
                     assert_eq!(offset_bits % 8, 0, "Struct offset of {} bits is not a multiple of 8 bits", offset_bits);
                 }
                 Ok(false)
