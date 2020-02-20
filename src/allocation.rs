@@ -62,8 +62,10 @@ impl<'p, 's> Context<'p, 's> {
         type_override: bool,
     ) -> Result<secret::BV> {
         let arg_size = arg.size_in_bits();
-        let param_size = layout::size_opaque_aware(&param.ty, self.proj);
-        assert_eq!(arg_size, param_size, "Parameter size mismatch for parameter {:?}: parameter is {} bits but CompleteAbstractData is {} bits", &param.name, param_size, arg_size);
+        match layout::size_opaque_aware(&param.ty, self.proj) {
+            Some(param_size) => assert_eq!(arg_size, param_size, "Parameter size mismatch for parameter {:?}: parameter is {} bits but CompleteAbstractData is {} bits", &param.name, param_size, arg_size),
+            None => {},  // can't determine the parameter size: skip performing this check
+        };
         match arg {
             CompleteAbstractData::Secret { bits } => {
                 debug!("Parameter is marked secret");
@@ -294,6 +296,19 @@ impl<'a> InitializationContext<'a> {
         }
     }
 
+    /// Check that `ty` represents a value of `bits` bits, panicking if not
+    fn size_check_ty(&self, ctx: &Context, ty: &'a Type, bits: usize) {
+        match layout::size_opaque_aware(ty, ctx.proj) {
+            Some(ty_size_bits) => {
+                if bits != ty_size_bits {
+                    self.error_backtrace();
+                    panic!("Size mismatch: type {:?} is {} bits but CompleteAbstractData is {} bits", ty, ty_size_bits, bits);
+                }
+            },
+            None => {},  // can't determine the size of `ty`; skip performing the check
+        }
+    }
+
     /// Initialize the data in memory at `addr` according to the given `AbstractData`.
     ///
     /// `ty` should be the type of the pointed-to object (i.e., the type of the
@@ -384,10 +399,7 @@ impl<'a> InitializationContext<'a> {
             CompleteAbstractData::PublicValue { bits, value: AbstractValue::ExactValue(value) } => {
                 debug!("setting the memory contents equal to {}", value);
                 if let Some(ty) = ty {
-                    if *bits != layout::size_opaque_aware(ty, ctx.proj) {
-                        self.error_backtrace();
-                        panic!("Size mismatch when initializing data at {:?}: type {:?} is {} bits but CompleteAbstractData is {} bits", addr, ty, layout::size_opaque_aware(ty, ctx.proj), bits);
-                    }
+                    self.size_check_ty(ctx, ty, *bits);
                 }
                 let bv = ctx.state.bv_from_u64(*value, *bits as u32);
                 ctx.state.write(&addr, bv)?;
@@ -396,10 +408,7 @@ impl<'a> InitializationContext<'a> {
             CompleteAbstractData::PublicValue { bits, value: AbstractValue::Range(min, max) } => {
                 debug!("constraining the memory contents to be in the range ({}, {}) inclusive", min, max);
                 if let Some(ty) = ty {
-                    if *bits != layout::size_opaque_aware(ty, ctx.proj) {
-                        self.error_backtrace();
-                        panic!("Size mismatch when initializing data at {:?}: type {:?} is {} bits but CompleteAbstractData is {} bits", addr, ty, layout::size_opaque_aware(ty, ctx.proj), bits);
-                    }
+                    self.size_check_ty(ctx, ty, *bits);
                 }
                 let bv = ctx.state.read(&addr, *bits as u32)?;
                 bv.ugte(&ctx.state.bv_from_u64(*min, *bits as u32)).assert()?;
@@ -409,10 +418,7 @@ impl<'a> InitializationContext<'a> {
             CompleteAbstractData::PublicValue { bits, value: AbstractValue::Unconstrained } => {
                 // nothing to do, just check that the type matches
                 if let Some(ty) = ty {
-                    if *bits != layout::size_opaque_aware(ty, ctx.proj) {
-                        self.error_backtrace();
-                        panic!("Size mismatch when initializing data at {:?}: type {:?} is {} bits but CompleteAbstractData is {} bits", addr, ty, layout::size_opaque_aware(ty, ctx.proj), bits);
-                    }
+                    self.size_check_ty(ctx, ty, *bits);
                 }
                 Ok(*bits)
             },
@@ -450,10 +456,7 @@ impl<'a> InitializationContext<'a> {
                             panic!("AbstractValue::EqualTo {:?}, which has {} bits, but current value has {} bits", name, width, bits);
                         }
                         if let Some(ty) = ty {
-                            if *bits != layout::size_opaque_aware(ty, ctx.proj) {
-                                self.error_backtrace();
-                                panic!("Size mismatch when initializing data at {:?}: type {:?} is {} bits but CompleteAbstractData is {} bits", addr, ty, layout::size_opaque_aware(ty, ctx.proj), bits);
-                            }
+                            self.size_check_ty(ctx, ty, *bits);
                         }
                         ctx.state.write(&addr, bv.clone())?;
                         Ok(*bits)
@@ -473,10 +476,7 @@ impl<'a> InitializationContext<'a> {
                             panic!("AbstractValue::SignedLessThan {:?}, which has {} bits, but current value has {} bits", name, width, bits);
                         }
                         if let Some(ty) = ty {
-                            if *bits != layout::size_opaque_aware(ty, ctx.proj) {
-                                self.error_backtrace();
-                                panic!("Size mismatch when initializing data at {:?}: type {:?} is {} bits but CompleteAbstractData is {} bits", addr, ty, layout::size_opaque_aware(ty, ctx.proj), bits);
-                            }
+                            self.size_check_ty(ctx, ty, *bits);
                         }
                         let new_bv = ctx.state.new_bv_with_name(Name::from(format!("SignedLessThan:{}", name)), width)?;
                         new_bv.slt(&bv).assert()?;
@@ -498,10 +498,7 @@ impl<'a> InitializationContext<'a> {
                             panic!("AbstractValue::SignedGreaterThan {:?}, which has {} bits, but current value has {} bits", name, width, bits);
                         }
                         if let Some(ty) = ty {
-                            if *bits != layout::size_opaque_aware(ty, ctx.proj) {
-                                self.error_backtrace();
-                                panic!("Size mismatch when initializing data at {:?}: type {:?} is {} bits but CompleteAbstractData is {} bits", addr, ty, layout::size_opaque_aware(ty, ctx.proj), bits);
-                            }
+                            self.size_check_ty(ctx, ty, *bits);
                         }
                         let new_bv = ctx.state.new_bv_with_name(Name::from(format!("SignedGreaterThan:{}", name)), width)?;
                         new_bv.sgt(&bv).assert()?;
@@ -523,10 +520,7 @@ impl<'a> InitializationContext<'a> {
                             panic!("AbstractValue::UnsignedLessThan {:?}, which has {} bits, but current value has {} bits", name, width, bits);
                         }
                         if let Some(ty) = ty {
-                            if *bits != layout::size_opaque_aware(ty, ctx.proj) {
-                                self.error_backtrace();
-                                panic!("Size mismatch when initializing data at {:?}: type {:?} is {} bits but CompleteAbstractData is {} bits", addr, ty, layout::size_opaque_aware(ty, ctx.proj), bits);
-                            }
+                            self.size_check_ty(ctx, ty, *bits);
                         }
                         let new_bv = ctx.state.new_bv_with_name(Name::from(format!("UnsignedLessThan:{}", name)), width)?;
                         new_bv.ult(&bv).assert()?;
@@ -548,10 +542,7 @@ impl<'a> InitializationContext<'a> {
                             panic!("AbstractValue::UnsignedGreaterThan {:?}, which has {} bits, but current value has {} bits", name, width, bits);
                         }
                         if let Some(ty) = ty {
-                            if *bits != layout::size_opaque_aware(ty, ctx.proj) {
-                                self.error_backtrace();
-                                panic!("Size mismatch when initializing data at {:?}: type {:?} is {} bits but CompleteAbstractData is {} bits", addr, ty, layout::size_opaque_aware(ty, ctx.proj), bits);
-                            }
+                            self.size_check_ty(ctx, ty, *bits);
                         }
                         let new_bv = ctx.state.new_bv_with_name(Name::from(format!("UnsignedGreaterThan:{}", name)), width)?;
                         new_bv.ugt(&bv).assert()?;
@@ -768,12 +759,14 @@ impl<'a> InitializationContext<'a> {
                     match element_type {
                         None => {},  // element_type is an opaque struct type, there's no size check we can make.
                         Some(element_type) => {
-                            let llvm_element_size_bits = layout::size_opaque_aware(&element_type.read().unwrap(), ctx.proj);
-                            if llvm_element_size_bits != 0 {
-                                if element_size_bits != llvm_element_size_bits {
-                                    self.error_backtrace();
-                                    panic!( "CompleteAbstractData element size of {} bits does not match LLVM element size of {} bits", element_size_bits, llvm_element_size_bits);
-                                }
+                           match layout::size_opaque_aware(&element_type.read().unwrap(), ctx.proj) {
+                                Some(llvm_element_size_bits) if llvm_element_size_bits != 0 => {
+                                    if element_size_bits != llvm_element_size_bits {
+                                        self.error_backtrace();
+                                        panic!( "CompleteAbstractData element size of {} bits does not match LLVM element size of {} bits", element_size_bits, llvm_element_size_bits);
+                                    }
+                                },
+                                _ => {},  // skip performing the check: llvm element size is either 0 bits or can't be determined
                             }
                         }
                     }
@@ -859,12 +852,14 @@ impl<'a> InitializationContext<'a> {
                     self.within_structs.get_mut(within_structs_len - 1).unwrap().element_index = element_idx;
                     let element_size_bits = element.size_in_bits();
                     if let Some(element_ty) = &element_ty {
-                        let llvm_element_size_bits = layout::size_opaque_aware(&element_ty, ctx.proj);
-                        if llvm_element_size_bits != 0 {
-                            if element_size_bits != llvm_element_size_bits {
-                                self.error_backtrace();
-                                panic!("CompleteAbstractData element size of {} bits does not match LLVM element size of {} bits", element_size_bits, llvm_element_size_bits);
-                            }
+                        match layout::size_opaque_aware(&element_ty, ctx.proj) {
+                            Some(llvm_element_size_bits) if llvm_element_size_bits != 0 => {
+                                if element_size_bits != llvm_element_size_bits {
+                                    self.error_backtrace();
+                                    panic!("CompleteAbstractData element size of {} bits does not match LLVM element size of {} bits", element_size_bits, llvm_element_size_bits);
+                                }
+                            },
+                            _ => {},  // skip performing the check: llvm element size is either 0 bits or can't be determined
                         }
                     }
                     if element_size_bits % 8 != 0 {
@@ -912,7 +907,12 @@ impl<'a> InitializationContext<'a> {
             CompleteAbstractData::SameSizeOverride { data } => {
                 // first check that the type we're overriding is the right size
                 match ty {
-                    Some(ty) => assert_eq!(data.size_in_bits(), layout::size_opaque_aware(ty, ctx.proj), "same_size_override: size mismatch: specified something of size {} bits, but the LLVM type has size {} bits", data.size_in_bits(), layout::size_opaque_aware(ty, ctx.proj)),
+                    Some(ty) => match layout::size_opaque_aware(ty, ctx.proj) {
+                        Some(ty_size) => {
+                            assert_eq!(data.size_in_bits(), ty_size, "same_size_override: size mismatch: specified something of size {} bits, but the LLVM type has size {} bits", data.size_in_bits(), ty_size);
+                        },
+                        None => {},  // can't determine the size, so skip performing the check
+                    },
                     None => {},
                 };
                 self.initialize_cad_in_memory(ctx, addr, &**data, None)
