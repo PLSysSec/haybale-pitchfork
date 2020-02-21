@@ -19,6 +19,7 @@ lazy_static = "1.4"
 colored = "1.9"
 itertools = "0.8.2"
 either = "1.5.3"
+chrono = "0.4"
 
 [dev-dependencies]
 env_logger = "0.6.2"

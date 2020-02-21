@@ -14,7 +14,7 @@ use haybale::{Error, Result};
 pub use haybale::{Config, Project};
 use haybale::function_hooks::IsCall;
 use lazy_static::lazy_static;
-use log::{debug, info};
+use log::{debug, info, warn};
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 
@@ -58,6 +58,12 @@ pub struct ConstantTimeResultForFunction<'a> {
     /// block in which the error occurred to be covered, even if the portion of
     /// the block after where the error occurred was not covered.
     pub block_coverage: HashMap<String, BlockCoverage>,
+    /// If we logged all the detailed error messages, then this is the name of
+    /// the file they were logged to.
+    /// Otherwise, if this is `None`, we did not log the detailed error messages.
+    /// (In either case, all the detailed error messages are available in the
+    /// `path_results` field above.)
+    pub error_filename: Option<String>,
 }
 
 impl<'a> ConstantTimeResultForFunction<'a> {
@@ -239,7 +245,12 @@ impl<'a> fmt::Display for ConstantTimeResultForFunction<'a> {
                 None => panic!("we counted a ct violation, but now can't find one"),
                 Some(violation_message) => {
                     writeln!(f, "{} {}", self.funcname, "is not constant-time".red())?;
-                    writeln!(f, "First constant-time violation encountered:\n\n{}", violation_message)?;
+                    if let Some(filename) = &self.error_filename {
+                        writeln!(f, "All errors have been logged to {}", filename)?;
+                        writeln!(f, "  and the first constant-time violation is described below:\n\n{}", violation_message)?;
+                    } else {
+                        writeln!(f, "First constant-time violation encountered:\n\n{}", violation_message)?;
+                    }
                 },
             }
         } else if !is_ct {
@@ -248,7 +259,12 @@ impl<'a> fmt::Display for ConstantTimeResultForFunction<'a> {
                 Some(ConstantTimeResultForPath::IsConstantTime) => panic!("first_error_or_violation shouldn't return an IsConstantTime"),
                 Some(ConstantTimeResultForPath::NotConstantTime { .. }) => panic!("we counted no ct violations, but now somehow found one"),
                 Some(ConstantTimeResultForPath::OtherError { full_message, .. }) => {
-                    writeln!(f, "First error encountered:\n\n{}", full_message)?;
+                    if let Some(filename) = &self.error_filename {
+                        writeln!(f, "All errors have been logged to {}", filename)?;
+                        writeln!(f, "  and the first error encountered is described below:\n\n{}", full_message)?;
+                    } else {
+                        writeln!(f, "First error encountered:\n\n{}", full_message)?;
+                    }
                 },
             }
         } else {
@@ -360,6 +376,19 @@ pub fn check_for_ct_violation<'p>(
         &func.name
     };
     let mut path_results = Vec::new();
+    let error_filename = if keep_going {
+        use chrono::prelude::Utc;
+        let time = Utc::now().format("%Y-%m-%d_%H:%M:%S").to_string();
+        Some(format!("pitchfork_errors_{}.log", time))
+    } else {
+        None
+    };
+    let mut error_file = error_filename.as_ref().map(|filename| {
+        use std::fs::File;
+        use std::path::Path;
+        File::create(&Path::new(filename))
+            .unwrap_or_else(|e| panic!("Failed to open file {} to log errors: {}", filename, e))
+    });
     loop {
         match em.next() {
             Some(Ok(_)) => {
@@ -374,18 +403,20 @@ pub fn check_for_ct_violation<'p>(
                     // add our own Pitchfork-specific logging advice
                     full_message.push_str("note: for pitchfork-related issues, you might try `RUST_LOG=info,haybale_pitchfork,haybale`.");
                 }
+                if let Some(ref mut file) = error_file {
+                    use std::io::Write;
+                    write!(file, "==================\n\n{}\n\n", full_message)
+                        .unwrap_or_else(|e| warn!("Failed to write an error message to file: {}", e));
+                }
                 if full_message.contains("Constant-time violation:") {
                     info!("Found a constant-time violation on this path");
                     path_results.push(ConstantTimeResultForPath::NotConstantTime { violation_message: full_message });
-                    if !keep_going {
-                        break;
-                    }
                 } else {
                     info!("Encountered an error (other than a constant-time violation) on this path: {}", error);
                     path_results.push(ConstantTimeResultForPath::OtherError { error, full_message });
-                    if !keep_going {
-                        break;
-                    }
+                }
+                if !keep_going {
+                    break;
                 }
             },
             None => break,
@@ -400,6 +431,7 @@ pub fn check_for_ct_violation<'p>(
         mangled_funcname,
         path_results,
         block_coverage,
+        error_filename,
     }
 }
 
