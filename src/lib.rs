@@ -379,7 +379,7 @@ pub fn check_for_ct_violation<'p>(
     let error_filename = if keep_going {
         use chrono::prelude::Utc;
         let time = Utc::now().format("%Y-%m-%d_%H:%M:%S").to_string();
-        Some(format!("pitchfork_errors_{}.log", time))
+        Some(format!("pitchfork_errors_{}_{}.log", funcname, time))
     } else {
         None
     };
