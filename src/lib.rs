@@ -105,7 +105,7 @@ impl<'a> ConstantTimeResultForFunction<'a> {
                 ConstantTimeResultForPath::IsConstantTime => path_stats.num_ct_paths += 1,
                 ConstantTimeResultForPath::NotConstantTime { .. } => path_stats.num_ct_violations += 1,
                 ConstantTimeResultForPath::OtherError { error: Error::Unsat, .. } => path_stats.num_unsats += 1,
-                ConstantTimeResultForPath::OtherError { error: Error::LoopBoundExceeded, .. } => path_stats.num_loop_bound_exceeded += 1,
+                ConstantTimeResultForPath::OtherError { error: Error::LoopBoundExceeded(_), .. } => path_stats.num_loop_bound_exceeded += 1,
                 ConstantTimeResultForPath::OtherError { error: Error::NullPointerDereference, .. } => path_stats.num_null_ptr_deref += 1,
                 ConstantTimeResultForPath::OtherError { error: Error::FunctionNotFound(_), .. } => path_stats.num_function_not_found += 1,
                 ConstantTimeResultForPath::OtherError { error: Error::SolverError(_), .. } => path_stats.num_solver_errors += 1,
