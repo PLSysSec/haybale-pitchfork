@@ -321,15 +321,12 @@ impl<'a> InitializationContext<'a> {
         addr: &'a secret::BV,
         data: AbstractData,
         ty: &'a Type,
-        project: &Project,
-        sd: &StructDescriptions,
     ) -> Result<usize> {
-        self.initialize_cad_in_memory(ctx, addr, &data.to_complete(ty, project, sd), Some(ty))
+        self.initialize_cad_in_memory(ctx, addr, &data.to_complete(ty, ctx.proj, ctx.sd), Some(ty))
     }
 
     /// Like `initialize_data_in_memory`, but takes a `CompleteAbstractData`
-    /// instead of an `AbstractData`, and thus doesn't need the `Project` or
-    /// `StructDescriptions`.
+    /// instead of an `AbstractData`.
     ///
     /// Also, `ty` is optional here. As before, `ty` represents the type of the
     /// pointed-to object, not the type of `addr`. In this function, `ty` is used

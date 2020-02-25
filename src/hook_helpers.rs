@@ -145,6 +145,6 @@ pub fn reinitialize_pointee<'p>(
         ty => return Err(Error::OtherError(format!("reinitialize_pointee: expected `pointer` to be a pointer, got {:?}", ty))),
     };
     let mut allocationctx = allocation::Context::new(proj, state, sd);
-    allocation::InitializationContext::blank().initialize_data_in_memory(&mut allocationctx, &ptr, ad, &pointee_ty, proj, sd)?;
+    allocation::InitializationContext::blank().initialize_data_in_memory(&mut allocationctx, &ptr, ad, &pointee_ty)?;
     Ok(())
 }
