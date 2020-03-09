@@ -2,13 +2,22 @@ use haybale_pitchfork::*;
 use std::path::Path;
 
 fn init_logging() {
-    // capture log messages with test harness
+    // since our tests will run with `progress_updates == false`,
+    // we are responsible for capturing log messages ourselves.
     let _ = env_logger::builder().is_test(true).try_init();
 }
 
 fn get_project() -> Project {
     Project::from_bc_path(&Path::new("tests/bcfiles/ct.bc"))
         .unwrap_or_else(|e| panic!("Failed to create project: {}", e))
+}
+
+fn pitchfork_config() -> PitchforkConfig {
+    let mut pconfig = PitchforkConfig::default();
+    pconfig.keep_going = true;
+    pconfig.dump_errors = false;
+    pconfig.progress_updates = false;
+    pconfig
 }
 
 fn assert_no_ct_violation(res: ConstantTimeResultForFunction) {
@@ -42,7 +51,7 @@ fn assert_is_ct_violation(res: ConstantTimeResultForFunction) {
 fn ct_simple() {
     init_logging();
     let project = get_project();
-    let result = check_for_ct_violation_in_inputs("ct_simple", &project, Config::default(), true);
+    let result = check_for_ct_violation_in_inputs("ct_simple", &project, Config::default(), &pitchfork_config());
     assert_no_ct_violation(result);
 }
 
@@ -50,7 +59,7 @@ fn ct_simple() {
 fn ct_simple2() {
     init_logging();
     let project = get_project();
-    let result = check_for_ct_violation_in_inputs("ct_simple2", &project, Config::default(), true);
+    let result = check_for_ct_violation_in_inputs("ct_simple2", &project, Config::default(), &pitchfork_config());
     assert_no_ct_violation(result);
 }
 
@@ -58,7 +67,7 @@ fn ct_simple2() {
 fn notct_branch() {
     init_logging();
     let project = get_project();
-    let result = check_for_ct_violation_in_inputs("notct_branch", &project, Config::default(), true);
+    let result = check_for_ct_violation_in_inputs("notct_branch", &project, Config::default(), &pitchfork_config());
     assert_is_ct_violation(result);
 }
 
@@ -66,7 +75,7 @@ fn notct_branch() {
 fn notct_mem() {
     init_logging();
     let project = get_project();
-    let result = check_for_ct_violation_in_inputs("notct_mem", &project, Config::default(), true);
+    let result = check_for_ct_violation_in_inputs("notct_mem", &project, Config::default(), &pitchfork_config());
     assert_is_ct_violation(result);
 }
 
@@ -80,7 +89,7 @@ fn notct_truepath() {
         Some(vec![AbstractData::sec_i32(), AbstractData::sec_i32(), AbstractData::pub_i32(AbstractValue::Unconstrained)]),
         &StructDescriptions::new(),
         Config::default(),
-        true,
+        &pitchfork_config(),
     );
     assert_is_ct_violation(result);
 }
@@ -95,7 +104,7 @@ fn notct_falsepath() {
         Some(vec![AbstractData::sec_i32(), AbstractData::sec_i32(), AbstractData::pub_i32(AbstractValue::Unconstrained)]),
         &StructDescriptions::new(),
         Config::default(),
-        true,
+        &pitchfork_config(),
     );
     assert_is_ct_violation(result);
 }
@@ -111,7 +120,7 @@ fn two_ct_violations() {
         Some(vec![AbstractData::sec_i32(), AbstractData::sec_i32(), AbstractData::pub_i32(AbstractValue::Unconstrained)]),
         &StructDescriptions::new(),
         Config::default(),
-        true,
+        &pitchfork_config(),
     );
     let path_stats = result.path_statistics();
     assert_eq!(path_stats.num_ct_paths, 1, "Expected exactly one 'passing' path, but found {}", path_stats.num_ct_paths);
@@ -125,13 +134,15 @@ fn two_ct_violations() {
     );
 
     // with keep_going = false, we should get only one violation
+    let mut pitchfork_config = pitchfork_config();
+    pitchfork_config.keep_going = false;
     let result = check_for_ct_violation(
         "two_ct_violations",
         &project,
         Some(vec![AbstractData::sec_i32(), AbstractData::sec_i32(), AbstractData::pub_i32(AbstractValue::Unconstrained)]),
         &StructDescriptions::new(),
         Config::default(),
-        false,
+        &pitchfork_config,
     );
     let path_stats = result.path_statistics();
     assert_eq!(path_stats.num_ct_violations, 1, "Expected exactly one ct violation, but found {}", path_stats.num_ct_violations);
@@ -158,9 +169,9 @@ fn ct_onearg() {
         AbstractData::sec_i32(),
         AbstractData::pub_i32(AbstractValue::Unconstrained),
     ];
-    let result = check_for_ct_violation("ct_onearg", &project, Some(publicx_secrety), &StructDescriptions::new(), Config::default(), true);
+    let result = check_for_ct_violation("ct_onearg", &project, Some(publicx_secrety), &StructDescriptions::new(), Config::default(), &pitchfork_config());
     assert_no_ct_violation(result);
-    let result = check_for_ct_violation("ct_onearg", &project, Some(secretx_publicy), &StructDescriptions::new(), Config::default(), true);
+    let result = check_for_ct_violation("ct_onearg", &project, Some(secretx_publicy), &StructDescriptions::new(), Config::default(), &pitchfork_config());
     assert_is_ct_violation(result);
 }
 
@@ -171,7 +182,7 @@ fn ct_secrets() {
     let arg = vec![
         AbstractData::pub_pointer_to(AbstractData::array_of(AbstractData::sec_i32(), 100)),
     ];
-    let result = check_for_ct_violation("ct_secrets", &project, Some(arg), &StructDescriptions::new(), Config::default(), true);
+    let result = check_for_ct_violation("ct_secrets", &project, Some(arg), &StructDescriptions::new(), Config::default(), &pitchfork_config());
     assert_no_ct_violation(result);
 }
 
@@ -182,7 +193,7 @@ fn notct_secrets() {
     let arg = vec![
         AbstractData::pub_pointer_to(AbstractData::array_of(AbstractData::sec_i32(), 100)),
     ];
-    let result = check_for_ct_violation("notct_secrets", &project, Some(arg), &StructDescriptions::new(), Config::default(), true);
+    let result = check_for_ct_violation("notct_secrets", &project, Some(arg), &StructDescriptions::new(), Config::default(), &pitchfork_config());
     assert_is_ct_violation(result);
 }
 
@@ -201,7 +212,7 @@ fn ct_struct() {
         AbstractData::pub_pointer_to(AbstractData::array_of(AbstractData::pub_i32(AbstractValue::Unconstrained), 100)),
         AbstractData::pub_pointer_to(struct_partially_secret()),
     ];
-    let result = check_for_ct_violation("ct_struct", &project, Some(args), &StructDescriptions::new(), Config::default(), true);
+    let result = check_for_ct_violation("ct_struct", &project, Some(args), &StructDescriptions::new(), Config::default(), &pitchfork_config());
     assert_no_ct_violation(result);
     // now check again, using `default()` and `StructDescriptions`
     let args = vec![
@@ -209,10 +220,10 @@ fn ct_struct() {
         AbstractData::default(),
     ];
     let sd = std::iter::once(("struct.PartiallySecret".to_owned(), struct_partially_secret())).collect();
-    let result = check_for_ct_violation("ct_struct", &project, Some(args), &sd, Config::default(), true);
+    let result = check_for_ct_violation("ct_struct", &project, Some(args), &sd, Config::default(), &pitchfork_config());
     assert_no_ct_violation(result);
     // now check again, using `args==None` and `StructDescriptions`
-    let result = check_for_ct_violation("ct_struct", &project, None, &sd, Config::default(), true);
+    let result = check_for_ct_violation("ct_struct", &project, None, &sd, Config::default(), &pitchfork_config());
     assert_no_ct_violation(result);
 }
 
@@ -224,7 +235,7 @@ fn notct_struct() {
         AbstractData::pub_pointer_to(AbstractData::array_of(AbstractData::pub_i32(AbstractValue::Unconstrained), 100)),
         AbstractData::pub_pointer_to(struct_partially_secret()),
     ];
-    let result = check_for_ct_violation("notct_struct", &project, Some(args), &StructDescriptions::new(), Config::default(), true);
+    let result = check_for_ct_violation("notct_struct", &project, Some(args), &StructDescriptions::new(), Config::default(), &pitchfork_config());
     assert_is_ct_violation(result);
     // now check again, using `default()` and `StructDescriptions`
     let args = vec![
@@ -232,10 +243,10 @@ fn notct_struct() {
         AbstractData::default(),
     ];
     let sd = std::iter::once(("struct.PartiallySecret".to_owned(), struct_partially_secret())).collect();
-    let result = check_for_ct_violation("notct_struct", &project, Some(args), &sd, Config::default(), true);
+    let result = check_for_ct_violation("notct_struct", &project, Some(args), &sd, Config::default(), &pitchfork_config());
     assert_is_ct_violation(result);
     // now check again, using `args==None` and `StructDescriptions`
-    let result = check_for_ct_violation("notct_struct", &project, None, &sd, Config::default(), true);
+    let result = check_for_ct_violation("notct_struct", &project, None, &sd, Config::default(), &pitchfork_config());
     assert_is_ct_violation(result);
 }
 
@@ -248,7 +259,7 @@ fn notct_maybenull_null() {
         AbstractData::pub_maybe_null_pointer_to(AbstractData::array_of(AbstractData::pub_i32(AbstractValue::Unconstrained), 100)),
         AbstractData::pub_pointer_to(struct_partially_secret()),
     ];
-    let result = check_for_ct_violation("notct_maybenull_null", &project, Some(args), &StructDescriptions::new(), Config::default(), true);
+    let result = check_for_ct_violation("notct_maybenull_null", &project, Some(args), &StructDescriptions::new(), Config::default(), &pitchfork_config());
     assert_is_ct_violation(result);
 }
 
@@ -261,7 +272,7 @@ fn notct_maybenull_notnull() {
         AbstractData::pub_maybe_null_pointer_to(AbstractData::array_of(AbstractData::pub_i32(AbstractValue::Unconstrained), 100)),
         AbstractData::pub_pointer_to(struct_partially_secret()),
     ];
-    let result = check_for_ct_violation("notct_maybenull_notnull", &project, Some(args), &StructDescriptions::new(), Config::default(), true);
+    let result = check_for_ct_violation("notct_maybenull_notnull", &project, Some(args), &StructDescriptions::new(), Config::default(), &pitchfork_config());
     assert_is_ct_violation(result);
 }
 
@@ -276,7 +287,7 @@ fn ptr_to_ptr_to_secrets() -> AbstractData {
 fn ct_doubleptr() {
     init_logging();
     let project = get_project();
-    let result = check_for_ct_violation("ct_doubleptr", &project, Some(vec![ptr_to_ptr_to_secrets()]), &StructDescriptions::new(), Config::default(), true);
+    let result = check_for_ct_violation("ct_doubleptr", &project, Some(vec![ptr_to_ptr_to_secrets()]), &StructDescriptions::new(), Config::default(), &pitchfork_config());
     assert_no_ct_violation(result);
 }
 
@@ -284,7 +295,7 @@ fn ct_doubleptr() {
 fn notct_doubleptr() {
     init_logging();
     let project = get_project();
-    let result = check_for_ct_violation("notct_doubleptr", &project, Some(vec![ptr_to_ptr_to_secrets()]), &StructDescriptions::new(), Config::default(), true);
+    let result = check_for_ct_violation("notct_doubleptr", &project, Some(vec![ptr_to_ptr_to_secrets()]), &StructDescriptions::new(), Config::default(), &pitchfork_config());
     assert_is_ct_violation(result);
 }
 
@@ -296,7 +307,7 @@ fn ct_struct_voidptr() {
         AbstractData::pub_pointer_to(AbstractData::array_of(AbstractData::pub_i32(AbstractValue::Unconstrained), 100)),
         AbstractData::pub_pointer_to(AbstractData::void_override(None, struct_partially_secret())),
     ];
-    let result = check_for_ct_violation("ct_struct_voidptr", &project, Some(args), &StructDescriptions::new(), Config::default(), true);
+    let result = check_for_ct_violation("ct_struct_voidptr", &project, Some(args), &StructDescriptions::new(), Config::default(), &pitchfork_config());
     assert_no_ct_violation(result);
 }
 
@@ -308,7 +319,7 @@ fn notct_struct_voidptr() {
         AbstractData::pub_pointer_to(AbstractData::array_of(AbstractData::pub_i32(AbstractValue::Unconstrained), 100)),
         AbstractData::pub_pointer_to(AbstractData::void_override(None, struct_partially_secret())),
     ];
-    let result = check_for_ct_violation("notct_struct_voidptr", &project, Some(args), &StructDescriptions::new(), Config::default(), true);
+    let result = check_for_ct_violation("notct_struct_voidptr", &project, Some(args), &StructDescriptions::new(), Config::default(), &pitchfork_config());
     assert_is_ct_violation(result);
 }
 
@@ -341,7 +352,7 @@ fn indirectly_recursive_struct() {
         AbstractData::pub_pointer_to(struct_parent_secretx()),
     ];
     let sd = std::iter::once(("struct.Child".to_owned(), struct_child())).collect();
-    let result = check_for_ct_violation("indirectly_recursive_struct", &project, Some(args), &sd, Config::default(), true);
+    let result = check_for_ct_violation("indirectly_recursive_struct", &project, Some(args), &sd, Config::default(), &pitchfork_config());
     assert_is_ct_violation(result);
 }
 
@@ -354,7 +365,7 @@ fn related_args() {
         AbstractData::pub_i32(AbstractValue::UnsignedLessThan("length".to_owned())),
         AbstractData::sec_i32(),
     ];
-    let result = check_for_ct_violation("related_args", &project, Some(args), &StructDescriptions::new(), Config::default(), true);
+    let result = check_for_ct_violation("related_args", &project, Some(args), &StructDescriptions::new(), Config::default(), &pitchfork_config());
     assert_no_ct_violation(result);
 
     // but if we don't have the constraint, then there should be a violation
@@ -363,7 +374,7 @@ fn related_args() {
         AbstractData::default(),
         AbstractData::sec_i32(),
     ];
-    let result = check_for_ct_violation("related_args", &project, Some(args), &StructDescriptions::new(), Config::default(), true);
+    let result = check_for_ct_violation("related_args", &project, Some(args), &StructDescriptions::new(), Config::default(), &pitchfork_config());
     assert_is_ct_violation(result);
 }
 
@@ -376,7 +387,7 @@ fn struct_related_fields() {
         AbstractData::pub_i32(AbstractValue::UnsignedLessThan("length".to_owned())),
         AbstractData::sec_i32(),
     ]))];
-    let result = check_for_ct_violation("struct_related_fields", &project, Some(args), &StructDescriptions::new(), Config::default(), true);
+    let result = check_for_ct_violation("struct_related_fields", &project, Some(args), &StructDescriptions::new(), Config::default(), &pitchfork_config());
     assert_no_ct_violation(result);
 
     // but if we don't have the constraint, then there should be a violation
@@ -385,6 +396,6 @@ fn struct_related_fields() {
         AbstractData::default(),
         AbstractData::sec_i32(),
     ]))];
-    let result = check_for_ct_violation("struct_related_fields", &project, Some(args), &StructDescriptions::new(), Config::default(), true);
+    let result = check_for_ct_violation("struct_related_fields", &project, Some(args), &StructDescriptions::new(), Config::default(), &pitchfork_config());
     assert_is_ct_violation(result);
 }

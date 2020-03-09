@@ -7,6 +7,8 @@ mod default_hook;
 use default_hook::pitchfork_default_hook;
 pub mod hook_helpers;
 pub mod secret;
+mod logging;
+mod progress;
 
 use colored::*;
 use haybale::{layout, symex_function, backend::Backend, ExecutionManager, State, ReturnValue};
@@ -20,6 +22,7 @@ use std::fmt;
 
 /// Holds information about the results of a constant-time analysis of a single
 /// path.
+#[derive(Clone, Debug)]
 pub enum ConstantTimeResultForPath {
     IsConstantTime,
     NotConstantTime {
@@ -88,31 +91,9 @@ impl<'a> ConstantTimeResultForFunction<'a> {
     }
 
     pub fn path_statistics(&self) -> PathStatistics {
-        let mut path_stats = PathStatistics {
-            num_ct_paths: 0,
-            num_ct_violations: 0,
-            num_unsats: 0,
-            num_loop_bound_exceeded: 0,
-            num_null_ptr_deref: 0,
-            num_function_not_found: 0,
-            num_solver_errors: 0,
-            num_unsupported_instruction: 0,
-            num_malformed_instruction: 0,
-            num_other_errors: 0,
-        };
+        let mut path_stats = PathStatistics::new();
         for result in &self.path_results {
-            match result {
-                ConstantTimeResultForPath::IsConstantTime => path_stats.num_ct_paths += 1,
-                ConstantTimeResultForPath::NotConstantTime { .. } => path_stats.num_ct_violations += 1,
-                ConstantTimeResultForPath::OtherError { error: Error::Unsat, .. } => path_stats.num_unsats += 1,
-                ConstantTimeResultForPath::OtherError { error: Error::LoopBoundExceeded(_), .. } => path_stats.num_loop_bound_exceeded += 1,
-                ConstantTimeResultForPath::OtherError { error: Error::NullPointerDereference, .. } => path_stats.num_null_ptr_deref += 1,
-                ConstantTimeResultForPath::OtherError { error: Error::FunctionNotFound(_), .. } => path_stats.num_function_not_found += 1,
-                ConstantTimeResultForPath::OtherError { error: Error::SolverError(_), .. } => path_stats.num_solver_errors += 1,
-                ConstantTimeResultForPath::OtherError { error: Error::UnsupportedInstruction(_), .. } => path_stats.num_unsupported_instruction += 1,
-                ConstantTimeResultForPath::OtherError { error: Error::MalformedInstruction(_), .. } => path_stats.num_malformed_instruction += 1,
-                ConstantTimeResultForPath::OtherError { error: Error::OtherError(_), .. } => path_stats.num_other_errors += 1,
-            }
+            path_stats.add_path_result(result);
         }
         path_stats
     }
@@ -120,6 +101,7 @@ impl<'a> ConstantTimeResultForFunction<'a> {
 
 /// Some statistics which can be computed from a
 /// [`ConstantTimeResultForFunction`](struct.ConstantTimeResultForFunction.html).
+#[derive(PartialEq, Eq, Clone, Debug)]
 pub struct PathStatistics {
     /// How many paths "passed", that is, had no error or constant-time violation
     pub num_ct_paths: usize,
@@ -143,6 +125,102 @@ pub struct PathStatistics {
     pub num_other_errors: usize,
 }
 
+impl PathStatistics {
+    /// A fresh `PathStatistics` with all zeroes
+    pub(crate) fn new() -> Self {
+        Self {
+            num_ct_paths: 0,
+            num_ct_violations: 0,
+            num_unsats: 0,
+            num_loop_bound_exceeded: 0,
+            num_null_ptr_deref: 0,
+            num_function_not_found: 0,
+            num_solver_errors: 0,
+            num_unsupported_instruction: 0,
+            num_malformed_instruction: 0,
+            num_other_errors: 0,
+        }
+    }
+
+    pub(crate) fn add_path_result(&mut self, path_result: &ConstantTimeResultForPath) {
+        match path_result {
+            ConstantTimeResultForPath::IsConstantTime => self.num_ct_paths += 1,
+            ConstantTimeResultForPath::NotConstantTime { .. } => self.num_ct_violations += 1,
+            ConstantTimeResultForPath::OtherError { error: Error::Unsat, .. } => self.num_unsats += 1,
+            ConstantTimeResultForPath::OtherError { error: Error::LoopBoundExceeded(_), .. } => self.num_loop_bound_exceeded += 1,
+            ConstantTimeResultForPath::OtherError { error: Error::NullPointerDereference, .. } => self.num_null_ptr_deref += 1,
+            ConstantTimeResultForPath::OtherError { error: Error::FunctionNotFound(_), .. } => self.num_function_not_found += 1,
+            ConstantTimeResultForPath::OtherError { error: Error::SolverError(_), .. } => self.num_solver_errors += 1,
+            ConstantTimeResultForPath::OtherError { error: Error::UnsupportedInstruction(_), .. } => self.num_unsupported_instruction += 1,
+            ConstantTimeResultForPath::OtherError { error: Error::MalformedInstruction(_), .. } => self.num_malformed_instruction += 1,
+            ConstantTimeResultForPath::OtherError { error: Error::OtherError(_), .. } => self.num_other_errors += 1,
+        }
+    }
+}
+
+impl fmt::Display for PathStatistics {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        // We always show "verified paths" and "constant-time violations found"
+        writeln!(f, "verified paths: {}",
+            if self.num_ct_paths > 0 {
+                self.num_ct_paths.to_string().green()
+            } else {
+                self.num_ct_paths.to_string().normal()
+            }
+        )?;
+        writeln!(f, "constant-time violations found: {}",
+            if self.num_ct_violations > 0 {
+                self.num_ct_violations.to_string().red()
+            } else {
+                self.num_ct_violations.to_string().normal()
+            }
+        )?;
+
+        // For the other error types, we only show the entry if it's > 0
+        if self.num_null_ptr_deref > 0 {
+            writeln!(f, "null-pointer dereferences found: {}",
+                self.num_null_ptr_deref.to_string().red()
+            )?;
+        }
+        if self.num_function_not_found > 0 {
+            writeln!(f, "function-not-found errors: {}",
+                self.num_function_not_found.to_string().red()
+            )?;
+        }
+        if self.num_unsupported_instruction > 0 {
+            writeln!(f, "unsupported-instruction errors: {}",
+                self.num_unsupported_instruction.to_string().red()
+            )?;
+        }
+        if self.num_malformed_instruction > 0 {
+            writeln!(f, "malformed-instruction errors: {}",
+                self.num_malformed_instruction.to_string().red()
+            )?;
+        }
+        if self.num_unsats > 0 {
+            writeln!(f, "unsat errors: {}",
+                self.num_unsats.to_string().red()
+            )?;
+        }
+        if self.num_loop_bound_exceeded > 0 {
+            writeln!(f, "paths exceeding the loop bound: {}",
+                self.num_loop_bound_exceeded.to_string().red()
+            )?;
+        }
+        if self.num_solver_errors > 0 {
+            writeln!(f, "solver errors, including timeouts: {}",
+                self.num_solver_errors.to_string().red()
+            )?;
+        }
+        if self.num_other_errors > 0 {
+            writeln!(f, "other errors: {}",
+                self.num_other_errors.to_string().red()
+            )?;
+        }
+        Ok(())
+    }
+}
+
 /// Produces a pretty (even colored!) description of the
 /// `ConstantTimeResultForFunction`, including selected coverage statistics
 impl<'a> fmt::Display for ConstantTimeResultForFunction<'a> {
@@ -155,64 +233,7 @@ impl<'a> fmt::Display for ConstantTimeResultForFunction<'a> {
         }
 
         let path_stats = self.path_statistics();
-
-        // We always show "verified paths" and "constant-time violations found"
-        writeln!(f, "verified paths: {}",
-            if path_stats.num_ct_paths > 0 {
-                path_stats.num_ct_paths.to_string().green()
-            } else {
-                path_stats.num_ct_paths.to_string().normal()
-            }
-        )?;
-        writeln!(f, "constant-time violations found: {}",
-            if path_stats.num_ct_violations > 0 {
-                path_stats.num_ct_violations.to_string().red()
-            } else {
-                path_stats.num_ct_violations.to_string().normal()
-            }
-        )?;
-
-        // For the other error types, we only show the entry if it's > 0
-        if path_stats.num_null_ptr_deref > 0 {
-            writeln!(f, "null-pointer dereferences found: {}",
-                path_stats.num_null_ptr_deref.to_string().red()
-            )?;
-        }
-        if path_stats.num_function_not_found > 0 {
-            writeln!(f, "function-not-found errors: {}",
-                path_stats.num_function_not_found.to_string().red()
-            )?;
-        }
-        if path_stats.num_unsupported_instruction > 0 {
-            writeln!(f, "unsupported-instruction errors: {}",
-                path_stats.num_unsupported_instruction.to_string().red()
-            )?;
-        }
-        if path_stats.num_malformed_instruction > 0 {
-            writeln!(f, "malformed-instruction errors: {}",
-                path_stats.num_malformed_instruction.to_string().red()
-            )?;
-        }
-        if path_stats.num_unsats > 0 {
-            writeln!(f, "unsat errors: {}",
-                path_stats.num_unsats.to_string().red()
-            )?;
-        }
-        if path_stats.num_loop_bound_exceeded > 0 {
-            writeln!(f, "paths exceeding the loop bound: {}",
-                path_stats.num_loop_bound_exceeded.to_string().red()
-            )?;
-        }
-        if path_stats.num_solver_errors > 0 {
-            writeln!(f, "solver errors, including timeouts: {}",
-                path_stats.num_solver_errors.to_string().red()
-            )?;
-        }
-        if path_stats.num_other_errors > 0 {
-            writeln!(f, "other errors: {}",
-                path_stats.num_other_errors.to_string().red()
-            )?;
-        }
+        path_stats.fmt(f)?;
         writeln!(f)?;
 
         // is the function entirely verified (no CT violations or other errors)?
@@ -275,19 +296,104 @@ impl<'a> fmt::Display for ConstantTimeResultForFunction<'a> {
     }
 }
 
+/// `pitchfork`-specific configuration options, in addition to the configuration
+/// options in `haybale::Config`.
+///
+/// Like `haybale::Config`, `PitchforkConfig` uses the (new-to-Rust-1.40)
+/// `#[non_exhaustive]` attribute to indicate that fields may be added even in a
+/// point release (that is, without incrementing the major or minor version).
+/// Users should start with `PitchforkConfig::default()` and then change the
+/// settings they want to change.
+#[derive(Clone, Debug)]
+#[non_exhaustive]
+pub struct PitchforkConfig {
+    /// If `true`, then even if we encounter an error or violation, we will
+    /// continue exploring as many paths as we can in the function before
+    /// returning, possibly reporting many different errors and/or violations.
+    /// (Although we can't keep going on the errored path itself, we can still try to
+    /// explore other paths that don't contain the error.)
+    /// If `false`, then as soon as we encounter an error or violation, we will quit
+    /// and return the results we have.
+    /// It is recommended to only use `keep_going == true` in conjunction with solver
+    /// query timeouts; see the `solver_query_timeout` setting in `Config`.
+    ///
+    /// Default is `false`.
+    pub keep_going: bool,
+
+    /// Even if `keep_going` is set to `true`, the `Display` impl for
+    /// `ConstantTimeResultForFunction` only displays a summary of the kinds of
+    /// errors encountered, and full details about a single error.
+    /// With `dump_errors == true`, `pitchfork` will dump detailed descriptions
+    /// of all errors encountered to a file.
+    ///
+    /// This setting only applies if `keep_going == true`; it is completely ignored
+    /// if `keep_going == false`.
+    ///
+    /// Default is `true`, meaning that if `keep_going` is enabled, then detailed
+    /// error descriptions will be dumped to a file.
+    pub dump_errors: bool,
+
+    /// If `true`, `pitchfork` will provide detailed progress updates in a
+    /// continuously-updated terminal display. This includes counts of paths
+    /// verified / errors encountered / warnings generated; the current code
+    /// location being executed (in terms of both LLVM and source if available),
+    /// the most recent log message generated, etc.
+    ///
+    /// Also, if `true`, log messages other than the most recent will not be
+    /// shown in the terminal; instead, all log messages will be routed to a
+    /// file.
+    ///
+    /// `progress_updates == true` requires `pitchfork` to take control of the
+    /// global logger; users should not initialize their own logging backends
+    /// such as `env_logger`.
+    /// On the other hand, if `progress_updates == false`, `pitchfork` will not
+    /// touch the global logger, and it is up to users to initialize a logging
+    /// backend such as `env_logger` if they want to see log messages.
+    ///
+    /// This setting requires the `progress-updates` crate feature, which is
+    /// enabled by default. If the `progress-updates` feature is disabled, this
+    /// setting will be treated as `false` regardless of its actual value.
+    ///
+    /// If you encounter a Rust panic (as opposed to merely a `haybale::Error`),
+    /// you may want to temporarily disable `progress_updates` for debugging, in
+    /// order to get a clear panic message; otherwise, the
+    /// progress-display-updater thread may interfere with the printing of the
+    /// panic message.
+    ///
+    /// Default is `true`.
+    pub progress_updates: bool,
+
+    /// If `progress_updates == true`, `pitchfork` takes control of the global
+    /// logger, as noted in docs there.
+    /// This setting controls which log messages will be recorded in the
+    /// designated log file: messages with `DEBUG` and higher priority (`true`),
+    /// or only messages with `INFO` and higher priority (`false`).
+    /// Note that `DEBUG`-level messages also require a non-release build.
+    ///
+    /// If `progress_updates == false`, this setting has no effect; you should
+    /// configure debug logging via your own chosen logging backend such as
+    /// `env_logger`.
+    ///
+    /// Default is `false`.
+    pub debug_logging: bool,
+}
+
+impl Default for PitchforkConfig {
+    fn default() -> Self {
+        Self {
+            keep_going: false,
+            dump_errors: true,
+            progress_updates: true,
+            debug_logging: false,
+        }
+    }
+}
+
 /// Checks whether a function is "constant-time" in its inputs. That is, does the
 /// function ever make branching decisions, or perform address calculations, based
 /// on its inputs.
 ///
-/// `keep_going`: if `true`, then even if we encounter an error or violation, we
-/// will continue exploring as many paths as we can in the function before
-/// returning, possibly reporting many different errors and/or violations.
-/// (Although we can't keep going on the errored path itself, we can still try to
-/// explore other paths that don't contain the error.)
-/// If `false`, then as soon as we encounter an error or violation, we will quit
-/// and return the results we have.
-/// It is recommended to only use `keep_going == true` in conjunction with solver
-/// query timeouts; see the `solver_query_timeout` setting in `Config`.
+/// `pitchfork_config`: see [docs on `PitchforkConfig`](struct.PitchforkConfig.html).
 ///
 /// Other arguments are the same as for
 /// [`haybale::symex_function()`](https://PLSysSec.github.io/haybale/haybale/fn.symex_function.html).
@@ -295,7 +401,7 @@ pub fn check_for_ct_violation_in_inputs<'p>(
     funcname: &'p str,
     project: &'p Project,
     config: Config<'p, secret::Backend>,
-    keep_going: bool,
+    pitchfork_config: &PitchforkConfig,
 ) -> ConstantTimeResultForFunction<'p> {
     lazy_static! {
         static ref BLANK_STRUCT_DESCRIPTIONS: StructDescriptions = StructDescriptions::new();
@@ -303,7 +409,7 @@ pub fn check_for_ct_violation_in_inputs<'p>(
 
     let (func, _) = project.get_func_by_name(funcname).expect("Failed to find function");
     let args = func.parameters.iter().map(|p| AbstractData::sec_integer(layout::size(&p.ty))).collect();
-    check_for_ct_violation(funcname, project, Some(args), &BLANK_STRUCT_DESCRIPTIONS, config, keep_going)
+    check_for_ct_violation(funcname, project, Some(args), &BLANK_STRUCT_DESCRIPTIONS, config, pitchfork_config)
 }
 
 /// Checks whether a function is "constant-time" in the secrets identified by the
@@ -322,8 +428,7 @@ pub fn check_for_ct_violation_in_inputs<'p>(
 /// found while processing an `AbstractData::default()`; for more details, see
 /// [docs on `AbstractData::default()`](struct.AbstractData.html#method.default).
 ///
-/// `keep_going`: see the description of the `keep_going` argument to
-/// [`check_for_ct_violation_in_inputs()`](fn.check_for_ct_violation_in_inputs.html).
+/// `pitchfork_config`: see [docs on `PitchforkConfig`](struct.PitchforkConfig.html).
 ///
 /// Other arguments are the same as for
 /// [`haybale::symex_function()`](https://PLSysSec.github.io/haybale/haybale/fn.symex_function.html).
@@ -333,7 +438,7 @@ pub fn check_for_ct_violation<'p>(
     args: Option<Vec<AbstractData>>,
     sd: &StructDescriptions,
     mut config: Config<'p, secret::Backend>,
-    keep_going: bool,
+    pitchfork_config: &PitchforkConfig,
 ) -> ConstantTimeResultForFunction<'p> {
     // add our uninitialized-function-pointer hook, but don't override the user
     // if they provided a different uninitialized-function-pointer hook
@@ -346,6 +451,12 @@ pub fn check_for_ct_violation<'p>(
     if !config.function_hooks.has_default_hook() {
         config.function_hooks.add_default_hook(&pitchfork_default_hook);
     }
+
+    let mut progress_updater: Box<dyn ProgressUpdater<secret::Backend>> = if pitchfork_config.progress_updates {
+        Box::new(initialize_progress_updater(funcname, &mut config, pitchfork_config.debug_logging))
+    } else {
+        Box::new(NullProgressUpdater { })
+    };
 
     // first sanity-check the StructDescriptions, ensure that all its struct names are valid
     let sd_names: HashSet<_> = sd.iter().map(|(name, _)| name).collect();
@@ -376,7 +487,7 @@ pub fn check_for_ct_violation<'p>(
         &func.name
     };
     let mut path_results = Vec::new();
-    let error_filename = if keep_going {
+    let error_filename = if pitchfork_config.keep_going && pitchfork_config.dump_errors {
         use chrono::prelude::Utc;
         let time = Utc::now().format("%Y-%m-%d_%H:%M:%S").to_string();
         Some(format!("pitchfork_errors_{}_{}.log", funcname, time))
@@ -387,35 +498,41 @@ pub fn check_for_ct_violation<'p>(
         use std::fs::File;
         use std::path::Path;
         File::create(&Path::new(filename))
-            .unwrap_or_else(|e| panic!("Failed to open file {} to log errors: {}", filename, e))
+            .unwrap_or_else(|e| panic!("Failed to open file {} to dump errors: {}", filename, e))
     });
+
     loop {
         match em.next() {
             Some(Ok(_)) => {
                 info!("Finished a path with no errors or violations");
                 blocks_seen.update_with_current_path(&em);
-                path_results.push(ConstantTimeResultForPath::IsConstantTime);
+                let path_result = ConstantTimeResultForPath::IsConstantTime;
+                progress_updater.update_path_result(&path_result);
+                path_results.push(path_result);
             },
             Some(Err(error)) => {
                 blocks_seen.update_with_current_path(&em);
                 let mut full_message = em.state().full_error_message_with_context(error.clone());
-                if full_message.contains("RUST_LOG=haybale") {
+                if full_message.contains("debug-level logging messages") {
                     // add our own Pitchfork-specific logging advice
-                    full_message.push_str("note: for pitchfork-related issues, you might try `RUST_LOG=info,haybale_pitchfork,haybale`.");
+                    full_message.push_str("note: To enable debug-level logging messages when `progress_updates` is\n");
+                    full_message.push_str("      enabled in `PitchforkConfig`, use the `debug_logging` setting\n");
                 }
                 if let Some(ref mut file) = error_file {
                     use std::io::Write;
                     write!(file, "==================\n\n{}\n\n", full_message)
                         .unwrap_or_else(|e| warn!("Failed to write an error message to file: {}", e));
                 }
-                if full_message.contains("Constant-time violation:") {
+                let path_result = if full_message.contains("Constant-time violation:") {
                     info!("Found a constant-time violation on this path");
-                    path_results.push(ConstantTimeResultForPath::NotConstantTime { violation_message: full_message });
+                    ConstantTimeResultForPath::NotConstantTime { violation_message: full_message }
                 } else {
                     info!("Encountered an error (other than a constant-time violation) on this path: {}", error);
-                    path_results.push(ConstantTimeResultForPath::OtherError { error, full_message });
-                }
-                if !keep_going {
+                    ConstantTimeResultForPath::OtherError { error, full_message }
+                };
+                progress_updater.update_path_result(&path_result);
+                path_results.push(path_result);
+                if !pitchfork_config.keep_going {
                     break;
                 }
             },
@@ -425,6 +542,8 @@ pub fn check_for_ct_violation<'p>(
 
     let block_coverage = blocks_seen.full_coverage_stats();
     info!("Block coverage of toplevel function ({:?}): {:.1}%", funcname, 100.0 * block_coverage.get(mangled_funcname).unwrap().percentage);
+
+    progress_updater.finalize();
 
     ConstantTimeResultForFunction {
         funcname,
@@ -441,4 +560,33 @@ fn hook_uninitialized_function_pointer<B: Backend>(
     _call: &dyn IsCall,
 ) -> Result<ReturnValue<B::BV>> {
     Err(Error::OtherError("Call of an uninitialized function pointer".to_owned()))
+}
+
+trait ProgressUpdater<B: Backend> {
+    fn update_progress(&self, state: &State<B>) -> Result<()>;
+    fn update_path_result(&self, path_result: &ConstantTimeResultForPath);
+    fn process_log_message(&self, record: &log::Record) -> std::result::Result<(), Box<dyn std::error::Error + Sync + Send>>;
+    fn finalize(&mut self);
+}
+
+/// a progress-updater which just no-ops all the progress-update functions
+struct NullProgressUpdater { }
+
+impl<B: Backend> ProgressUpdater<B> for NullProgressUpdater {
+    fn update_progress(&self, _state: &State<B>) -> Result<()> { Ok(()) }
+    fn update_path_result(&self, _path_result: &ConstantTimeResultForPath) { }
+    fn process_log_message(&self, _record: &log::Record) -> std::result::Result<(), Box<dyn std::error::Error + Sync + Send>> { Ok(()) }
+    fn finalize(&mut self) { }
+}
+
+// initializes and returns a `progress::ProgressUpdater` if the crate feature is
+// enabled, else initializes and returns a `NullProgressUpdater`
+#[cfg(feature = "progress-updates")]
+fn initialize_progress_updater<B: Backend>(funcname: &str, config: &mut Config<B>, debug_logging: bool) -> progress::ProgressUpdater {
+    // the 'real' implementation is in the `progress` module, which only exists if the `progress_updates` crate feature is enabled
+    progress::initialize_progress_updater(funcname, config, debug_logging)
+}
+#[cfg(not(feature = "progress-updates"))]
+fn initialize_progress_updater<B: Backend>(_funcname: &str, _config: &mut Config<B>, _debug_logging: bool) -> NullProgressUpdater {
+    NullProgressUpdater { }
 }

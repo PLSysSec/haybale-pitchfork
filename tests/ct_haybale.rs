@@ -4,7 +4,8 @@ use haybale_pitchfork::*;
 use std::path::Path;
 
 fn init_logging() {
-    // capture log messages with test harness
+    // since our tests will run with `progress_updates == false`,
+    // we are responsible for capturing log messages ourselves.
     let _ = env_logger::builder().is_test(true).try_init();
 }
 
@@ -13,7 +14,11 @@ pub fn is_constant_time_in_inputs<'p>(
     project: &'p Project,
     config: Config<'p, secret::Backend>
 ) -> bool {
-    check_for_ct_violation_in_inputs(funcname, project, config, false)
+    let mut pitchfork_config = PitchforkConfig::default();
+    pitchfork_config.keep_going = false;
+    pitchfork_config.dump_errors = false;
+    pitchfork_config.progress_updates = false;
+    check_for_ct_violation_in_inputs(funcname, project, config, &pitchfork_config)
         .first_error_or_violation()
         .is_none()
 }
