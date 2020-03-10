@@ -368,7 +368,6 @@ pub struct PitchforkConfig {
     /// This setting controls which log messages will be recorded in the
     /// designated log file: messages with `DEBUG` and higher priority (`true`),
     /// or only messages with `INFO` and higher priority (`false`).
-    /// Note that `DEBUG`-level messages also require a non-release build.
     ///
     /// If `progress_updates == false`, this setting has no effect; you should
     /// configure debug logging via your own chosen logging backend such as
