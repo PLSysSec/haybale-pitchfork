@@ -81,11 +81,15 @@ fn is_or_points_to_secret(proj: &Project, state: &mut State<secret::Backend>, bv
             },
             Type::VectorType { element_type, num_elements } | Type::ArrayType { element_type, num_elements } => {
                 // TODO: this could be made more efficient
-                let bv_width = bv.get_width();
+                let element_bits = match haybale::layout::size_opaque_aware(&**element_type, proj) {
+                    None => return Ok(ArgumentKind::Unknown),
+                    Some(size) => size as u32,
+                };
                 let mut retval = ArgumentKind::Public;
                 for i in 0 .. *num_elements {
-                    let ptr_to_element = bv.add(&state.bv_from_u32(i as u32, bv_width));
-                    match is_or_points_to_secret(proj, state, &ptr_to_element, &**element_type)? {
+                    let i = i as u32;
+                    let element = bv.slice((i+1) * element_bits - 1, i * element_bits);
+                    match is_or_points_to_secret(proj, state, &element, &**element_type)? {
                         ArgumentKind::Secret => return Ok(ArgumentKind::Secret),  // we're done, there's definitely a Secret
                         ArgumentKind::Unknown => retval = ArgumentKind::Unknown,  // keep going, maybe we'll find a Secret later
                         ArgumentKind::Public => {},  // leave in place the previous retval
@@ -95,19 +99,19 @@ fn is_or_points_to_secret(proj: &Project, state: &mut State<secret::Backend>, bv
             },
             Type::StructType { element_types, .. } => {
                 let mut offset_bits = 0;
-                let bv_width = bv.get_width();
                 let mut retval = ArgumentKind::Public;
                 for element_ty in element_types {
-                    let ptr_to_element = bv.add(&state.bv_from_u32(offset_bits / 8, bv_width));
-                    match is_or_points_to_secret(proj, state, &ptr_to_element, element_ty)? {
+                    let element_bits = match haybale::layout::size_opaque_aware(element_ty, proj) {
+                        Some(size) => size as u32,
+                        None => return Ok(ArgumentKind::Unknown),  // we have no way to keep going - we don't know the next offset
+                    };
+                    let element = bv.slice(offset_bits + element_bits - 1, offset_bits);
+                    match is_or_points_to_secret(proj, state, &element, element_ty)? {
                         ArgumentKind::Secret => return Ok(ArgumentKind::Secret),  // we're done, there's definitely a Secret
                         ArgumentKind::Unknown => retval = ArgumentKind::Unknown,  // keep going, maybe we'll find a Secret later
                         ArgumentKind::Public => {},  // leave in place the previous retval
                     }
-                    offset_bits += match haybale::layout::size_opaque_aware(element_ty, proj) {
-                        Some(size) => size as u32,
-                        None => return Ok(ArgumentKind::Unknown),  // we have no way to keep going - we don't know the next offset
-                    };
+                    offset_bits += element_bits;
                     assert_eq!(offset_bits % 8, 0, "Struct offset of {} bits is not a multiple of 8 bits", offset_bits);
                 }
                 Ok(retval)  // this will be Unknown if we ever encountered an Unknown, or Public if everything came back Public
