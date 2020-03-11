@@ -452,10 +452,16 @@ pub fn check_for_ct_violation<'p>(
         config.function_hooks.add_default_hook(&pitchfork_default_hook);
     }
 
-    let log_filename = {
+    let (log_filename, error_filename) = {
         use chrono::prelude::Local;
         let time = Local::now().format("%Y-%m-%d_%H:%M:%S").to_string();
-        format!("pitchfork_log_{}_{}.log", funcname, time)
+        let log_filename = format!("pitchfork_log_{}_{}.log", funcname, time);
+        let error_filename = if pitchfork_config.keep_going && pitchfork_config.dump_errors {
+            Some(format!("pitchfork_errors_{}_{}.log", funcname, time))
+        } else {
+            None
+        };
+        (log_filename, error_filename)
     };
 
     let mut progress_updater: Box<dyn ProgressUpdater<secret::Backend>> = if pitchfork_config.progress_updates {
@@ -493,13 +499,6 @@ pub fn check_for_ct_violation<'p>(
         &func.name
     };
     let mut path_results = Vec::new();
-    let error_filename = if pitchfork_config.keep_going && pitchfork_config.dump_errors {
-        use chrono::prelude::Local;
-        let time = Local::now().format("%Y-%m-%d_%H:%M:%S").to_string();
-        Some(format!("pitchfork_errors_{}_{}.log", funcname, time))
-    } else {
-        None
-    };
     let mut error_file = error_filename.as_ref().map(|filename| {
         use std::fs::File;
         use std::path::Path;
