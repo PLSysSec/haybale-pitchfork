@@ -452,8 +452,14 @@ pub fn check_for_ct_violation<'p>(
         config.function_hooks.add_default_hook(&pitchfork_default_hook);
     }
 
+    let log_filename = {
+        use chrono::prelude::Local;
+        let time = Local::now().format("%Y-%m-%d_%H:%M:%S").to_string();
+        format!("pitchfork_log_{}_{}.log", funcname, time)
+    };
+
     let mut progress_updater: Box<dyn ProgressUpdater<secret::Backend>> = if pitchfork_config.progress_updates {
-        Box::new(initialize_progress_updater(funcname, &mut config, pitchfork_config.debug_logging))
+        Box::new(initialize_progress_updater(&log_filename, &mut config, pitchfork_config.debug_logging))
     } else {
         Box::new(NullProgressUpdater { })
     };
@@ -583,11 +589,11 @@ impl<B: Backend> ProgressUpdater<B> for NullProgressUpdater {
 // initializes and returns a `progress::ProgressUpdater` if the crate feature is
 // enabled, else initializes and returns a `NullProgressUpdater`
 #[cfg(feature = "progress-updates")]
-fn initialize_progress_updater<B: Backend>(funcname: &str, config: &mut Config<B>, debug_logging: bool) -> progress::ProgressUpdater {
+fn initialize_progress_updater<B: Backend>(log_filename: &str, config: &mut Config<B>, debug_logging: bool) -> progress::ProgressUpdater {
     // the 'real' implementation is in the `progress` module, which only exists if the `progress_updates` crate feature is enabled
-    progress::initialize_progress_updater(funcname, config, debug_logging)
+    progress::initialize_progress_updater(log_filename, config, debug_logging)
 }
 #[cfg(not(feature = "progress-updates"))]
-fn initialize_progress_updater<B: Backend>(_funcname: &str, _config: &mut Config<B>, _debug_logging: bool) -> NullProgressUpdater {
+fn initialize_progress_updater<B: Backend>(_log_filename: &str, _config: &mut Config<B>, _debug_logging: bool) -> NullProgressUpdater {
     NullProgressUpdater { }
 }

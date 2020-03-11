@@ -380,7 +380,7 @@ pub struct MainThreadState {
 }
 
 impl MainThreadState {
-    fn initialize<B: Backend>(funcname: &str, config: &mut Config<B>, debug_logging: bool) -> Rc<RefCell<Option<Self>>> {
+    fn initialize<B: Backend>(log_filename: &str, config: &mut Config<B>, debug_logging: bool) -> Rc<RefCell<Option<Self>>> {
         // spawn the progress-display-updater thread, which will initialize the progress-display view
         let (tx, rx) = mpsc::channel();
         let (termination_tx, termination_rx) = mpsc::channel();
@@ -398,11 +398,6 @@ impl MainThreadState {
         if log::log_enabled!(log::Level::Error) {
             println!("Logging was already initialized, so detailed logs for this run will be available wherever they were previously initialized to.\n");
         } else {
-            let log_filename = {
-                use chrono::prelude::Local;
-                let time = Local::now().format("%Y-%m-%d_%H:%M:%S").to_string();
-                format!("pitchfork_log_{}_{}.log", funcname, time)
-            };
             println!("\nDetailed logs for this run are available at {}.\nYou may run `tail -f` on this file in a separate terminal.\n", log_filename);
             crate::logging::init(log_filename, debug_logging);
         }
@@ -482,8 +477,8 @@ pub fn process_log_message(record: &log::Record) -> std::result::Result<(), Box<
 /// trait for Rc<RefCell<Option<MainThreadState>>>
 pub type ProgressUpdater = Rc<RefCell<Option<MainThreadState>>>;
 
-pub fn initialize_progress_updater<B: Backend>(funcname: &str, config: &mut Config<B>, debug_logging: bool) -> ProgressUpdater {
-    MainThreadState::initialize(funcname, config, debug_logging)
+pub fn initialize_progress_updater<B: Backend>(log_filename: &str, config: &mut Config<B>, debug_logging: bool) -> ProgressUpdater {
+    MainThreadState::initialize(log_filename, config, debug_logging)
 }
 
 impl<B: Backend> crate::ProgressUpdater<B> for ProgressUpdater {
