@@ -455,13 +455,16 @@ pub fn check_for_ct_violation<'p>(
     let (log_filename, error_filename) = {
         use chrono::prelude::Local;
         let time = Local::now().format("%Y-%m-%d_%H:%M:%S").to_string();
+        let dir = format!("logs/{}", funcname);
         let log_filename = if pitchfork_config.progress_updates {
-            Some(format!("pitchfork_log_{}_{}.log", funcname, time))
+            std::fs::create_dir_all(&dir).unwrap();
+            Some(format!("{}/log_{}.log", dir, time))
         } else {
             None
         };
         let error_filename = if pitchfork_config.keep_going && pitchfork_config.dump_errors {
-            Some(format!("pitchfork_errors_{}_{}.log", funcname, time))
+            std::fs::create_dir_all(&dir).unwrap();
+            Some(format!("{}/errors_{}.log", dir, time))
         } else {
             None
         };
