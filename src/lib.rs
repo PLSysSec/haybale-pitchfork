@@ -455,7 +455,11 @@ pub fn check_for_ct_violation<'p>(
     let (log_filename, error_filename) = {
         use chrono::prelude::Local;
         let time = Local::now().format("%Y-%m-%d_%H:%M:%S").to_string();
-        let log_filename = format!("pitchfork_log_{}_{}.log", funcname, time);
+        let log_filename = if pitchfork_config.progress_updates {
+            Some(format!("pitchfork_log_{}_{}.log", funcname, time))
+        } else {
+            None
+        };
         let error_filename = if pitchfork_config.keep_going && pitchfork_config.dump_errors {
             Some(format!("pitchfork_errors_{}_{}.log", funcname, time))
         } else {
@@ -465,7 +469,7 @@ pub fn check_for_ct_violation<'p>(
     };
 
     let mut progress_updater: Box<dyn ProgressUpdater<secret::Backend>> = if pitchfork_config.progress_updates {
-        Box::new(initialize_progress_updater(&log_filename, &mut config, pitchfork_config.debug_logging))
+        Box::new(initialize_progress_updater(log_filename.as_ref().unwrap(), &mut config, pitchfork_config.debug_logging))
     } else {
         Box::new(NullProgressUpdater { })
     };
