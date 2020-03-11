@@ -399,8 +399,8 @@ impl MainThreadState {
             println!("Logging was already initialized, so detailed logs for this run will be available wherever they were previously initialized to.\n");
         } else {
             let log_filename = {
-                use chrono::prelude::Utc;
-                let time = Utc::now().format("%Y-%m-%d_%H:%M:%S").to_string();
+                use chrono::prelude::Local;
+                let time = Local::now().format("%Y-%m-%d_%H:%M:%S").to_string();
                 format!("pitchfork_log_{}_{}.log", funcname, time)
             };
             println!("\nDetailed logs for this run are available at {}.\nYou may run `tail -f` on this file in a separate terminal.\n", log_filename);

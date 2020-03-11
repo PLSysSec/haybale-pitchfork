@@ -488,8 +488,8 @@ pub fn check_for_ct_violation<'p>(
     };
     let mut path_results = Vec::new();
     let error_filename = if pitchfork_config.keep_going && pitchfork_config.dump_errors {
-        use chrono::prelude::Utc;
-        let time = Utc::now().format("%Y-%m-%d_%H:%M:%S").to_string();
+        use chrono::prelude::Local;
+        let time = Local::now().format("%Y-%m-%d_%H:%M:%S").to_string();
         Some(format!("pitchfork_errors_{}_{}.log", funcname, time))
     } else {
         None
