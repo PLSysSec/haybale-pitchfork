@@ -55,7 +55,8 @@ pub fn pitchfork_default_hook(
     haybale::function_hooks::generic_stub_hook(proj, state, call)
 }
 
-enum ArgumentKind {
+#[derive(Clone, Debug)]
+pub(crate) enum ArgumentKind {
     /// The argument is fully public, and (if it's a pointer or contains pointer(s)) any pointed-to data is also public
     Public,
     /// The argument is secret, or it's a pointer or contains pointer(s) and some pointed-to data is secret
@@ -65,7 +66,7 @@ enum ArgumentKind {
 }
 
 /// Classifies the `bv` into an `ArgumentKind` - see notes on `ArgumentKind`
-fn is_or_points_to_secret(proj: &Project, state: &mut State<secret::Backend>, bv: &secret::BV, ty: &llvm_ir::Type) -> Result<ArgumentKind> {
+pub(crate) fn is_or_points_to_secret(proj: &Project, state: &mut State<secret::Backend>, bv: &secret::BV, ty: &llvm_ir::Type) -> Result<ArgumentKind> {
     if bv.is_secret() {
         Ok(ArgumentKind::Secret)
     } else {

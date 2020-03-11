@@ -5,6 +5,7 @@ mod coverage;
 use coverage::*;
 mod default_hook;
 use default_hook::pitchfork_default_hook;
+pub mod hooks;
 pub mod hook_helpers;
 pub mod secret;
 mod logging;
