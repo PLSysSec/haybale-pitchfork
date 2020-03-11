@@ -554,12 +554,13 @@ pub fn check_for_ct_violation<'p>(
     }
 }
 
-fn hook_uninitialized_function_pointer<B: Backend>(
-    _proj: &Project,
-    _state: &mut State<B>,
-    _call: &dyn IsCall,
-) -> Result<ReturnValue<B::BV>> {
-    Err(Error::OtherError("Call of an uninitialized function pointer".to_owned()))
+fn hook_uninitialized_function_pointer(
+    proj: &Project,
+    state: &mut State<secret::Backend>,
+    call: &dyn IsCall,
+) -> Result<ReturnValue<secret::BV>> {
+    info!("Function pointer is uninitialized; trying Pitchfork default hook");
+    default_hook::pitchfork_default_hook(proj, state, call)
 }
 
 trait ProgressUpdater<B: Backend> {
