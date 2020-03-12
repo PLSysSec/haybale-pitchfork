@@ -9,6 +9,7 @@ use std::convert::TryInto;
 use std::io::{Write, stdout, Stdout};
 use std::sync::mpsc;
 use std::thread;
+use std::time::{Duration, Instant};
 
 use log4rs::encode::pattern::PatternEncoder;
 use log4rs::encode::Encode;
@@ -32,6 +33,8 @@ use log4rs::encode::writer::simple::SimpleWriter;
 // <---Location block (includes LLVM and src location)--->
 // <            rows_of_loc rows (minimum 1)             >
 // <----------------------------------------------------->
+// <blank line>
+// Time elapsed:
 // <blank line>    <-- cursor is always on this line at entry/exit of any function in this module
 
 struct ProgressDisplayState {
@@ -62,6 +65,12 @@ struct ProgressDisplayState {
     rows_of_loc: u16,
     /// we assume this doesn't change (if it does, we have bigger problems than this)
     terminal_cols: u16,
+    /// time at which the operation started (defined as when the progress UI was
+    /// initialized - so this won't include creating the Project)
+    start_time: Instant,
+    /// elapsed time since start, or at least, what is currently being displayed
+    /// as the elapsed time since start
+    elapsed_secs: u64,
 }
 
 /// The various messages which can be sent from the main thread to the
@@ -106,6 +115,8 @@ impl ProgressDisplayState {
                 let (cols, _) = terminal::size().unwrap();
                 cols
             },
+            start_time: Instant::now(),
+            elapsed_secs: 0,
         };
         print!("{}", pdstate.path_stats);  // the `Display` impl here includes the final newline
         println!();  // this is the blank line between the path stats and the backtrack-points line
@@ -128,7 +139,9 @@ impl ProgressDisplayState {
             blank_line_row - 1
         };
         pdstate.rows_of_loc = loc_end_row - loc_start_row + 1;
-        // the terminal cursor will be on the appropriate line when we're done: the blank line below the location block
+        println!();  // this is the blank line between the location block and the time-elapsed line
+        pdstate.print_time_elapsed_line();
+        // the terminal cursor will be on the appropriate line when we're done: the blank line below the time-elapsed line
         pdstate
     }
 
@@ -142,8 +155,10 @@ impl ProgressDisplayState {
             } else if let Ok(msg) = self.rx.try_recv() {
                 self.handle_msg(msg)
             } else {
-                thread::sleep(std::time::Duration::from_millis(5))  // wait 5 ms before checking for a new message
+                thread::sleep(Duration::from_millis(5))  // wait 5 ms before checking for a new message
             }
+
+            self.update_elapsed_time();
         }
     }
 
@@ -193,6 +208,24 @@ impl ProgressDisplayState {
         }
     }
 
+    /// prints the time-elapsed line and moves cursor to the next line
+    fn print_time_elapsed_line(&self) {
+        print!("Time elapsed: ");
+        if self.elapsed_secs < 60 {
+            println!("{}s", self.elapsed_secs);
+        } else {
+            let elapsed_minutes = self.elapsed_secs / 60;
+            let secs_remainder = self.elapsed_secs % 60;
+            if elapsed_minutes < 60 {
+                println!("{}m {}s", elapsed_minutes, secs_remainder);
+            } else {
+                let elapsed_hours = elapsed_minutes / 60;
+                let mins_remainder = elapsed_minutes % 60;
+                println!("{}h {}m {}s", elapsed_hours, mins_remainder, secs_remainder);
+            }
+        }
+    }
+
     fn update_progress(&mut self, llvm_loc: &str, src_loc: &str, num_backtrack_points: usize) {
         let mut stdout = stdout();
         self.update_location(llvm_loc, src_loc, &mut stdout);
@@ -201,20 +234,19 @@ impl ProgressDisplayState {
     }
 
     fn update_location(&mut self, llvm_loc: &str, src_loc: &str, stdout: &mut Stdout) {
-        for _ in 0 .. self.rows_of_loc {
-            stdout
-                .queue(cursor::MoveToPreviousLine(1)).unwrap()
-                .queue(terminal::Clear(terminal::ClearType::CurrentLine)).unwrap();
-        }
-        stdout.queue(cursor::MoveToColumn(0)).unwrap();
+        stdout
+            .queue(cursor::MoveToPreviousLine(2 + self.rows_of_loc)).unwrap()
+            .queue(terminal::Clear(terminal::ClearType::FromCursorDown)).unwrap()
+            // that also cleared the time-elapsed line, which we'll repaint
+            .queue(cursor::MoveToColumn(0)).unwrap();
 
         // if the location is too much longer than the previous location, printing
         // it will cause the terminal to scroll, which will throw off the
         // calculation of `self.rows_of_loc`.
         // Thus, as a hack, we calculate the rough number of rows needed, and if
-        // it's much larger than the current `rows_of_loc`, we'll add some blank
-        // lines at the bottom first, so that the terminal won't scroll during the
-        // actual print operation.
+        // it's much larger than the current `rows_of_loc` plus two (for the
+        // time-elapsed line), we'll add some blank lines at the bottom first,
+        // so that the terminal won't scroll during the actual print operation.
         let llvm_loc_string = format!("LLVM location: {}", llvm_loc);
         let llvm_loc_string_len: u16 = llvm_loc_string.len().try_into().unwrap_or_else(|_| panic!("Unexpectedly large location string length: {} characters", llvm_loc_string.len()));
         let src_loc_string = format!("Source location: {}", src_loc);
@@ -222,7 +254,7 @@ impl ProgressDisplayState {
         let llvm_rows_needed: u16 = llvm_loc_string_len / self.terminal_cols + 1;
         let src_rows_needed: u16 = src_loc_string_len / self.terminal_cols + 1;
         let rows_needed = llvm_rows_needed + src_rows_needed;
-        if rows_needed > self.rows_of_loc {
+        if rows_needed > self.rows_of_loc + 2 {
             for _ in 0 .. rows_needed {
                 println!();
             }
@@ -239,6 +271,9 @@ impl ProgressDisplayState {
         let loc_rows = loc_end_row - loc_start_row + 1;
         assert!(loc_rows <= rows_needed);
         self.rows_of_loc = loc_rows;
+        println!();
+        self.print_time_elapsed_line();
+        // that puts us on the blank line after the time-elapsed line, as desired
     }
 
     fn update_backtrack_points(&mut self, num_backtrack_points: usize, stdout: &mut Stdout) {
@@ -246,17 +281,30 @@ impl ProgressDisplayState {
         if num_backtrack_points != self.backtrack_points_remaining {
             self.backtrack_points_remaining = num_backtrack_points;
             stdout
-                .queue(cursor::MoveToPreviousLine(self.rows_of_loc + 2 + self.rows_of_log + 4)).unwrap()  // puts us on the backtrack line
+                .queue(cursor::MoveToPreviousLine(2 + self.rows_of_loc + 2 + self.rows_of_log + 4)).unwrap()  // puts us on the backtrack line
                 .queue(terminal::Clear(terminal::ClearType::CurrentLine)).unwrap();
             self.print_backtrack_line();
-            stdout.queue(cursor::MoveToNextLine(3 + self.rows_of_log + 2 + self.rows_of_loc)).unwrap();
+            stdout.queue(cursor::MoveToNextLine(3 + self.rows_of_log + 2 + self.rows_of_loc + 2)).unwrap();
+        }
+    }
+
+    fn update_elapsed_time(&mut self) {
+        // only update if the number has changed
+        let elapsed_secs = self.start_time.elapsed().as_secs();
+        if elapsed_secs != self.elapsed_secs {
+            self.elapsed_secs = elapsed_secs;
+            stdout()
+                .queue(cursor::MoveToPreviousLine(1)).unwrap()  // puts us on the time-elapsed line
+                .queue(terminal::Clear(terminal::ClearType::CurrentLine)).unwrap();
+            self.print_time_elapsed_line();
+            // that puts us on the blank line after the time-elapsed line, as desired
         }
     }
 
     fn process_log_message(&mut self, log_message: &[u8], level: log::Level) {
         let mut stdout = stdout();
         let mut q = stdout
-            .queue(cursor::MoveToPreviousLine(self.rows_of_loc + 2)).unwrap();
+            .queue(cursor::MoveToPreviousLine(2 + self.rows_of_loc + 2)).unwrap();
         for _ in 0 .. self.rows_of_log {
             q = q
                 .queue(cursor::MoveToPreviousLine(1)).unwrap()
@@ -287,13 +335,16 @@ impl ProgressDisplayState {
             println!("Currently at location:");
             println!();
             self.rows_of_loc = 1;
-            // due to the println!, terminal cursor will be on the blank line, as desired
+            // due to the println!, terminal cursor is now on the blank line between the location block and the time-elapsed line
+            println!();
+            self.print_time_elapsed_line();
+            // that puts us on the blank line after the time-elapsed line, as desired
         } else if rows_of_this_log < self.rows_of_log {
             stdout
                 .queue(cursor::MoveToNextLine(self.rows_of_log - rows_of_this_log)).unwrap()
-                .queue(cursor::MoveToNextLine(3 + self.rows_of_loc)).unwrap();
+                .queue(cursor::MoveToNextLine(3 + self.rows_of_loc + 2)).unwrap();
         } else {
-            stdout.queue(cursor::MoveToNextLine(3 + self.rows_of_loc)).unwrap();
+            stdout.queue(cursor::MoveToNextLine(3 + self.rows_of_loc + 2)).unwrap();
         }
         stdout.flush().unwrap();
     }
@@ -301,7 +352,7 @@ impl ProgressDisplayState {
     fn process_path_result(&mut self, path_result: &ConstantTimeResultForPath) {
         let mut stdout = stdout();
         let mut q = stdout
-            .queue(cursor::MoveToPreviousLine(self.rows_of_loc + 2 + self.rows_of_log + 5)).unwrap();
+            .queue(cursor::MoveToPreviousLine(2 + self.rows_of_loc + 2 + self.rows_of_log + 5)).unwrap();
         for _ in 0 .. self.rows_of_stats {
             q = q
                 .queue(cursor::MoveToPreviousLine(1)).unwrap()
@@ -333,9 +384,11 @@ impl ProgressDisplayState {
             println!("Currently at location:");
             println!("  <just finished a path>");
             self.rows_of_loc = 1;
-            // due to the println!, terminal cursor will be on the blank line, as desired
+            // due to the println!, terminal cursor is now on the blank line between the location block and the time-elapsed line
+            println!();
+            self.print_time_elapsed_line();
         } else if new_rows_of_stats == self.rows_of_stats {
-            stdout.queue(cursor::MoveToNextLine(5 + self.rows_of_log + 2 + self.rows_of_loc)).unwrap();
+            stdout.queue(cursor::MoveToNextLine(5 + self.rows_of_log + 2 + self.rows_of_loc + 2)).unwrap();
         } else {
             panic!("rows_of_stats decreased, which we didn't think should ever happen");
         }
@@ -344,9 +397,11 @@ impl ProgressDisplayState {
 
     fn finalize(&mut self) {
         stdout()
-            .queue(cursor::MoveToPreviousLine(self.rows_of_loc + 2 + self.rows_of_log + 5 + self.rows_of_stats)).unwrap()
+            .queue(cursor::MoveToPreviousLine(2 + self.rows_of_loc + 2 + self.rows_of_log + 5 + self.rows_of_stats)).unwrap()
             .queue(terminal::Clear(terminal::ClearType::FromCursorDown)).unwrap()
             .flush().unwrap();
+        self.print_time_elapsed_line();
+        println!();
     }
 }
 
