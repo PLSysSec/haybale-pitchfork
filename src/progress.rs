@@ -188,7 +188,31 @@ impl ProgressDisplayState {
                     },
                 }
             },
-            ProgressMsg::LogMessage { msg, level } => self.process_log_message(&msg, level),
+            ProgressMsg::LogMessage { msg, level } => {
+                match self.rx.try_recv() {
+                    Ok(new_logmsg@ProgressMsg::LogMessage { .. }) => {
+                        // next message is also a LogMessage, so don't bother
+                        // handling/printing this one, except to update the
+                        // warning count if necessary.
+                        if level <= log::Level::Warn {
+                            self.increment_and_update_warning_count();
+                        }
+                        // then handle the next message
+                        self.handle_msg(new_logmsg);
+                    },
+                    Ok(other_msg) => {
+                        // next message is not a LogMessage
+                        // so handle this message and then the next, in the ordinary way
+                        self.process_log_message(&msg, level);
+                        self.handle_msg(other_msg);
+                    },
+                    _ => {
+                        // next message is not available yet
+                        // so handle this message in the ordinary way
+                        self.process_log_message(&msg, level);
+                    },
+                }
+            },
             ProgressMsg::PathCompleted(ctresult) => self.process_path_result(&ctresult),
         }
     }
@@ -347,6 +371,18 @@ impl ProgressDisplayState {
             stdout.queue(cursor::MoveToNextLine(3 + self.rows_of_loc + 2)).unwrap();
         }
         stdout.flush().unwrap();
+    }
+
+    /// increment and update the warning count, without changing/repainting the
+    /// "most recent log message" section
+    fn increment_and_update_warning_count(&mut self) {
+        self.warnings_generated += 1;
+        let mut stdout = stdout();
+        stdout
+            .queue(cursor::MoveToPreviousLine(2 + self.rows_of_loc + 2 + self.rows_of_log + 2)).unwrap()
+            .queue(terminal::Clear(terminal::ClearType::CurrentLine)).unwrap();
+        self.print_warnings_line();
+        stdout.queue(cursor::MoveToNextLine(1 + self.rows_of_log + 2 + self.rows_of_loc + 2)).unwrap();
     }
 
     fn process_path_result(&mut self, path_result: &ConstantTimeResultForPath) {
