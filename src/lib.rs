@@ -122,7 +122,13 @@ pub struct PathStatistics {
     pub num_unsupported_instruction: usize,
     /// How many MalformedInstruction errors did we find
     pub num_malformed_instruction: usize,
-    /// How many other errors (including solver timeouts) did we encounter
+    /// How many UnreachableInstruction errors did we find
+    pub num_unreachable_instruction: usize,
+    /// How many FailedToResolveFunctionPointer errors did we find
+    pub num_failed_resolve_fptr: usize,
+    /// How many HookReturnValueMismatch errors did we find
+    pub num_hook_retval_mismatch: usize,
+    /// How many other errors did we find
     pub num_other_errors: usize,
 }
 
@@ -139,6 +145,9 @@ impl PathStatistics {
             num_solver_errors: 0,
             num_unsupported_instruction: 0,
             num_malformed_instruction: 0,
+            num_unreachable_instruction: 0,
+            num_failed_resolve_fptr: 0,
+            num_hook_retval_mismatch: 0,
             num_other_errors: 0,
         }
     }
@@ -154,6 +163,9 @@ impl PathStatistics {
             ConstantTimeResultForPath::OtherError { error: Error::SolverError(_), .. } => self.num_solver_errors += 1,
             ConstantTimeResultForPath::OtherError { error: Error::UnsupportedInstruction(_), .. } => self.num_unsupported_instruction += 1,
             ConstantTimeResultForPath::OtherError { error: Error::MalformedInstruction(_), .. } => self.num_malformed_instruction += 1,
+            ConstantTimeResultForPath::OtherError { error: Error::UnreachableInstruction, .. } => self.num_unreachable_instruction += 1,
+            ConstantTimeResultForPath::OtherError { error: Error::FailedToResolveFunctionPointer(_), .. } => self.num_failed_resolve_fptr += 1,
+            ConstantTimeResultForPath::OtherError { error: Error::HookReturnValueMismatch(_), .. } => self.num_hook_retval_mismatch += 1,
             ConstantTimeResultForPath::OtherError { error: Error::OtherError(_), .. } => self.num_other_errors += 1,
         }
     }
@@ -206,6 +218,21 @@ impl fmt::Display for PathStatistics {
         if self.num_loop_bound_exceeded > 0 {
             writeln!(f, "paths exceeding the loop bound: {}",
                 self.num_loop_bound_exceeded.to_string().red()
+            )?;
+        }
+        if self.num_unreachable_instruction > 0 {
+            writeln!(f, "unreachable-instruction errors: {}",
+                self.num_unreachable_instruction.to_string().red()
+            )?;
+        }
+        if self.num_failed_resolve_fptr > 0 {
+            writeln!(f, "failed-function-pointer-resolution errors: {}",
+                self.num_failed_resolve_fptr.to_string().red()
+            )?;
+        }
+        if self.num_hook_retval_mismatch > 0 {
+            writeln!(f, "hook-retval-mismatch errors: {}",
+                self.num_hook_retval_mismatch.to_string().red()
             )?;
         }
         if self.num_solver_errors > 0 {
