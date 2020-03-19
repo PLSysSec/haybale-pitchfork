@@ -87,7 +87,15 @@ pub(crate) fn is_or_points_to_secret(proj: &Project, state: &mut State<secret::B
                     need_pop = true;
                     bv._ne(&state.zero(bv.get_width())).assert()?;
                 }
-                let pointee = state.read(&bv, pointee_size_bits as u32)?;
+                let pointee = match state.read(&bv, pointee_size_bits as u32) {
+                    Ok(pointee) => pointee,
+                    Err(e) => {
+                        if need_pop {
+                            state.solver.pop(1);
+                        }
+                        return Err(e);
+                    },
+                };
                 let retval = is_or_points_to_secret(proj, state, &pointee, &**pointee_type);
                 if need_pop {
                     state.solver.pop(1);
