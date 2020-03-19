@@ -86,34 +86,42 @@ pub(crate) fn is_or_points_to_secret(proj: &Project, state: &mut State<secret::B
                     None => return Ok(ArgumentKind::Unknown),
                     Some(size) => size as u32,
                 };
-                let mut retval = ArgumentKind::Public;
-                for i in 0 .. *num_elements {
-                    let i = i as u32;
-                    let element = bv.slice((i+1) * element_bits - 1, i * element_bits);
-                    match is_or_points_to_secret(proj, state, &element, &**element_type)? {
-                        ArgumentKind::Secret => return Ok(ArgumentKind::Secret),  // we're done, there's definitely a Secret
-                        ArgumentKind::Unknown => retval = ArgumentKind::Unknown,  // keep going, maybe we'll find a Secret later
-                        ArgumentKind::Public => {},  // leave in place the previous retval
+                if element_bits == 0 {
+                    Ok(ArgumentKind::Public)  // Elements of size 0 bits can't contain secret information
+                } else {
+                    let mut retval = ArgumentKind::Public;
+                    for i in 0 .. *num_elements {
+                        let i = i as u32;
+                        let element = bv.slice((i+1) * element_bits - 1, i * element_bits);
+                        match is_or_points_to_secret(proj, state, &element, &**element_type)? {
+                            ArgumentKind::Secret => return Ok(ArgumentKind::Secret),  // we're done, there's definitely a Secret
+                            ArgumentKind::Unknown => retval = ArgumentKind::Unknown,  // keep going, maybe we'll find a Secret later
+                            ArgumentKind::Public => {},  // leave in place the previous retval
+                        }
                     }
+                    Ok(retval)  // this will be Unknown if we ever encountered an Unknown, or Public if everything came back Public
                 }
-                Ok(retval)  // this will be Unknown if we ever encountered an Unknown, or Public if everything came back Public
             },
             Type::StructType { element_types, .. } => {
                 let mut offset_bits = 0;
                 let mut retval = ArgumentKind::Public;
                 for element_ty in element_types {
                     let element_bits = match haybale::layout::size_opaque_aware(element_ty, proj) {
-                        Some(size) => size as u32,
                         None => return Ok(ArgumentKind::Unknown),  // we have no way to keep going - we don't know the next offset
+                        Some(size) => size as u32,
                     };
-                    let element = bv.slice(offset_bits + element_bits - 1, offset_bits);
-                    match is_or_points_to_secret(proj, state, &element, element_ty)? {
-                        ArgumentKind::Secret => return Ok(ArgumentKind::Secret),  // we're done, there's definitely a Secret
-                        ArgumentKind::Unknown => retval = ArgumentKind::Unknown,  // keep going, maybe we'll find a Secret later
-                        ArgumentKind::Public => {},  // leave in place the previous retval
+                    if element_bits == 0 {
+                        // nothing to do.  An element of size 0 bits can't contain secret information, and we don't need to update the current offset
+                    } else {
+                        let element = bv.slice(offset_bits + element_bits - 1, offset_bits);
+                        match is_or_points_to_secret(proj, state, &element, element_ty)? {
+                            ArgumentKind::Secret => return Ok(ArgumentKind::Secret),  // we're done, there's definitely a Secret
+                            ArgumentKind::Unknown => retval = ArgumentKind::Unknown,  // keep going, maybe we'll find a Secret later
+                            ArgumentKind::Public => {},  // leave in place the previous retval
+                        }
+                        offset_bits += element_bits;
+                        assert_eq!(offset_bits % 8, 0, "Struct offset of {} bits is not a multiple of 8 bits", offset_bits);
                     }
-                    offset_bits += element_bits;
-                    assert_eq!(offset_bits % 8, 0, "Struct offset of {} bits is not a multiple of 8 bits", offset_bits);
                 }
                 Ok(retval)  // this will be Unknown if we ever encountered an Unknown, or Public if everything came back Public
             },
