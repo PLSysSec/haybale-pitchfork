@@ -77,8 +77,22 @@ pub(crate) fn is_or_points_to_secret(proj: &Project, state: &mut State<secret::B
                     None => return Ok(ArgumentKind::Unknown),
                     Some(size) => size,
                 };
+                let mut need_pop = false;
+                if state.bvs_can_be_equal(&bv, &state.zero(bv.get_width()))? {
+                    // If the pointer is NULL then it clearly doesn't point to secret.
+                    // So we only need to investigate the case where it's not NULL.
+                    // We also need to temporarily constrain it to be not-NULL in order
+                    // to avoid a null dereference when reading the pointed-to data
+                    state.solver.push(1);
+                    need_pop = true;
+                    bv._ne(&state.zero(bv.get_width())).assert()?;
+                }
                 let pointee = state.read(&bv, pointee_size_bits as u32)?;
-                is_or_points_to_secret(proj, state, &pointee, &**pointee_type)
+                let retval = is_or_points_to_secret(proj, state, &pointee, &**pointee_type);
+                if need_pop {
+                    state.solver.pop(1);
+                }
+                retval
             },
             Type::VectorType { element_type, num_elements } | Type::ArrayType { element_type, num_elements } => {
                 // TODO: this could be made more efficient
