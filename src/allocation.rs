@@ -229,6 +229,35 @@ impl<'p, 's> Context<'p, 's> {
             CompleteAbstractData::Array { .. } => unimplemented!("Array passed by value"),
             CompleteAbstractData::Struct { .. } => unimplemented!("Struct passed by value"),
             CompleteAbstractData::VoidOverride { .. } => unimplemented!("VoidOverride used as an argument directly.  You probably meant to use a pointer to a VoidOverride"),
+            CompleteAbstractData::PointerOverride { llvm_struct_name, data } => {
+                debug!("Parameter is marked as a public pointer to {}, overriding LLVM type", data);
+                let ptr = self.state.allocate(data.size_in_bits() as u64);
+                debug!("Allocated the parameter at {:?}", ptr);
+                self.state.overwrite_latest_version_of_bv(&param.name, ptr.clone());
+
+                if !type_override {
+                    // typecheck that the parameter is at least a pointer
+                    match &param.ty {
+                        Type::PointerType { .. } => (),
+                        ty => panic!("Mismatch for parameter {:?}: CompleteAbstractData specifies a pointer but parameter type is {:?}", &param.name, ty),
+                    };
+                }
+
+                match llvm_struct_name {
+                    None => {
+                        InitializationContext::blank().initialize_cad_in_memory(self, &ptr, &data, None)?;
+                    },
+                    Some(llvm_struct_name) => {
+                        let (llvm_ty, _) = self.proj.get_named_struct_type_by_name(&llvm_struct_name)
+                            .unwrap_or_else(|| { panic!("PointerOverride: llvm_struct_name {:?} not found in Project", llvm_struct_name) });
+                        let arc = llvm_ty.as_ref().unwrap_or_else(|| { panic!("PointerOverride: llvm_struct_name {:?} is an opaque type", llvm_struct_name) });
+                        let llvm_ty: &Type = &arc.read().unwrap();
+                        InitializationContext::blank().initialize_cad_in_memory(self, &ptr, &data, Some(llvm_ty))?;
+                    },
+                }
+
+                Ok(ptr)
+            },
             CompleteAbstractData::SameSizeOverride { data } => {
                 // we already checked above that the param size == the data size; and we will again on the recursive call, actually
                 self.allocate_arg_from_cad(param, *data, true)
@@ -900,6 +929,42 @@ impl<'a> InitializationContext<'a> {
                         self.initialize_cad_in_memory(ctx, addr, &data, Some(llvm_ty))
                     },
                 }
+            },
+            CompleteAbstractData::PointerOverride { llvm_struct_name, data } => {
+                // first check that we're overriding a pointer type
+                if let Some(ty) = ty {
+                    match ty {
+                        Type::PointerType { .. } => {},
+                        _ => {
+                            self.error_backtrace();
+                            panic!("Type mismatch: CompleteAbstractData specifies a pointer, but found type {:?}", ty)
+                        },
+                    };
+                }
+
+                // allocate memory for the pointee, which is `data` (ignoring LLVM type)
+                let inner_ptr = ctx.state.allocate(data.size_in_bits() as u64);
+                debug!("allocated memory for the pointee at {:?}, and will constrain the memory contents at {:?} to have that pointer value", inner_ptr, addr);
+
+                // make `addr` point to a pointer to the newly allocated memory
+                let bits = inner_ptr.get_width();
+                ctx.state.write(&addr, inner_ptr.clone())?;
+
+                // initialize the pointee
+                match llvm_struct_name {
+                    None => {
+                        self.initialize_cad_in_memory(ctx, &inner_ptr, data, None)?;
+                    },
+                    Some(llvm_struct_name) => {
+                        let (llvm_ty, _) = ctx.proj.get_named_struct_type_by_name(&llvm_struct_name)
+                            .unwrap_or_else(|| { self.error_backtrace(); panic!("PointerOverride: llvm_struct_name {:?} not found in Project", llvm_struct_name) });
+                        let arc = llvm_ty.as_ref().unwrap_or_else(|| { self.error_backtrace(); panic!("PointerOverride: llvm_struct_name {:?} is an opaque type", llvm_struct_name) });
+                        let llvm_ty: &Type = &arc.read().unwrap();
+                        self.initialize_cad_in_memory(ctx, &inner_ptr, data, Some(llvm_ty))?;
+                    },
+                }
+
+                Ok(bits as usize)
             },
             CompleteAbstractData::SameSizeOverride { data } => {
                 // first check that the type we're overriding is the right size

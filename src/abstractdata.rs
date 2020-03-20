@@ -93,6 +93,12 @@ pub(crate) enum CompleteAbstractData {
     /// and the provided `CompleteAbstractData` will be assumed correct.
     VoidOverride { llvm_struct_name: Option<String>, data: Box<Self> },
 
+    /// Like `VoidOverride`, but:
+    ///   (1) overrides any pointer type, not just `i8*` in LLVM;
+    ///   (2) includes the pointer implicitly.  So one `PointerOverride` is
+    ///       roughly equivalent to `PublicPointerTo(VoidOverride)`.
+    PointerOverride { llvm_struct_name: Option<String>, data: Box<Self> },
+
     /// Use the given `data`, even though it may not match the LLVM type.
     /// It still needs to be the same size (number of bits) as the LLVM type.
     /// For instance, you could specify that some LLVM pointer-size integer
@@ -247,15 +253,32 @@ impl CompleteAbstractData {
         Self::VoidOverride { llvm_struct_name: llvm_struct_name.map(Into::into), data: Box::new(data) }
     }
 
+    /// Use a pointer to the given `data`, even though the LLVM type will be
+    /// a pointer to a different type.
+    /// For instance, you could override a `u64*` to instead be a pointer to
+    /// some struct of your choosing; this would ensure the pointed-to data
+    /// is allocated and initialized as if it were that struct.
+    ///
+    /// If the optional `llvm_struct_name` is included, it will lookup that struct's
+    /// type and check against that.  Otherwise, no typechecking will be performed
+    /// and the provided `CompleteAbstractData` will be assumed correct.
+    ///
+    /// To override a `void*` type, you probably want
+    /// [`void_override`](#method.void_override); see notes there.
+    pub fn pointer_override(llvm_struct_name: Option<&str>, data: Self) -> Self {
+        Self::PointerOverride { llvm_struct_name: llvm_struct_name.map(Into::into), data: Box::new(data) }
+    }
+
     /// Use the given `data`, even though it may not match the LLVM type.
     /// It still needs to be the same size (number of bits) as the LLVM type.
     /// For instance, you could specify that some LLVM pointer-size integer
     /// should actually be initialized to have a pointer value and point to some
     /// specified data.
     ///
-    /// To override a `void*` type, see `void_override` - and this probably won't
-    /// work for that anyways because of the same-size restriction. See comments
-    /// on `void_override`.
+    /// To override a pointer type to point to something different, you probably
+    /// want [`pointer_override`](#method.pointer_override); and specifically for
+    /// `void*` type, you probably want [`void_override`](#method.void_override).
+    /// See notes there.
     pub fn same_size_override(data: Self) -> Self {
         Self::SameSizeOverride { data: Box::new(data) }
     }
@@ -285,6 +308,7 @@ impl CompleteAbstractData {
             Self::PublicPointerToParentOr(_) => Self::POINTER_SIZE_BITS,
             Self::Secret { bits } => *bits,
             Self::VoidOverride { data, .. } => data.size_in_bits(),
+            Self::PointerOverride { .. } => Self::POINTER_SIZE_BITS,
             Self::SameSizeOverride { data, .. } => data.size_in_bits(),
             Self::WithWatchpoint { data, .. } => data.size_in_bits(),
         }
@@ -329,6 +353,7 @@ impl CompleteAbstractData {
             Self::PublicPointerToSelf => true,
             Self::PublicPointerToParentOr(_) => true,
             Self::VoidOverride { data, .. } => data.is_pointer(),
+            Self::PointerOverride { .. } => true,
             Self::SameSizeOverride { data, .. } => data.is_pointer(),
             Self::WithWatchpoint { data, .. } => data.is_pointer(),
         }
@@ -350,6 +375,7 @@ impl CompleteAbstractData {
             Self::PublicPointerToParentOr(Some(data)) => data.size_in_bits(),  // assume that if the parent typechecks, it's the same size
             Self::Secret { .. } => panic!("pointee_size_in_bits() on a Secret"),
             Self::VoidOverride { data, .. } => data.pointee_size_in_bits(),
+            Self::PointerOverride { data, .. } => data.size_in_bits(),  // here, 'data' is the pointee, not the pointer
             Self::SameSizeOverride { data, .. } => data.pointee_size_in_bits(),
             Self::WithWatchpoint { data, .. } => data.pointee_size_in_bits(),
         }
@@ -361,6 +387,7 @@ impl CompleteAbstractData {
             Self::Struct { elements, .. } => elements.len() == 1,  // compatible iff the number of elements is 1
             Self::Secret { .. } => true,  // could be compatible with the struct-of-one-element type
             Self::VoidOverride { .. } => true,  // could be compatible with the struct-of-one-element type
+            Self::PointerOverride { .. } => false,  // this can only describe a pointer
             Self::SameSizeOverride { .. } => true,  // could be compatible with the struct-of-one-element type
             Self::WithWatchpoint { .. } => true,  // could be compatible with the struct-of-one-element type
             _ => false,
@@ -392,6 +419,11 @@ impl fmt::Display for CompleteAbstractData {
             },
             Self::VoidOverride { data, .. } => {
                 write!(f, "a void override containing ")?;
+                data.fmt(f)?;
+                Ok(())
+            },
+            Self::PointerOverride { data, .. } => {
+                write!(f, "a pointer override containing ")?;
                 data.fmt(f)?;
                 Ok(())
             },
@@ -482,6 +514,10 @@ pub(crate) enum UnderspecifiedAbstractData {
     /// `AbstractData` must be fully-specified, and no sanity typechecking will
     /// be performed (the `AbstractData` will be assumed correct).
     VoidOverride { llvm_struct_name: Option<String>, data: Box<AbstractData> },
+
+    /// See notes on [`CompleteAbstractData::PointerOverride`](enum.CompleteAbstractData.html)
+    /// and, for `llvm_struct_name`, notes on [`UnderSpecifiedAbstractData::VoidOverride`](#structfield.VoidOverride).
+    PointerOverride { llvm_struct_name: Option<String>, data: Box<AbstractData> },
 
     /// See notes on [`CompleteAbstractData::SameSizeOverride`](enum.CompleteAbstractData.html).
     SameSizeOverride { data: Box<AbstractData> },
@@ -687,6 +723,20 @@ impl AbstractData {
         Self(UnderspecifiedAbstractData::VoidOverride { llvm_struct_name: llvm_struct_name.map(Into::into), data: Box::new(data) })
     }
 
+    /// Use a pointer to the given `data`, even though the LLVM type will be
+    /// a pointer to a different type.
+    /// For instance, you could override a `u64*` to instead be a pointer to
+    /// some struct of your choosing; this would ensure the pointed-to data
+    /// is allocated and initialized as if it were that struct.
+    ///
+    /// `llvm_struct_name`: see notes on [`void_override`](#method.void_override).
+    ///
+    /// To override a `void*` type, you probably want
+    /// [`void_override`](#method.void_override); see notes there.
+    pub fn pointer_override(llvm_struct_name: Option<&str>, data: Self) -> Self {
+        Self(UnderspecifiedAbstractData::PointerOverride { llvm_struct_name: llvm_struct_name.map(Into::into), data: Box::new(data) })
+    }
+
     /// Use the given `data`, even though it may not match the LLVM type.
     /// It still needs to be the same size (number of bits) as the LLVM type.
     /// For instance, you could specify that some LLVM pointer-size integer
@@ -749,6 +799,11 @@ impl fmt::Display for UnderspecifiedAbstractData {
                 data.fmt(f)?;
                 Ok(())
             },
+            UnderspecifiedAbstractData::PointerOverride { data, .. } => {
+                write!(f, "a pointer override with data ")?;
+                data.fmt(f)?;
+                Ok(())
+            }
             UnderspecifiedAbstractData::SameSizeOverride { data, .. } => {
                 write!(f, "a same-size override with data ")?;
                 data.fmt(f)?;
@@ -912,7 +967,17 @@ impl UnderspecifiedAbstractData {
                     let ty = &arc.read().unwrap();
                     CompleteAbstractData::void_override(Some(&llvm_struct_name), data.to_complete_rec(Some(ty), ctx))
                 },
-            }
+            },
+            Self::PointerOverride { llvm_struct_name, data } => match llvm_struct_name {
+                None => CompleteAbstractData::pointer_override(None, data.to_complete_rec(None, ctx)),
+                Some(llvm_struct_name) => {
+                    let (llvm_ty, _) = ctx.proj.get_named_struct_type_by_name(&llvm_struct_name)
+                        .unwrap_or_else(|| { ctx.error_backtrace(); panic!("PointerOverride: llvm_struct_name {:?} not found in Project", llvm_struct_name) });
+                    let arc = llvm_ty.as_ref().unwrap_or_else(|| { ctx.error_backtrace(); panic!("PointerOverride: llvm_struct_name {:?} is an opaque type", llvm_struct_name) });
+                    let ty = &arc.read().unwrap();
+                    CompleteAbstractData::pointer_override(Some(&llvm_struct_name), data.to_complete_rec(Some(ty), ctx))
+                },
+            },
             Self::SameSizeOverride { data } => CompleteAbstractData::same_size_override(data.to_complete_rec(None, ctx)),
             Self::PublicPointerTo { pointee, maybe_null } => match ty {
                 Some(Type::PointerType { pointee_type, .. }) =>
