@@ -16,6 +16,8 @@ use log4rs::encode::Encode;
 use log4rs::encode::writer::simple::SimpleWriter;
 
 // Layout:
+
+// Progress on <funcname>:
 //
 // <------path statistics block----->
 // < rows_of_stats rows (minimum 2) >
@@ -101,7 +103,7 @@ enum ProgressMsg {
 
 impl ProgressDisplayState {
     /// Initialize the progress display
-    fn initialize(rx: mpsc::Receiver<ProgressMsg>, termination_rx: mpsc::Receiver<()>) -> Self {
+    fn initialize(rx: mpsc::Receiver<ProgressMsg>, termination_rx: mpsc::Receiver<()>, funcname: &str) -> Self {
         let mut pdstate = Self {
             rx,
             termination_rx,
@@ -118,6 +120,8 @@ impl ProgressDisplayState {
             start_time: Instant::now(),
             elapsed_secs: 0,
         };
+        println!("Progress on {}:", funcname);
+        println!();
         print!("{}", pdstate.path_stats);  // the `Display` impl here includes the final newline
         println!();  // this is the blank line between the path stats and the backtrack-points line
         pdstate.print_backtrack_line();
@@ -433,7 +437,7 @@ impl ProgressDisplayState {
 
     fn finalize(&mut self) {
         stdout()
-            .queue(cursor::MoveToPreviousLine(2 + self.rows_of_loc + 2 + self.rows_of_log + 5 + self.rows_of_stats)).unwrap()
+            .queue(cursor::MoveToPreviousLine(2 + self.rows_of_loc + 2 + self.rows_of_log + 5 + self.rows_of_stats + 2)).unwrap()
             .queue(terminal::Clear(terminal::ClearType::FromCursorDown)).unwrap()
             .flush().unwrap();
         self.print_time_elapsed_line();
@@ -471,12 +475,13 @@ pub struct MainThreadState {
 }
 
 impl MainThreadState {
-    fn initialize<B: Backend>(log_filename: &str, config: &mut Config<B>, debug_logging: bool) -> Rc<RefCell<Option<Self>>> {
+    fn initialize<B: Backend>(log_filename: &str, funcname: impl Into<String>, config: &mut Config<B>, debug_logging: bool) -> Rc<RefCell<Option<Self>>> {
         // spawn the progress-display-updater thread, which will initialize the progress-display view
         let (tx, rx) = mpsc::channel();
         let (termination_tx, termination_rx) = mpsc::channel();
+        let funcname = funcname.into();
         let join_handle = thread::spawn(move || {
-            let mut pdstate = ProgressDisplayState::initialize(rx, termination_rx);
+            let mut pdstate = ProgressDisplayState::initialize(rx, termination_rx, &funcname);
             pdstate.listen();
         });
 
@@ -568,8 +573,8 @@ pub fn process_log_message(record: &log::Record) -> std::result::Result<(), Box<
 /// trait for Rc<RefCell<Option<MainThreadState>>>
 pub type ProgressUpdater = Rc<RefCell<Option<MainThreadState>>>;
 
-pub fn initialize_progress_updater<B: Backend>(log_filename: &str, config: &mut Config<B>, debug_logging: bool) -> ProgressUpdater {
-    MainThreadState::initialize(log_filename, config, debug_logging)
+pub fn initialize_progress_updater<B: Backend>(log_filename: &str, funcname: &str, config: &mut Config<B>, debug_logging: bool) -> ProgressUpdater {
+    MainThreadState::initialize(log_filename, funcname, config, debug_logging)
 }
 
 impl<B: Backend> crate::ProgressUpdater<B> for ProgressUpdater {
