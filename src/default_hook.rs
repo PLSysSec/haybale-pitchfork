@@ -73,6 +73,10 @@ pub(crate) fn is_or_points_to_secret(proj: &Project, state: &mut State<secret::B
         match ty {
             Type::PointerType { pointee_type, .. } => {
                 // also check if it points to any secret data
+                if let Type::FuncType { .. } = &**pointee_type {
+                    // function pointers don't point to secret data
+                    return Ok(ArgumentKind::Public);
+                }
                 let pointee_size_bits = match haybale::layout::size_opaque_aware(&**pointee_type, proj) {
                     None => return Ok(ArgumentKind::Unknown),
                     Some(size) => size,
