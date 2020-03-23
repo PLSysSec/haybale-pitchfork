@@ -29,6 +29,10 @@ fn usage() {
     println!("      option in `haybale::Config`; see docs there. If this option is not");
     println!("      specified, it defaults to `None`.");
     println!();
+    println!("  --max-memcpy-length <n>: Use <n> as the value for the similarly named");
+    println!("      option in `haybale::Config`; see docs there. If this option is not");
+    println!("      specified, it defaults to 4096.");
+    println!();
     println!("  --solver-timeout <n>: Set the solver timeout to <n> seconds. For more");
     println!("      information, see docs on the `solver_query_timeout` option in");
     println!("      `haybale::Config`. If this option is not specified, it defaults to 300.");
@@ -56,6 +60,7 @@ struct CommandLineOptions {
     pitchfork_config: PitchforkConfig,
     loop_bound: usize,
     max_callstack_depth: Option<usize>,
+    max_memcpy_length: u64,
     solver_timeout: Option<Duration>,
     prefix: bool,
 }
@@ -74,6 +79,7 @@ impl Default for CommandLineOptions {
             },
             loop_bound: 100,
             max_callstack_depth: None,
+            max_memcpy_length: 4096,
             solver_timeout: Some(Duration::from_secs(300)),
             prefix: false,
         }
@@ -121,6 +127,9 @@ pub fn main_func(
             },
             "--max-callstack-depth" => {
                 cmdlineoptions.max_callstack_depth = Some(args.next().expect("--max-callstack-depth argument requires a value").parse().unwrap());
+            },
+            "--max-memcpy-length" => {
+                cmdlineoptions.max_memcpy_length = args.next().expect("--max-memcpy-length requires a value").parse().unwrap();
             },
             "--solver-timeout" => {
                 cmdlineoptions.solver_timeout = Some(Duration::from_secs(args.next().expect("--solver-timeout argument requires a value").parse().unwrap()));
@@ -226,7 +235,7 @@ fn make_config<'p>(cmdlineoptions: &CommandLineOptions) -> Config<'p, secret::Ba
     config.loop_bound = cmdlineoptions.loop_bound;
     config.max_callstack_depth = cmdlineoptions.max_callstack_depth;
     config.solver_query_timeout = cmdlineoptions.solver_timeout;
-    config.max_memcpy_length = Some(4096);
+    config.max_memcpy_length = Some(cmdlineoptions.max_memcpy_length);
     config.null_pointer_checking = NullPointerChecking::SplitPath;
     config
 }
