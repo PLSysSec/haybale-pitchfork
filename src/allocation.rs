@@ -177,14 +177,15 @@ impl<'p, 's> Context<'p, 's> {
                 debug!("Parameter is marked as a public pointer which {} be null", if maybe_null { "may" } else { "cannot" });
                 let ptr = self.state.allocate(pointee.size_in_bits() as u64);
                 debug!("Allocated the parameter at {:?}", ptr);
-                let ptr = if maybe_null {
+                if maybe_null {
                     let ptr_width = ptr.get_width();
                     let condition = self.state.new_bv_with_name(Name::from("pointer_is_null"), 1)?;
-                    condition.cond_bv(&self.state.zero(ptr_width), &ptr)
+                    let maybe_null_ptr = condition.cond_bv(&self.state.zero(ptr_width), &ptr);
+                    self.state.overwrite_latest_version_of_bv(&param.name, maybe_null_ptr);
                 } else {
-                    ptr
-                };
-                self.state.overwrite_latest_version_of_bv(&param.name, ptr.clone());
+                    self.state.overwrite_latest_version_of_bv(&param.name, ptr.clone());
+                }
+                // in either case, initialize the concrete pointer, not the maybe-null location
                 if type_override {
                     InitializationContext::blank().initialize_cad_in_memory(self, &ptr, &*pointee, None)?;
                 } else {
@@ -591,19 +592,19 @@ impl<'a> InitializationContext<'a> {
 
                 // allocate memory for the pointee
                 let inner_ptr = ctx.state.allocate(pointee.size_in_bits() as u64);
+                let bits = inner_ptr.get_width();
                 debug!("allocated memory for the pointee at {:?}, and will constrain the memory contents at {:?} to have that pointer value{}", inner_ptr, addr, if *maybe_null { " or null" } else { "" });
 
                 // make `addr` point to a pointer to the newly allocated memory (or point to NULL if appropriate)
-                let bits = inner_ptr.get_width();
-                let inner_ptr = if *maybe_null {
+                if *maybe_null {
                     let condition = ctx.state.new_bv_with_name(Name::from("pointer_is_null"), 1)?;
-                    condition.cond_bv(&ctx.state.zero(bits), &inner_ptr)
+                    let maybe_null_ptr = condition.cond_bv(&ctx.state.zero(bits), &inner_ptr);
+                    ctx.state.write(&addr, maybe_null_ptr)?;
                 } else {
-                    inner_ptr
+                    ctx.state.write(&addr, inner_ptr.clone())?;
                 };
-                ctx.state.write(&addr, inner_ptr.clone())?;
 
-                // initialize the pointee
+                // in either case, initialize the pointee at the concrete address (not at the maybe-null location)
                 self.initialize_cad_in_memory(ctx, &inner_ptr, &**pointee, pointee_ty)?;
 
                 Ok(bits as usize)
