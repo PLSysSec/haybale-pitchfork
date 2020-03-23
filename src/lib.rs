@@ -10,6 +10,8 @@ pub mod hook_helpers;
 pub mod secret;
 mod logging;
 mod progress;
+mod main_func;
+pub use main_func::main_func;
 
 use colored::*;
 use haybale::{layout, symex_function, backend::Backend, ExecutionManager, State, ReturnValue};
