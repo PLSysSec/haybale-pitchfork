@@ -629,6 +629,6 @@ fn initialize_progress_updater<B: Backend>(log_filename: &str, funcname: &str, c
     progress::initialize_progress_updater(log_filename, funcname, config, debug_logging)
 }
 #[cfg(not(feature = "progress-updates"))]
-fn initialize_progress_updater<B: Backend>(_log_filename: &str, funcname: &str, _config: &mut Config<B>, _debug_logging: bool) -> NullProgressUpdater {
+fn initialize_progress_updater<B: Backend>(_log_filename: &str, _funcname: &str, _config: &mut Config<B>, _debug_logging: bool) -> NullProgressUpdater {
     NullProgressUpdater { }
 }
