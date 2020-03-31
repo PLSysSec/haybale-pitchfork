@@ -40,7 +40,7 @@ the name `haybale-pitchfork`. You can add it as a dependency in your
 
 ```toml
 [dependencies]
-haybale-pitchfork = "0.1.0"
+haybale-pitchfork = "0.2.0"
 ```
 
 If you want to use the name `pitchfork` instead of `haybale_pitchfork` in
@@ -48,7 +48,7 @@ your code, you can use Cargo's [dependency renaming] feature:
 
 ```toml
 [dependencies]
-pitchfork = { package = "haybale-pitchfork", version = "0.1.0" }
+pitchfork = { package = "haybale-pitchfork", version = "0.2.0" }
 ```
 
 Because it is built on [`haybale`], `pitchfork` also depends (indirectly) on
