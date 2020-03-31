@@ -4,7 +4,6 @@ use crate::secret;
 
 use colored::*;
 use haybale::{Config, Project};
-use haybale::config::NullPointerChecking;
 use itertools::Itertools;
 use std::time::Duration;
 
@@ -21,20 +20,17 @@ fn usage() {
     println!("  --list-functions: list all functions defined in the LLVM bitcode and exit");
     println!();
     println!("  --loop-bound <n>: Use <n> as the value for the similarly named option in");
-    println!("      `haybale::Config`; see docs there. If this option is not specified,");
-    println!("      it defaults to 100.");
+    println!("      `haybale::Config`; see docs there.");
     println!();
     println!("  --max-callstack-depth <n>: Use <n> as the value for the similarly named");
-    println!("      option in `haybale::Config`; see docs there. If this option is not");
-    println!("      specified, it defaults to `None`.");
+    println!("      option in `haybale::Config`; see docs there.");
     println!();
     println!("  --max-memcpy-length <n>: Use <n> as the value for the similarly named");
-    println!("      option in `haybale::Config`; see docs there. If this option is not");
-    println!("      specified, it defaults to 4096.");
+    println!("      option in `haybale::Config`; see docs there.");
     println!();
     println!("  --solver-timeout <n>: Set the solver timeout to <n> seconds. For more");
     println!("      information, see docs on the `solver_query_timeout` option in");
-    println!("      `haybale::Config`. If this option is not specified, it defaults to 300.");
+    println!("      `haybale::Config`.");
     println!();
     println!("  --debug-logging: record log messages with `DEBUG` and higher priority in the");
     println!("      designated log file. If this option is not specified, only log messages");
@@ -57,10 +53,19 @@ fn usage() {
 /// A struct which represents the options the user specified at the command-line
 struct CommandLineOptions {
     pitchfork_config: PitchforkConfig,
-    loop_bound: usize,
+
+    /// `None` means not specified / don't override
+    loop_bound: Option<usize>,
+
+    /// `None` means not specified / don't override
     max_callstack_depth: Option<usize>,
-    max_memcpy_length: u64,
+
+    /// `None` means not specified / don't override
+    max_memcpy_length: Option<u64>,
+
+    /// `None` means not specified / don't override
     solver_timeout: Option<Duration>,
+
     prefix: bool,
 }
 
@@ -76,10 +81,10 @@ impl Default for CommandLineOptions {
                 pitchfork_config.debug_logging = false;
                 pitchfork_config
             },
-            loop_bound: 100,
+            loop_bound: None,
             max_callstack_depth: None,
-            max_memcpy_length: 4096,
-            solver_timeout: Some(Duration::from_secs(300)),
+            max_memcpy_length: None,
+            solver_timeout: None,
             prefix: false,
         }
     }
@@ -123,13 +128,13 @@ pub fn main_func<F>(
                 return ();
             },
             "--loop-bound" => {
-                cmdlineoptions.loop_bound = args.next().expect("--loop-bound argument requires a value").parse().unwrap();
+                cmdlineoptions.loop_bound = Some(args.next().expect("--loop-bound argument requires a value").parse().unwrap());
             },
             "--max-callstack-depth" => {
                 cmdlineoptions.max_callstack_depth = Some(args.next().expect("--max-callstack-depth argument requires a value").parse().unwrap());
             },
             "--max-memcpy-length" => {
-                cmdlineoptions.max_memcpy_length = args.next().expect("--max-memcpy-length requires a value").parse().unwrap();
+                cmdlineoptions.max_memcpy_length = Some(args.next().expect("--max-memcpy-length requires a value").parse().unwrap());
             },
             "--solver-timeout" => {
                 cmdlineoptions.solver_timeout = Some(Duration::from_secs(args.next().expect("--solver-timeout argument requires a value").parse().unwrap()));
@@ -231,9 +236,16 @@ fn process_nonoption_args<F>(
 }
 
 fn set_cmdline_overrides(config: &mut Config<secret::Backend>, cmdlineoptions: &CommandLineOptions) {
-    config.loop_bound = cmdlineoptions.loop_bound;
-    config.max_callstack_depth = cmdlineoptions.max_callstack_depth;
-    config.solver_query_timeout = cmdlineoptions.solver_timeout;
-    config.max_memcpy_length = Some(cmdlineoptions.max_memcpy_length);
-    config.null_pointer_checking = NullPointerChecking::SplitPath;
+    if let Some(loop_bound) = cmdlineoptions.loop_bound {
+        config.loop_bound = loop_bound;
+    }
+    if let Some(max_callstack_depth) = cmdlineoptions.max_callstack_depth {
+        config.max_callstack_depth = Some(max_callstack_depth);
+    }
+    if let Some(max_memcpy_length) = cmdlineoptions.max_memcpy_length {
+        config.max_memcpy_length = Some(max_memcpy_length);
+    }
+    if let Some(solver_query_timeout) = cmdlineoptions.solver_timeout {
+        config.solver_query_timeout = Some(solver_query_timeout);
+    }
 }
