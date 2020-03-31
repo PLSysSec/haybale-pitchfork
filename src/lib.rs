@@ -1,3 +1,7 @@
+// this ensures that crate users generating docs with --no-deps will still
+// properly get links to the public docs for Pitchfork's types
+#![doc(html_root_url = "https://PLSysSec.github.io/haybale-pitchfork")]
+
 mod abstractdata;
 pub use abstractdata::*;
 mod allocation;
