@@ -1,4 +1,4 @@
-<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source to the Rust file `src/lib.rs`."><meta name="keywords" content="rust, rustlang, rust-lang"><title>lib.rs.html -- source</title><link rel="stylesheet" type="text/css" href="../../normalize.css"><link rel="stylesheet" type="text/css" href="../../rustdoc.css" id="mainThemeStyle"><link rel="stylesheet" type="text/css" href="../../dark.css"><link rel="stylesheet" type="text/css" href="../../light.css" id="themeStyle"><script src="../../storage.js"></script><noscript><link rel="stylesheet" href="../../noscript.css"></noscript><link rel="shortcut icon" href="../../favicon.ico"><style type="text/css">#crate-search{background-image:url("../../down-arrow.svg");}</style></head><body class="rustdoc source"><!--[if lte IE 8]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="sidebar-menu">&#9776;</div><a href='../../haybale_pitchfork/index.html'><div class='logo-container'><img src='../../rust-logo.png' alt='logo'></div></a></nav><div class="theme-picker"><button id="theme-picker" aria-label="Pick another theme!"><img src="../../brush.svg" width="18" alt="Pick another theme!"></button><div id="theme-choices"></div></div><script src="../../theme.js"></script><nav class="sub"><form class="search-form js-only"><div class="search-container"><div><select id="crate-search"><option value="All crates">All crates</option></select><input class="search-input" name="search" autocomplete="off" spellcheck="false" placeholder="Click or press ‘S’ to search, ‘?’ for more options…" type="search"></div><a id="settings-menu" href="../../settings.html"><img src="../../wheel.svg" width="18" alt="Change settings"></a></div></form></nav><section id="main" class="content"><pre class="line-numbers"><span id="1">  1</span>
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source to the Rust file `src/lib.rs`."><meta name="keywords" content="rust, rustlang, rust-lang"><title>lib.rs.html -- source</title><link rel="stylesheet" type="text/css" href="../../normalize.css"><link rel="stylesheet" type="text/css" href="../../rustdoc.css" id="mainThemeStyle"><link rel="stylesheet" type="text/css" href="../../dark.css"><link rel="stylesheet" type="text/css" href="../../light.css" id="themeStyle"><script src="../../storage.js"></script><noscript><link rel="stylesheet" href="../../noscript.css"></noscript><link rel="shortcut icon" href="../../favicon.ico"><style type="text/css">#crate-search{background-image:url("../../down-arrow.svg");}</style></head><body class="rustdoc source"><!--[if lte IE 8]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="sidebar-menu">&#9776;</div><a href='../../haybale_pitchfork/index.html'><div class='logo-container'><img src='../../rust-logo.png' alt='logo'></div></a></nav><div class="theme-picker"><button id="theme-picker" aria-label="Pick another theme!"><img src="../../brush.svg" width="18" alt="Pick another theme!"></button><div id="theme-choices"></div></div><script src="../../theme.js"></script><nav class="sub"><form class="search-form"><div class="search-container"><div><select id="crate-search"><option value="All crates">All crates</option></select><input class="search-input" name="search" disabled autocomplete="off" spellcheck="false" placeholder="Click or press ‘S’ to search, ‘?’ for more options…" type="search"></div><a id="settings-menu" href="../../settings.html"><img src="../../wheel.svg" width="18" alt="Change settings"></a></div></form></nav><section id="main" class="content"><pre class="line-numbers"><span id="1">  1</span>
 <span id="2">  2</span>
 <span id="3">  3</span>
 <span id="4">  4</span>
@@ -390,14 +390,263 @@
 <span id="390">390</span>
 <span id="391">391</span>
 <span id="392">392</span>
+<span id="393">393</span>
+<span id="394">394</span>
+<span id="395">395</span>
+<span id="396">396</span>
+<span id="397">397</span>
+<span id="398">398</span>
+<span id="399">399</span>
+<span id="400">400</span>
+<span id="401">401</span>
+<span id="402">402</span>
+<span id="403">403</span>
+<span id="404">404</span>
+<span id="405">405</span>
+<span id="406">406</span>
+<span id="407">407</span>
+<span id="408">408</span>
+<span id="409">409</span>
+<span id="410">410</span>
+<span id="411">411</span>
+<span id="412">412</span>
+<span id="413">413</span>
+<span id="414">414</span>
+<span id="415">415</span>
+<span id="416">416</span>
+<span id="417">417</span>
+<span id="418">418</span>
+<span id="419">419</span>
+<span id="420">420</span>
+<span id="421">421</span>
+<span id="422">422</span>
+<span id="423">423</span>
+<span id="424">424</span>
+<span id="425">425</span>
+<span id="426">426</span>
+<span id="427">427</span>
+<span id="428">428</span>
+<span id="429">429</span>
+<span id="430">430</span>
+<span id="431">431</span>
+<span id="432">432</span>
+<span id="433">433</span>
+<span id="434">434</span>
+<span id="435">435</span>
+<span id="436">436</span>
+<span id="437">437</span>
+<span id="438">438</span>
+<span id="439">439</span>
+<span id="440">440</span>
+<span id="441">441</span>
+<span id="442">442</span>
+<span id="443">443</span>
+<span id="444">444</span>
+<span id="445">445</span>
+<span id="446">446</span>
+<span id="447">447</span>
+<span id="448">448</span>
+<span id="449">449</span>
+<span id="450">450</span>
+<span id="451">451</span>
+<span id="452">452</span>
+<span id="453">453</span>
+<span id="454">454</span>
+<span id="455">455</span>
+<span id="456">456</span>
+<span id="457">457</span>
+<span id="458">458</span>
+<span id="459">459</span>
+<span id="460">460</span>
+<span id="461">461</span>
+<span id="462">462</span>
+<span id="463">463</span>
+<span id="464">464</span>
+<span id="465">465</span>
+<span id="466">466</span>
+<span id="467">467</span>
+<span id="468">468</span>
+<span id="469">469</span>
+<span id="470">470</span>
+<span id="471">471</span>
+<span id="472">472</span>
+<span id="473">473</span>
+<span id="474">474</span>
+<span id="475">475</span>
+<span id="476">476</span>
+<span id="477">477</span>
+<span id="478">478</span>
+<span id="479">479</span>
+<span id="480">480</span>
+<span id="481">481</span>
+<span id="482">482</span>
+<span id="483">483</span>
+<span id="484">484</span>
+<span id="485">485</span>
+<span id="486">486</span>
+<span id="487">487</span>
+<span id="488">488</span>
+<span id="489">489</span>
+<span id="490">490</span>
+<span id="491">491</span>
+<span id="492">492</span>
+<span id="493">493</span>
+<span id="494">494</span>
+<span id="495">495</span>
+<span id="496">496</span>
+<span id="497">497</span>
+<span id="498">498</span>
+<span id="499">499</span>
+<span id="500">500</span>
+<span id="501">501</span>
+<span id="502">502</span>
+<span id="503">503</span>
+<span id="504">504</span>
+<span id="505">505</span>
+<span id="506">506</span>
+<span id="507">507</span>
+<span id="508">508</span>
+<span id="509">509</span>
+<span id="510">510</span>
+<span id="511">511</span>
+<span id="512">512</span>
+<span id="513">513</span>
+<span id="514">514</span>
+<span id="515">515</span>
+<span id="516">516</span>
+<span id="517">517</span>
+<span id="518">518</span>
+<span id="519">519</span>
+<span id="520">520</span>
+<span id="521">521</span>
+<span id="522">522</span>
+<span id="523">523</span>
+<span id="524">524</span>
+<span id="525">525</span>
+<span id="526">526</span>
+<span id="527">527</span>
+<span id="528">528</span>
+<span id="529">529</span>
+<span id="530">530</span>
+<span id="531">531</span>
+<span id="532">532</span>
+<span id="533">533</span>
+<span id="534">534</span>
+<span id="535">535</span>
+<span id="536">536</span>
+<span id="537">537</span>
+<span id="538">538</span>
+<span id="539">539</span>
+<span id="540">540</span>
+<span id="541">541</span>
+<span id="542">542</span>
+<span id="543">543</span>
+<span id="544">544</span>
+<span id="545">545</span>
+<span id="546">546</span>
+<span id="547">547</span>
+<span id="548">548</span>
+<span id="549">549</span>
+<span id="550">550</span>
+<span id="551">551</span>
+<span id="552">552</span>
+<span id="553">553</span>
+<span id="554">554</span>
+<span id="555">555</span>
+<span id="556">556</span>
+<span id="557">557</span>
+<span id="558">558</span>
+<span id="559">559</span>
+<span id="560">560</span>
+<span id="561">561</span>
+<span id="562">562</span>
+<span id="563">563</span>
+<span id="564">564</span>
+<span id="565">565</span>
+<span id="566">566</span>
+<span id="567">567</span>
+<span id="568">568</span>
+<span id="569">569</span>
+<span id="570">570</span>
+<span id="571">571</span>
+<span id="572">572</span>
+<span id="573">573</span>
+<span id="574">574</span>
+<span id="575">575</span>
+<span id="576">576</span>
+<span id="577">577</span>
+<span id="578">578</span>
+<span id="579">579</span>
+<span id="580">580</span>
+<span id="581">581</span>
+<span id="582">582</span>
+<span id="583">583</span>
+<span id="584">584</span>
+<span id="585">585</span>
+<span id="586">586</span>
+<span id="587">587</span>
+<span id="588">588</span>
+<span id="589">589</span>
+<span id="590">590</span>
+<span id="591">591</span>
+<span id="592">592</span>
+<span id="593">593</span>
+<span id="594">594</span>
+<span id="595">595</span>
+<span id="596">596</span>
+<span id="597">597</span>
+<span id="598">598</span>
+<span id="599">599</span>
+<span id="600">600</span>
+<span id="601">601</span>
+<span id="602">602</span>
+<span id="603">603</span>
+<span id="604">604</span>
+<span id="605">605</span>
+<span id="606">606</span>
+<span id="607">607</span>
+<span id="608">608</span>
+<span id="609">609</span>
+<span id="610">610</span>
+<span id="611">611</span>
+<span id="612">612</span>
+<span id="613">613</span>
+<span id="614">614</span>
+<span id="615">615</span>
+<span id="616">616</span>
+<span id="617">617</span>
+<span id="618">618</span>
+<span id="619">619</span>
+<span id="620">620</span>
+<span id="621">621</span>
+<span id="622">622</span>
+<span id="623">623</span>
+<span id="624">624</span>
+<span id="625">625</span>
+<span id="626">626</span>
+<span id="627">627</span>
+<span id="628">628</span>
+<span id="629">629</span>
+<span id="630">630</span>
+<span id="631">631</span>
+<span id="632">632</span>
+<span id="633">633</span>
+<span id="634">634</span>
 </pre><div class="example-wrap"><pre class="rust ">
 <span class="kw">mod</span> <span class="ident">abstractdata</span>;
 <span class="kw">pub</span> <span class="kw">use</span> <span class="ident">abstractdata</span>::<span class="kw-2">*</span>;
 <span class="kw">mod</span> <span class="ident">allocation</span>;
 <span class="kw">mod</span> <span class="ident">coverage</span>;
 <span class="kw">use</span> <span class="ident">coverage</span>::<span class="kw-2">*</span>;
+<span class="kw">mod</span> <span class="ident">default_hook</span>;
+<span class="kw">use</span> <span class="ident">default_hook</span>::<span class="ident">pitchfork_default_hook</span>;
+<span class="kw">pub</span> <span class="kw">mod</span> <span class="ident">hooks</span>;
 <span class="kw">pub</span> <span class="kw">mod</span> <span class="ident">hook_helpers</span>;
 <span class="kw">pub</span> <span class="kw">mod</span> <span class="ident">secret</span>;
+<span class="kw">mod</span> <span class="ident">logging</span>;
+<span class="kw">mod</span> <span class="ident">progress</span>;
+<span class="kw">mod</span> <span class="ident">main_func</span>;
+<span class="kw">pub</span> <span class="kw">use</span> <span class="ident">main_func</span>::<span class="ident">main_func</span>;
 
 <span class="kw">use</span> <span class="ident">colored</span>::<span class="kw-2">*</span>;
 <span class="kw">use</span> <span class="ident">haybale</span>::{<span class="ident">layout</span>, <span class="ident">symex_function</span>, <span class="ident">backend</span>::<span class="ident">Backend</span>, <span class="ident">ExecutionManager</span>, <span class="ident">State</span>, <span class="ident">ReturnValue</span>};
@@ -405,12 +654,13 @@
 <span class="kw">pub</span> <span class="kw">use</span> <span class="ident">haybale</span>::{<span class="ident">Config</span>, <span class="ident">Project</span>};
 <span class="kw">use</span> <span class="ident">haybale</span>::<span class="ident">function_hooks</span>::<span class="ident">IsCall</span>;
 <span class="kw">use</span> <span class="ident">lazy_static</span>::<span class="ident">lazy_static</span>;
-<span class="kw">use</span> <span class="ident">log</span>::{<span class="ident">debug</span>, <span class="ident">info</span>};
+<span class="kw">use</span> <span class="ident">log</span>::{<span class="ident">debug</span>, <span class="ident">info</span>, <span class="ident">warn</span>};
 <span class="kw">use</span> <span class="ident">std</span>::<span class="ident">collections</span>::{<span class="ident">HashMap</span>, <span class="ident">HashSet</span>};
 <span class="kw">use</span> <span class="ident">std</span>::<span class="ident">fmt</span>;
 
 <span class="doccomment">/// Holds information about the results of a constant-time analysis of a single</span>
 <span class="doccomment">/// path.</span>
+<span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Clone</span>, <span class="ident">Debug</span>)]</span>
 <span class="kw">pub</span> <span class="kw">enum</span> <span class="ident">ConstantTimeResultForPath</span> {
     <span class="ident">IsConstantTime</span>,
     <span class="ident">NotConstantTime</span> {
@@ -449,6 +699,12 @@
     <span class="doccomment">/// block in which the error occurred to be covered, even if the portion of</span>
     <span class="doccomment">/// the block after where the error occurred was not covered.</span>
     <span class="kw">pub</span> <span class="ident">block_coverage</span>: <span class="ident">HashMap</span><span class="op">&lt;</span><span class="ident">String</span>, <span class="ident">BlockCoverage</span><span class="op">&gt;</span>,
+    <span class="doccomment">/// If we logged all the detailed error messages, then this is the name of</span>
+    <span class="doccomment">/// the file they were logged to.</span>
+    <span class="doccomment">/// Otherwise, if this is `None`, we did not log the detailed error messages.</span>
+    <span class="doccomment">/// (In either case, all the detailed error messages are available in the</span>
+    <span class="doccomment">/// `path_results` field above.)</span>
+    <span class="kw">pub</span> <span class="ident">error_filename</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">String</span><span class="op">&gt;</span>,
 }
 
 <span class="kw">impl</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span><span class="op">&gt;</span> <span class="ident">ConstantTimeResultForFunction</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span><span class="op">&gt;</span> {
@@ -473,31 +729,9 @@
     }
 
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">path_statistics</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">PathStatistics</span> {
-        <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">path_stats</span> <span class="op">=</span> <span class="ident">PathStatistics</span> {
-            <span class="ident">num_ct_paths</span>: <span class="number">0</span>,
-            <span class="ident">num_ct_violations</span>: <span class="number">0</span>,
-            <span class="ident">num_unsats</span>: <span class="number">0</span>,
-            <span class="ident">num_loop_bound_exceeded</span>: <span class="number">0</span>,
-            <span class="ident">num_null_ptr_deref</span>: <span class="number">0</span>,
-            <span class="ident">num_function_not_found</span>: <span class="number">0</span>,
-            <span class="ident">num_solver_errors</span>: <span class="number">0</span>,
-            <span class="ident">num_unsupported_instruction</span>: <span class="number">0</span>,
-            <span class="ident">num_malformed_instruction</span>: <span class="number">0</span>,
-            <span class="ident">num_other_errors</span>: <span class="number">0</span>,
-        };
+        <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">path_stats</span> <span class="op">=</span> <span class="ident">PathStatistics</span>::<span class="ident">new</span>();
         <span class="kw">for</span> <span class="ident">result</span> <span class="kw">in</span> <span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">path_results</span> {
-            <span class="kw">match</span> <span class="ident">result</span> {
-                <span class="ident">ConstantTimeResultForPath</span>::<span class="ident">IsConstantTime</span> <span class="op">=</span><span class="op">&gt;</span> <span class="ident">path_stats</span>.<span class="ident">num_ct_paths</span> <span class="op">+</span><span class="op">=</span> <span class="number">1</span>,
-                <span class="ident">ConstantTimeResultForPath</span>::<span class="ident">NotConstantTime</span> { .. } <span class="op">=</span><span class="op">&gt;</span> <span class="ident">path_stats</span>.<span class="ident">num_ct_violations</span> <span class="op">+</span><span class="op">=</span> <span class="number">1</span>,
-                <span class="ident">ConstantTimeResultForPath</span>::<span class="ident">OtherError</span> { <span class="ident">error</span>: <span class="ident">Error</span>::<span class="ident">Unsat</span>, .. } <span class="op">=</span><span class="op">&gt;</span> <span class="ident">path_stats</span>.<span class="ident">num_unsats</span> <span class="op">+</span><span class="op">=</span> <span class="number">1</span>,
-                <span class="ident">ConstantTimeResultForPath</span>::<span class="ident">OtherError</span> { <span class="ident">error</span>: <span class="ident">Error</span>::<span class="ident">LoopBoundExceeded</span>, .. } <span class="op">=</span><span class="op">&gt;</span> <span class="ident">path_stats</span>.<span class="ident">num_loop_bound_exceeded</span> <span class="op">+</span><span class="op">=</span> <span class="number">1</span>,
-                <span class="ident">ConstantTimeResultForPath</span>::<span class="ident">OtherError</span> { <span class="ident">error</span>: <span class="ident">Error</span>::<span class="ident">NullPointerDereference</span>, .. } <span class="op">=</span><span class="op">&gt;</span> <span class="ident">path_stats</span>.<span class="ident">num_null_ptr_deref</span> <span class="op">+</span><span class="op">=</span> <span class="number">1</span>,
-                <span class="ident">ConstantTimeResultForPath</span>::<span class="ident">OtherError</span> { <span class="ident">error</span>: <span class="ident">Error</span>::<span class="ident">FunctionNotFound</span>(<span class="kw">_</span>), .. } <span class="op">=</span><span class="op">&gt;</span> <span class="ident">path_stats</span>.<span class="ident">num_function_not_found</span> <span class="op">+</span><span class="op">=</span> <span class="number">1</span>,
-                <span class="ident">ConstantTimeResultForPath</span>::<span class="ident">OtherError</span> { <span class="ident">error</span>: <span class="ident">Error</span>::<span class="ident">SolverError</span>(<span class="kw">_</span>), .. } <span class="op">=</span><span class="op">&gt;</span> <span class="ident">path_stats</span>.<span class="ident">num_solver_errors</span> <span class="op">+</span><span class="op">=</span> <span class="number">1</span>,
-                <span class="ident">ConstantTimeResultForPath</span>::<span class="ident">OtherError</span> { <span class="ident">error</span>: <span class="ident">Error</span>::<span class="ident">UnsupportedInstruction</span>(<span class="kw">_</span>), .. } <span class="op">=</span><span class="op">&gt;</span> <span class="ident">path_stats</span>.<span class="ident">num_unsupported_instruction</span> <span class="op">+</span><span class="op">=</span> <span class="number">1</span>,
-                <span class="ident">ConstantTimeResultForPath</span>::<span class="ident">OtherError</span> { <span class="ident">error</span>: <span class="ident">Error</span>::<span class="ident">MalformedInstruction</span>(<span class="kw">_</span>), .. } <span class="op">=</span><span class="op">&gt;</span> <span class="ident">path_stats</span>.<span class="ident">num_malformed_instruction</span> <span class="op">+</span><span class="op">=</span> <span class="number">1</span>,
-                <span class="ident">ConstantTimeResultForPath</span>::<span class="ident">OtherError</span> { <span class="ident">error</span>: <span class="ident">Error</span>::<span class="ident">OtherError</span>(<span class="kw">_</span>), .. } <span class="op">=</span><span class="op">&gt;</span> <span class="ident">path_stats</span>.<span class="ident">num_other_errors</span> <span class="op">+</span><span class="op">=</span> <span class="number">1</span>,
-            }
+            <span class="ident">path_stats</span>.<span class="ident">add_path_result</span>(<span class="ident">result</span>);
         }
         <span class="ident">path_stats</span>
     }
@@ -505,6 +739,7 @@
 
 <span class="doccomment">/// Some statistics which can be computed from a</span>
 <span class="doccomment">/// [`ConstantTimeResultForFunction`](struct.ConstantTimeResultForFunction.html).</span>
+<span class="attribute">#[<span class="ident">derive</span>(<span class="ident">PartialEq</span>, <span class="ident">Eq</span>, <span class="ident">Clone</span>, <span class="ident">Debug</span>)]</span>
 <span class="kw">pub</span> <span class="kw">struct</span> <span class="ident">PathStatistics</span> {
     <span class="doccomment">/// How many paths &quot;passed&quot;, that is, had no error or constant-time violation</span>
     <span class="kw">pub</span> <span class="ident">num_ct_paths</span>: <span class="ident">usize</span>,
@@ -524,8 +759,131 @@
     <span class="kw">pub</span> <span class="ident">num_unsupported_instruction</span>: <span class="ident">usize</span>,
     <span class="doccomment">/// How many MalformedInstruction errors did we find</span>
     <span class="kw">pub</span> <span class="ident">num_malformed_instruction</span>: <span class="ident">usize</span>,
-    <span class="doccomment">/// How many other errors (including solver timeouts) did we encounter</span>
+    <span class="doccomment">/// How many UnreachableInstruction errors did we find</span>
+    <span class="kw">pub</span> <span class="ident">num_unreachable_instruction</span>: <span class="ident">usize</span>,
+    <span class="doccomment">/// How many FailedToResolveFunctionPointer errors did we find</span>
+    <span class="kw">pub</span> <span class="ident">num_failed_resolve_fptr</span>: <span class="ident">usize</span>,
+    <span class="doccomment">/// How many HookReturnValueMismatch errors did we find</span>
+    <span class="kw">pub</span> <span class="ident">num_hook_retval_mismatch</span>: <span class="ident">usize</span>,
+    <span class="doccomment">/// How many other errors did we find</span>
     <span class="kw">pub</span> <span class="ident">num_other_errors</span>: <span class="ident">usize</span>,
+}
+
+<span class="kw">impl</span> <span class="ident">PathStatistics</span> {
+    <span class="doccomment">/// A fresh `PathStatistics` with all zeroes</span>
+    <span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn</span> <span class="ident">new</span>() <span class="op">-</span><span class="op">&gt;</span> <span class="self">Self</span> {
+        <span class="self">Self</span> {
+            <span class="ident">num_ct_paths</span>: <span class="number">0</span>,
+            <span class="ident">num_ct_violations</span>: <span class="number">0</span>,
+            <span class="ident">num_unsats</span>: <span class="number">0</span>,
+            <span class="ident">num_loop_bound_exceeded</span>: <span class="number">0</span>,
+            <span class="ident">num_null_ptr_deref</span>: <span class="number">0</span>,
+            <span class="ident">num_function_not_found</span>: <span class="number">0</span>,
+            <span class="ident">num_solver_errors</span>: <span class="number">0</span>,
+            <span class="ident">num_unsupported_instruction</span>: <span class="number">0</span>,
+            <span class="ident">num_malformed_instruction</span>: <span class="number">0</span>,
+            <span class="ident">num_unreachable_instruction</span>: <span class="number">0</span>,
+            <span class="ident">num_failed_resolve_fptr</span>: <span class="number">0</span>,
+            <span class="ident">num_hook_retval_mismatch</span>: <span class="number">0</span>,
+            <span class="ident">num_other_errors</span>: <span class="number">0</span>,
+        }
+    }
+
+    <span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn</span> <span class="ident">add_path_result</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>, <span class="ident">path_result</span>: <span class="kw-2">&amp;</span><span class="ident">ConstantTimeResultForPath</span>) {
+        <span class="kw">match</span> <span class="ident">path_result</span> {
+            <span class="ident">ConstantTimeResultForPath</span>::<span class="ident">IsConstantTime</span> <span class="op">=</span><span class="op">&gt;</span> <span class="self">self</span>.<span class="ident">num_ct_paths</span> <span class="op">+</span><span class="op">=</span> <span class="number">1</span>,
+            <span class="ident">ConstantTimeResultForPath</span>::<span class="ident">NotConstantTime</span> { .. } <span class="op">=</span><span class="op">&gt;</span> <span class="self">self</span>.<span class="ident">num_ct_violations</span> <span class="op">+</span><span class="op">=</span> <span class="number">1</span>,
+            <span class="ident">ConstantTimeResultForPath</span>::<span class="ident">OtherError</span> { <span class="ident">error</span>: <span class="ident">Error</span>::<span class="ident">Unsat</span>, .. } <span class="op">=</span><span class="op">&gt;</span> <span class="self">self</span>.<span class="ident">num_unsats</span> <span class="op">+</span><span class="op">=</span> <span class="number">1</span>,
+            <span class="ident">ConstantTimeResultForPath</span>::<span class="ident">OtherError</span> { <span class="ident">error</span>: <span class="ident">Error</span>::<span class="ident">LoopBoundExceeded</span>(<span class="kw">_</span>), .. } <span class="op">=</span><span class="op">&gt;</span> <span class="self">self</span>.<span class="ident">num_loop_bound_exceeded</span> <span class="op">+</span><span class="op">=</span> <span class="number">1</span>,
+            <span class="ident">ConstantTimeResultForPath</span>::<span class="ident">OtherError</span> { <span class="ident">error</span>: <span class="ident">Error</span>::<span class="ident">NullPointerDereference</span>, .. } <span class="op">=</span><span class="op">&gt;</span> <span class="self">self</span>.<span class="ident">num_null_ptr_deref</span> <span class="op">+</span><span class="op">=</span> <span class="number">1</span>,
+            <span class="ident">ConstantTimeResultForPath</span>::<span class="ident">OtherError</span> { <span class="ident">error</span>: <span class="ident">Error</span>::<span class="ident">FunctionNotFound</span>(<span class="kw">_</span>), .. } <span class="op">=</span><span class="op">&gt;</span> <span class="self">self</span>.<span class="ident">num_function_not_found</span> <span class="op">+</span><span class="op">=</span> <span class="number">1</span>,
+            <span class="ident">ConstantTimeResultForPath</span>::<span class="ident">OtherError</span> { <span class="ident">error</span>: <span class="ident">Error</span>::<span class="ident">SolverError</span>(<span class="kw">_</span>), .. } <span class="op">=</span><span class="op">&gt;</span> <span class="self">self</span>.<span class="ident">num_solver_errors</span> <span class="op">+</span><span class="op">=</span> <span class="number">1</span>,
+            <span class="ident">ConstantTimeResultForPath</span>::<span class="ident">OtherError</span> { <span class="ident">error</span>: <span class="ident">Error</span>::<span class="ident">UnsupportedInstruction</span>(<span class="kw">_</span>), .. } <span class="op">=</span><span class="op">&gt;</span> <span class="self">self</span>.<span class="ident">num_unsupported_instruction</span> <span class="op">+</span><span class="op">=</span> <span class="number">1</span>,
+            <span class="ident">ConstantTimeResultForPath</span>::<span class="ident">OtherError</span> { <span class="ident">error</span>: <span class="ident">Error</span>::<span class="ident">MalformedInstruction</span>(<span class="kw">_</span>), .. } <span class="op">=</span><span class="op">&gt;</span> <span class="self">self</span>.<span class="ident">num_malformed_instruction</span> <span class="op">+</span><span class="op">=</span> <span class="number">1</span>,
+            <span class="ident">ConstantTimeResultForPath</span>::<span class="ident">OtherError</span> { <span class="ident">error</span>: <span class="ident">Error</span>::<span class="ident">UnreachableInstruction</span>, .. } <span class="op">=</span><span class="op">&gt;</span> <span class="self">self</span>.<span class="ident">num_unreachable_instruction</span> <span class="op">+</span><span class="op">=</span> <span class="number">1</span>,
+            <span class="ident">ConstantTimeResultForPath</span>::<span class="ident">OtherError</span> { <span class="ident">error</span>: <span class="ident">Error</span>::<span class="ident">FailedToResolveFunctionPointer</span>(<span class="kw">_</span>), .. } <span class="op">=</span><span class="op">&gt;</span> <span class="self">self</span>.<span class="ident">num_failed_resolve_fptr</span> <span class="op">+</span><span class="op">=</span> <span class="number">1</span>,
+            <span class="ident">ConstantTimeResultForPath</span>::<span class="ident">OtherError</span> { <span class="ident">error</span>: <span class="ident">Error</span>::<span class="ident">HookReturnValueMismatch</span>(<span class="kw">_</span>), .. } <span class="op">=</span><span class="op">&gt;</span> <span class="self">self</span>.<span class="ident">num_hook_retval_mismatch</span> <span class="op">+</span><span class="op">=</span> <span class="number">1</span>,
+            <span class="ident">ConstantTimeResultForPath</span>::<span class="ident">OtherError</span> { <span class="ident">error</span>: <span class="ident">Error</span>::<span class="ident">OtherError</span>(<span class="kw">_</span>), .. } <span class="op">=</span><span class="op">&gt;</span> <span class="self">self</span>.<span class="ident">num_other_errors</span> <span class="op">+</span><span class="op">=</span> <span class="number">1</span>,
+        }
+    }
+}
+
+<span class="kw">impl</span> <span class="ident">fmt</span>::<span class="ident">Display</span> <span class="kw">for</span> <span class="ident">PathStatistics</span> {
+    <span class="kw">fn</span> <span class="ident">fmt</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">f</span>: <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">fmt</span>::<span class="ident">Formatter</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">fmt</span>::<span class="prelude-ty">Result</span> {
+        <span class="comment">// We always show &quot;verified paths&quot; and &quot;constant-time violations found&quot;</span>
+        <span class="macro">writeln</span><span class="macro">!</span>(<span class="ident">f</span>, <span class="string">&quot;verified paths: {}&quot;</span>,
+            <span class="kw">if</span> <span class="self">self</span>.<span class="ident">num_ct_paths</span> <span class="op">&gt;</span> <span class="number">0</span> {
+                <span class="self">self</span>.<span class="ident">num_ct_paths</span>.<span class="ident">to_string</span>().<span class="ident">green</span>()
+            } <span class="kw">else</span> {
+                <span class="self">self</span>.<span class="ident">num_ct_paths</span>.<span class="ident">to_string</span>().<span class="ident">normal</span>()
+            }
+        )<span class="question-mark">?</span>;
+        <span class="macro">writeln</span><span class="macro">!</span>(<span class="ident">f</span>, <span class="string">&quot;constant-time violations found: {}&quot;</span>,
+            <span class="kw">if</span> <span class="self">self</span>.<span class="ident">num_ct_violations</span> <span class="op">&gt;</span> <span class="number">0</span> {
+                <span class="self">self</span>.<span class="ident">num_ct_violations</span>.<span class="ident">to_string</span>().<span class="ident">red</span>()
+            } <span class="kw">else</span> {
+                <span class="self">self</span>.<span class="ident">num_ct_violations</span>.<span class="ident">to_string</span>().<span class="ident">normal</span>()
+            }
+        )<span class="question-mark">?</span>;
+
+        <span class="comment">// For the other error types, we only show the entry if it&#39;s &gt; 0</span>
+        <span class="kw">if</span> <span class="self">self</span>.<span class="ident">num_null_ptr_deref</span> <span class="op">&gt;</span> <span class="number">0</span> {
+            <span class="macro">writeln</span><span class="macro">!</span>(<span class="ident">f</span>, <span class="string">&quot;null-pointer dereferences found: {}&quot;</span>,
+                <span class="self">self</span>.<span class="ident">num_null_ptr_deref</span>.<span class="ident">to_string</span>().<span class="ident">red</span>()
+            )<span class="question-mark">?</span>;
+        }
+        <span class="kw">if</span> <span class="self">self</span>.<span class="ident">num_function_not_found</span> <span class="op">&gt;</span> <span class="number">0</span> {
+            <span class="macro">writeln</span><span class="macro">!</span>(<span class="ident">f</span>, <span class="string">&quot;function-not-found errors: {}&quot;</span>,
+                <span class="self">self</span>.<span class="ident">num_function_not_found</span>.<span class="ident">to_string</span>().<span class="ident">red</span>()
+            )<span class="question-mark">?</span>;
+        }
+        <span class="kw">if</span> <span class="self">self</span>.<span class="ident">num_unsupported_instruction</span> <span class="op">&gt;</span> <span class="number">0</span> {
+            <span class="macro">writeln</span><span class="macro">!</span>(<span class="ident">f</span>, <span class="string">&quot;unsupported-instruction errors: {}&quot;</span>,
+                <span class="self">self</span>.<span class="ident">num_unsupported_instruction</span>.<span class="ident">to_string</span>().<span class="ident">red</span>()
+            )<span class="question-mark">?</span>;
+        }
+        <span class="kw">if</span> <span class="self">self</span>.<span class="ident">num_malformed_instruction</span> <span class="op">&gt;</span> <span class="number">0</span> {
+            <span class="macro">writeln</span><span class="macro">!</span>(<span class="ident">f</span>, <span class="string">&quot;malformed-instruction errors: {}&quot;</span>,
+                <span class="self">self</span>.<span class="ident">num_malformed_instruction</span>.<span class="ident">to_string</span>().<span class="ident">red</span>()
+            )<span class="question-mark">?</span>;
+        }
+        <span class="kw">if</span> <span class="self">self</span>.<span class="ident">num_unsats</span> <span class="op">&gt;</span> <span class="number">0</span> {
+            <span class="macro">writeln</span><span class="macro">!</span>(<span class="ident">f</span>, <span class="string">&quot;unsat errors: {}&quot;</span>,
+                <span class="self">self</span>.<span class="ident">num_unsats</span>.<span class="ident">to_string</span>().<span class="ident">red</span>()
+            )<span class="question-mark">?</span>;
+        }
+        <span class="kw">if</span> <span class="self">self</span>.<span class="ident">num_loop_bound_exceeded</span> <span class="op">&gt;</span> <span class="number">0</span> {
+            <span class="macro">writeln</span><span class="macro">!</span>(<span class="ident">f</span>, <span class="string">&quot;paths exceeding the loop bound: {}&quot;</span>,
+                <span class="self">self</span>.<span class="ident">num_loop_bound_exceeded</span>.<span class="ident">to_string</span>().<span class="ident">red</span>()
+            )<span class="question-mark">?</span>;
+        }
+        <span class="kw">if</span> <span class="self">self</span>.<span class="ident">num_unreachable_instruction</span> <span class="op">&gt;</span> <span class="number">0</span> {
+            <span class="macro">writeln</span><span class="macro">!</span>(<span class="ident">f</span>, <span class="string">&quot;unreachable-instruction errors: {}&quot;</span>,
+                <span class="self">self</span>.<span class="ident">num_unreachable_instruction</span>.<span class="ident">to_string</span>().<span class="ident">red</span>()
+            )<span class="question-mark">?</span>;
+        }
+        <span class="kw">if</span> <span class="self">self</span>.<span class="ident">num_failed_resolve_fptr</span> <span class="op">&gt;</span> <span class="number">0</span> {
+            <span class="macro">writeln</span><span class="macro">!</span>(<span class="ident">f</span>, <span class="string">&quot;failed-function-pointer-resolution errors: {}&quot;</span>,
+                <span class="self">self</span>.<span class="ident">num_failed_resolve_fptr</span>.<span class="ident">to_string</span>().<span class="ident">red</span>()
+            )<span class="question-mark">?</span>;
+        }
+        <span class="kw">if</span> <span class="self">self</span>.<span class="ident">num_hook_retval_mismatch</span> <span class="op">&gt;</span> <span class="number">0</span> {
+            <span class="macro">writeln</span><span class="macro">!</span>(<span class="ident">f</span>, <span class="string">&quot;hook-retval-mismatch errors: {}&quot;</span>,
+                <span class="self">self</span>.<span class="ident">num_hook_retval_mismatch</span>.<span class="ident">to_string</span>().<span class="ident">red</span>()
+            )<span class="question-mark">?</span>;
+        }
+        <span class="kw">if</span> <span class="self">self</span>.<span class="ident">num_solver_errors</span> <span class="op">&gt;</span> <span class="number">0</span> {
+            <span class="macro">writeln</span><span class="macro">!</span>(<span class="ident">f</span>, <span class="string">&quot;solver errors, including timeouts: {}&quot;</span>,
+                <span class="self">self</span>.<span class="ident">num_solver_errors</span>.<span class="ident">to_string</span>().<span class="ident">red</span>()
+            )<span class="question-mark">?</span>;
+        }
+        <span class="kw">if</span> <span class="self">self</span>.<span class="ident">num_other_errors</span> <span class="op">&gt;</span> <span class="number">0</span> {
+            <span class="macro">writeln</span><span class="macro">!</span>(<span class="ident">f</span>, <span class="string">&quot;other errors: {}&quot;</span>,
+                <span class="self">self</span>.<span class="ident">num_other_errors</span>.<span class="ident">to_string</span>().<span class="ident">red</span>()
+            )<span class="question-mark">?</span>;
+        }
+        <span class="prelude-val">Ok</span>(())
+    }
 }
 
 <span class="doccomment">/// Produces a pretty (even colored!) description of the</span>
@@ -540,64 +898,7 @@
         }
 
         <span class="kw">let</span> <span class="ident">path_stats</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">path_statistics</span>();
-
-        <span class="comment">// We always show &quot;verified paths&quot; and &quot;constant-time violations found&quot;</span>
-        <span class="macro">writeln</span><span class="macro">!</span>(<span class="ident">f</span>, <span class="string">&quot;verified paths: {}&quot;</span>,
-            <span class="kw">if</span> <span class="ident">path_stats</span>.<span class="ident">num_ct_paths</span> <span class="op">&gt;</span> <span class="number">0</span> {
-                <span class="ident">path_stats</span>.<span class="ident">num_ct_paths</span>.<span class="ident">to_string</span>().<span class="ident">green</span>()
-            } <span class="kw">else</span> {
-                <span class="ident">path_stats</span>.<span class="ident">num_ct_paths</span>.<span class="ident">to_string</span>().<span class="ident">normal</span>()
-            }
-        )<span class="question-mark">?</span>;
-        <span class="macro">writeln</span><span class="macro">!</span>(<span class="ident">f</span>, <span class="string">&quot;constant-time violations found: {}&quot;</span>,
-            <span class="kw">if</span> <span class="ident">path_stats</span>.<span class="ident">num_ct_violations</span> <span class="op">&gt;</span> <span class="number">0</span> {
-                <span class="ident">path_stats</span>.<span class="ident">num_ct_violations</span>.<span class="ident">to_string</span>().<span class="ident">red</span>()
-            } <span class="kw">else</span> {
-                <span class="ident">path_stats</span>.<span class="ident">num_ct_violations</span>.<span class="ident">to_string</span>().<span class="ident">normal</span>()
-            }
-        )<span class="question-mark">?</span>;
-
-        <span class="comment">// For the other error types, we only show the entry if it&#39;s &gt; 0</span>
-        <span class="kw">if</span> <span class="ident">path_stats</span>.<span class="ident">num_null_ptr_deref</span> <span class="op">&gt;</span> <span class="number">0</span> {
-            <span class="macro">writeln</span><span class="macro">!</span>(<span class="ident">f</span>, <span class="string">&quot;null-pointer dereferences found: {}&quot;</span>,
-                <span class="ident">path_stats</span>.<span class="ident">num_null_ptr_deref</span>.<span class="ident">to_string</span>().<span class="ident">red</span>()
-            )<span class="question-mark">?</span>;
-        }
-        <span class="kw">if</span> <span class="ident">path_stats</span>.<span class="ident">num_function_not_found</span> <span class="op">&gt;</span> <span class="number">0</span> {
-            <span class="macro">writeln</span><span class="macro">!</span>(<span class="ident">f</span>, <span class="string">&quot;function-not-found errors: {}&quot;</span>,
-                <span class="ident">path_stats</span>.<span class="ident">num_function_not_found</span>.<span class="ident">to_string</span>().<span class="ident">red</span>()
-            )<span class="question-mark">?</span>;
-        }
-        <span class="kw">if</span> <span class="ident">path_stats</span>.<span class="ident">num_unsupported_instruction</span> <span class="op">&gt;</span> <span class="number">0</span> {
-            <span class="macro">writeln</span><span class="macro">!</span>(<span class="ident">f</span>, <span class="string">&quot;unsupported-instruction errors: {}&quot;</span>,
-                <span class="ident">path_stats</span>.<span class="ident">num_unsupported_instruction</span>.<span class="ident">to_string</span>().<span class="ident">red</span>()
-            )<span class="question-mark">?</span>;
-        }
-        <span class="kw">if</span> <span class="ident">path_stats</span>.<span class="ident">num_malformed_instruction</span> <span class="op">&gt;</span> <span class="number">0</span> {
-            <span class="macro">writeln</span><span class="macro">!</span>(<span class="ident">f</span>, <span class="string">&quot;malformed-instruction errors: {}&quot;</span>,
-                <span class="ident">path_stats</span>.<span class="ident">num_malformed_instruction</span>.<span class="ident">to_string</span>().<span class="ident">red</span>()
-            )<span class="question-mark">?</span>;
-        }
-        <span class="kw">if</span> <span class="ident">path_stats</span>.<span class="ident">num_unsats</span> <span class="op">&gt;</span> <span class="number">0</span> {
-            <span class="macro">writeln</span><span class="macro">!</span>(<span class="ident">f</span>, <span class="string">&quot;unsat errors: {}&quot;</span>,
-                <span class="ident">path_stats</span>.<span class="ident">num_unsats</span>.<span class="ident">to_string</span>().<span class="ident">red</span>()
-            )<span class="question-mark">?</span>;
-        }
-        <span class="kw">if</span> <span class="ident">path_stats</span>.<span class="ident">num_loop_bound_exceeded</span> <span class="op">&gt;</span> <span class="number">0</span> {
-            <span class="macro">writeln</span><span class="macro">!</span>(<span class="ident">f</span>, <span class="string">&quot;paths exceeding the loop bound: {}&quot;</span>,
-                <span class="ident">path_stats</span>.<span class="ident">num_loop_bound_exceeded</span>.<span class="ident">to_string</span>().<span class="ident">red</span>()
-            )<span class="question-mark">?</span>;
-        }
-        <span class="kw">if</span> <span class="ident">path_stats</span>.<span class="ident">num_solver_errors</span> <span class="op">&gt;</span> <span class="number">0</span> {
-            <span class="macro">writeln</span><span class="macro">!</span>(<span class="ident">f</span>, <span class="string">&quot;solver errors, including timeouts: {}&quot;</span>,
-                <span class="ident">path_stats</span>.<span class="ident">num_solver_errors</span>.<span class="ident">to_string</span>().<span class="ident">red</span>()
-            )<span class="question-mark">?</span>;
-        }
-        <span class="kw">if</span> <span class="ident">path_stats</span>.<span class="ident">num_other_errors</span> <span class="op">&gt;</span> <span class="number">0</span> {
-            <span class="macro">writeln</span><span class="macro">!</span>(<span class="ident">f</span>, <span class="string">&quot;other errors: {}&quot;</span>,
-                <span class="ident">path_stats</span>.<span class="ident">num_other_errors</span>.<span class="ident">to_string</span>().<span class="ident">red</span>()
-            )<span class="question-mark">?</span>;
-        }
+        <span class="ident">path_stats</span>.<span class="ident">fmt</span>(<span class="ident">f</span>)<span class="question-mark">?</span>;
         <span class="macro">writeln</span><span class="macro">!</span>(<span class="ident">f</span>)<span class="question-mark">?</span>;
 
         <span class="comment">// is the function entirely verified (no CT violations or other errors)?</span>
@@ -630,7 +931,12 @@
                 <span class="prelude-val">None</span> <span class="op">=</span><span class="op">&gt;</span> <span class="macro">panic</span><span class="macro">!</span>(<span class="string">&quot;we counted a ct violation, but now can&#39;t find one&quot;</span>),
                 <span class="prelude-val">Some</span>(<span class="ident">violation_message</span>) <span class="op">=</span><span class="op">&gt;</span> {
                     <span class="macro">writeln</span><span class="macro">!</span>(<span class="ident">f</span>, <span class="string">&quot;{} {}&quot;</span>, <span class="self">self</span>.<span class="ident">funcname</span>, <span class="string">&quot;is not constant-time&quot;</span>.<span class="ident">red</span>())<span class="question-mark">?</span>;
-                    <span class="macro">writeln</span><span class="macro">!</span>(<span class="ident">f</span>, <span class="string">&quot;First constant-time violation encountered:\n\n{}&quot;</span>, <span class="ident">violation_message</span>)<span class="question-mark">?</span>;
+                    <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>(<span class="ident">filename</span>) <span class="op">=</span> <span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">error_filename</span> {
+                        <span class="macro">writeln</span><span class="macro">!</span>(<span class="ident">f</span>, <span class="string">&quot;All errors have been logged to {}&quot;</span>, <span class="ident">filename</span>)<span class="question-mark">?</span>;
+                        <span class="macro">writeln</span><span class="macro">!</span>(<span class="ident">f</span>, <span class="string">&quot;  and the first constant-time violation is described below:\n\n{}&quot;</span>, <span class="ident">violation_message</span>)<span class="question-mark">?</span>;
+                    } <span class="kw">else</span> {
+                        <span class="macro">writeln</span><span class="macro">!</span>(<span class="ident">f</span>, <span class="string">&quot;First constant-time violation encountered:\n\n{}&quot;</span>, <span class="ident">violation_message</span>)<span class="question-mark">?</span>;
+                    }
                 },
             }
         } <span class="kw">else</span> <span class="kw">if</span> <span class="op">!</span><span class="ident">is_ct</span> {
@@ -639,7 +945,12 @@
                 <span class="prelude-val">Some</span>(<span class="ident">ConstantTimeResultForPath</span>::<span class="ident">IsConstantTime</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="macro">panic</span><span class="macro">!</span>(<span class="string">&quot;first_error_or_violation shouldn&#39;t return an IsConstantTime&quot;</span>),
                 <span class="prelude-val">Some</span>(<span class="ident">ConstantTimeResultForPath</span>::<span class="ident">NotConstantTime</span> { .. }) <span class="op">=</span><span class="op">&gt;</span> <span class="macro">panic</span><span class="macro">!</span>(<span class="string">&quot;we counted no ct violations, but now somehow found one&quot;</span>),
                 <span class="prelude-val">Some</span>(<span class="ident">ConstantTimeResultForPath</span>::<span class="ident">OtherError</span> { <span class="ident">full_message</span>, .. }) <span class="op">=</span><span class="op">&gt;</span> {
-                    <span class="macro">writeln</span><span class="macro">!</span>(<span class="ident">f</span>, <span class="string">&quot;First error encountered:\n\n{}&quot;</span>, <span class="ident">full_message</span>)<span class="question-mark">?</span>;
+                    <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>(<span class="ident">filename</span>) <span class="op">=</span> <span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">error_filename</span> {
+                        <span class="macro">writeln</span><span class="macro">!</span>(<span class="ident">f</span>, <span class="string">&quot;All errors have been logged to {}&quot;</span>, <span class="ident">filename</span>)<span class="question-mark">?</span>;
+                        <span class="macro">writeln</span><span class="macro">!</span>(<span class="ident">f</span>, <span class="string">&quot;  and the first error encountered is described below:\n\n{}&quot;</span>, <span class="ident">full_message</span>)<span class="question-mark">?</span>;
+                    } <span class="kw">else</span> {
+                        <span class="macro">writeln</span><span class="macro">!</span>(<span class="ident">f</span>, <span class="string">&quot;First error encountered:\n\n{}&quot;</span>, <span class="ident">full_message</span>)<span class="question-mark">?</span>;
+                    }
                 },
             }
         } <span class="kw">else</span> {
@@ -650,19 +961,103 @@
     }
 }
 
+<span class="doccomment">/// `pitchfork`-specific configuration options, in addition to the configuration</span>
+<span class="doccomment">/// options in `haybale::Config`.</span>
+<span class="doccomment">///</span>
+<span class="doccomment">/// Like `haybale::Config`, `PitchforkConfig` uses the (new-to-Rust-1.40)</span>
+<span class="doccomment">/// `#[non_exhaustive]` attribute to indicate that fields may be added even in a</span>
+<span class="doccomment">/// point release (that is, without incrementing the major or minor version).</span>
+<span class="doccomment">/// Users should start with `PitchforkConfig::default()` and then change the</span>
+<span class="doccomment">/// settings they want to change.</span>
+<span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Clone</span>, <span class="ident">Debug</span>)]</span>
+<span class="attribute">#[<span class="ident">non_exhaustive</span>]</span>
+<span class="kw">pub</span> <span class="kw">struct</span> <span class="ident">PitchforkConfig</span> {
+    <span class="doccomment">/// If `true`, then even if we encounter an error or violation, we will</span>
+    <span class="doccomment">/// continue exploring as many paths as we can in the function before</span>
+    <span class="doccomment">/// returning, possibly reporting many different errors and/or violations.</span>
+    <span class="doccomment">/// (Although we can&#39;t keep going on the errored path itself, we can still try to</span>
+    <span class="doccomment">/// explore other paths that don&#39;t contain the error.)</span>
+    <span class="doccomment">/// If `false`, then as soon as we encounter an error or violation, we will quit</span>
+    <span class="doccomment">/// and return the results we have.</span>
+    <span class="doccomment">/// It is recommended to only use `keep_going == true` in conjunction with solver</span>
+    <span class="doccomment">/// query timeouts; see the `solver_query_timeout` setting in `Config`.</span>
+    <span class="doccomment">///</span>
+    <span class="doccomment">/// Default is `false`.</span>
+    <span class="kw">pub</span> <span class="ident">keep_going</span>: <span class="ident">bool</span>,
+
+    <span class="doccomment">/// Even if `keep_going` is set to `true`, the `Display` impl for</span>
+    <span class="doccomment">/// `ConstantTimeResultForFunction` only displays a summary of the kinds of</span>
+    <span class="doccomment">/// errors encountered, and full details about a single error.</span>
+    <span class="doccomment">/// With `dump_errors == true`, `pitchfork` will dump detailed descriptions</span>
+    <span class="doccomment">/// of all errors encountered to a file.</span>
+    <span class="doccomment">///</span>
+    <span class="doccomment">/// This setting only applies if `keep_going == true`; it is completely ignored</span>
+    <span class="doccomment">/// if `keep_going == false`.</span>
+    <span class="doccomment">///</span>
+    <span class="doccomment">/// Default is `true`, meaning that if `keep_going` is enabled, then detailed</span>
+    <span class="doccomment">/// error descriptions will be dumped to a file.</span>
+    <span class="kw">pub</span> <span class="ident">dump_errors</span>: <span class="ident">bool</span>,
+
+    <span class="doccomment">/// If `true`, `pitchfork` will provide detailed progress updates in a</span>
+    <span class="doccomment">/// continuously-updated terminal display. This includes counts of paths</span>
+    <span class="doccomment">/// verified / errors encountered / warnings generated; the current code</span>
+    <span class="doccomment">/// location being executed (in terms of both LLVM and source if available),</span>
+    <span class="doccomment">/// the most recent log message generated, etc.</span>
+    <span class="doccomment">///</span>
+    <span class="doccomment">/// Also, if `true`, log messages other than the most recent will not be</span>
+    <span class="doccomment">/// shown in the terminal; instead, all log messages will be routed to a</span>
+    <span class="doccomment">/// file.</span>
+    <span class="doccomment">///</span>
+    <span class="doccomment">/// `progress_updates == true` requires `pitchfork` to take control of the</span>
+    <span class="doccomment">/// global logger; users should not initialize their own logging backends</span>
+    <span class="doccomment">/// such as `env_logger`.</span>
+    <span class="doccomment">/// On the other hand, if `progress_updates == false`, `pitchfork` will not</span>
+    <span class="doccomment">/// touch the global logger, and it is up to users to initialize a logging</span>
+    <span class="doccomment">/// backend such as `env_logger` if they want to see log messages.</span>
+    <span class="doccomment">///</span>
+    <span class="doccomment">/// This setting requires the `progress-updates` crate feature, which is</span>
+    <span class="doccomment">/// enabled by default. If the `progress-updates` feature is disabled, this</span>
+    <span class="doccomment">/// setting will be treated as `false` regardless of its actual value.</span>
+    <span class="doccomment">///</span>
+    <span class="doccomment">/// If you encounter a Rust panic (as opposed to merely a `haybale::Error`),</span>
+    <span class="doccomment">/// you may want to temporarily disable `progress_updates` for debugging, in</span>
+    <span class="doccomment">/// order to get a clear panic message; otherwise, the</span>
+    <span class="doccomment">/// progress-display-updater thread may interfere with the printing of the</span>
+    <span class="doccomment">/// panic message.</span>
+    <span class="doccomment">///</span>
+    <span class="doccomment">/// Default is `true`.</span>
+    <span class="kw">pub</span> <span class="ident">progress_updates</span>: <span class="ident">bool</span>,
+
+    <span class="doccomment">/// If `progress_updates == true`, `pitchfork` takes control of the global</span>
+    <span class="doccomment">/// logger, as noted in docs there.</span>
+    <span class="doccomment">/// This setting controls which log messages will be recorded in the</span>
+    <span class="doccomment">/// designated log file: messages with `DEBUG` and higher priority (`true`),</span>
+    <span class="doccomment">/// or only messages with `INFO` and higher priority (`false`).</span>
+    <span class="doccomment">///</span>
+    <span class="doccomment">/// If `progress_updates == false`, this setting has no effect; you should</span>
+    <span class="doccomment">/// configure debug logging via your own chosen logging backend such as</span>
+    <span class="doccomment">/// `env_logger`.</span>
+    <span class="doccomment">///</span>
+    <span class="doccomment">/// Default is `false`.</span>
+    <span class="kw">pub</span> <span class="ident">debug_logging</span>: <span class="ident">bool</span>,
+}
+
+<span class="kw">impl</span> <span class="ident">Default</span> <span class="kw">for</span> <span class="ident">PitchforkConfig</span> {
+    <span class="kw">fn</span> <span class="ident">default</span>() <span class="op">-</span><span class="op">&gt;</span> <span class="self">Self</span> {
+        <span class="self">Self</span> {
+            <span class="ident">keep_going</span>: <span class="bool-val">false</span>,
+            <span class="ident">dump_errors</span>: <span class="bool-val">true</span>,
+            <span class="ident">progress_updates</span>: <span class="bool-val">true</span>,
+            <span class="ident">debug_logging</span>: <span class="bool-val">false</span>,
+        }
+    }
+}
+
 <span class="doccomment">/// Checks whether a function is &quot;constant-time&quot; in its inputs. That is, does the</span>
 <span class="doccomment">/// function ever make branching decisions, or perform address calculations, based</span>
 <span class="doccomment">/// on its inputs.</span>
 <span class="doccomment">///</span>
-<span class="doccomment">/// `keep_going`: if `true`, then even if we encounter an error or violation, we</span>
-<span class="doccomment">/// will continue exploring as many paths as we can in the function before</span>
-<span class="doccomment">/// returning, possibly reporting many different errors and/or violations.</span>
-<span class="doccomment">/// (Although we can&#39;t keep going on the errored path itself, we can still try to</span>
-<span class="doccomment">/// explore other paths that don&#39;t contain the error.)</span>
-<span class="doccomment">/// If `false`, then as soon as we encounter an error or violation, we will quit</span>
-<span class="doccomment">/// and return the results we have.</span>
-<span class="doccomment">/// It is recommended to only use `keep_going == true` in conjunction with solver</span>
-<span class="doccomment">/// query timeouts; see the `solver_query_timeout` setting in `Config`.</span>
+<span class="doccomment">/// `pitchfork_config`: see [docs on `PitchforkConfig`](struct.PitchforkConfig.html).</span>
 <span class="doccomment">///</span>
 <span class="doccomment">/// Other arguments are the same as for</span>
 <span class="doccomment">/// [`haybale::symex_function()`](https://PLSysSec.github.io/haybale/haybale/fn.symex_function.html).</span>
@@ -670,15 +1065,15 @@
     <span class="ident">funcname</span>: <span class="kw-2">&amp;</span><span class="lifetime">&#39;p</span> <span class="ident">str</span>,
     <span class="ident">project</span>: <span class="kw-2">&amp;</span><span class="lifetime">&#39;p</span> <span class="ident">Project</span>,
     <span class="ident">config</span>: <span class="ident">Config</span><span class="op">&lt;</span><span class="lifetime">&#39;p</span>, <span class="ident">secret</span>::<span class="ident">Backend</span><span class="op">&gt;</span>,
-    <span class="ident">keep_going</span>: <span class="ident">bool</span>,
+    <span class="ident">pitchfork_config</span>: <span class="kw-2">&amp;</span><span class="ident">PitchforkConfig</span>,
 ) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">ConstantTimeResultForFunction</span><span class="op">&lt;</span><span class="lifetime">&#39;p</span><span class="op">&gt;</span> {
     <span class="macro">lazy_static</span><span class="macro">!</span> {
         <span class="kw">static</span> <span class="kw-2">ref</span> <span class="ident">BLANK_STRUCT_DESCRIPTIONS</span>: <span class="ident">StructDescriptions</span> <span class="op">=</span> <span class="ident">StructDescriptions</span>::<span class="ident">new</span>();
     }
 
     <span class="kw">let</span> (<span class="ident">func</span>, <span class="kw">_</span>) <span class="op">=</span> <span class="ident">project</span>.<span class="ident">get_func_by_name</span>(<span class="ident">funcname</span>).<span class="ident">expect</span>(<span class="string">&quot;Failed to find function&quot;</span>);
-    <span class="kw">let</span> <span class="ident">args</span> <span class="op">=</span> <span class="ident">func</span>.<span class="ident">parameters</span>.<span class="ident">iter</span>().<span class="ident">map</span>(<span class="op">|</span><span class="ident">p</span><span class="op">|</span> <span class="ident">AbstractData</span>::<span class="ident">sec_integer</span>(<span class="ident">layout</span>::<span class="ident">size</span>(<span class="kw-2">&amp;</span><span class="ident">p</span>.<span class="ident">ty</span>)));
-    <span class="ident">check_for_ct_violation</span>(<span class="ident">funcname</span>, <span class="ident">project</span>, <span class="ident">args</span>, <span class="kw-2">&amp;</span><span class="ident">BLANK_STRUCT_DESCRIPTIONS</span>, <span class="ident">config</span>, <span class="ident">keep_going</span>)
+    <span class="kw">let</span> <span class="ident">args</span> <span class="op">=</span> <span class="ident">func</span>.<span class="ident">parameters</span>.<span class="ident">iter</span>().<span class="ident">map</span>(<span class="op">|</span><span class="ident">p</span><span class="op">|</span> <span class="ident">AbstractData</span>::<span class="ident">sec_integer</span>(<span class="ident">layout</span>::<span class="ident">size</span>(<span class="kw-2">&amp;</span><span class="ident">p</span>.<span class="ident">ty</span>))).<span class="ident">collect</span>();
+    <span class="ident">check_for_ct_violation</span>(<span class="ident">funcname</span>, <span class="ident">project</span>, <span class="prelude-val">Some</span>(<span class="ident">args</span>), <span class="kw-2">&amp;</span><span class="ident">BLANK_STRUCT_DESCRIPTIONS</span>, <span class="ident">config</span>, <span class="ident">pitchfork_config</span>)
 }
 
 <span class="doccomment">/// Checks whether a function is &quot;constant-time&quot; in the secrets identified by the</span>
@@ -689,28 +1084,62 @@
 <span class="doccomment">/// parameter is secret data itself, public data, a public pointer to secret data</span>
 <span class="doccomment">/// (and if so how much), etc; or `AbstractData::default()` to use the default</span>
 <span class="doccomment">/// based on the LLVM parameter type and/or the struct descriptions in `sd`.</span>
+<span class="doccomment">/// Specifying `None` for `args` is equivalent to supplying a `Vec` with only</span>
+<span class="doccomment">/// `AbstractData::default()`s.</span>
 <span class="doccomment">///</span>
 <span class="doccomment">/// `sd`: a mapping of LLVM struct names to `AbstractData` descriptions of those</span>
 <span class="doccomment">/// structs. These will be used whenever a struct of the appropriate type is</span>
 <span class="doccomment">/// found while processing an `AbstractData::default()`; for more details, see</span>
 <span class="doccomment">/// [docs on `AbstractData::default()`](struct.AbstractData.html#method.default).</span>
 <span class="doccomment">///</span>
-<span class="doccomment">/// `keep_going`: see the description of the `keep_going` argument to</span>
-<span class="doccomment">/// [`check_for_ct_violation_in_inputs()`](fn.check_for_ct_violation_in_inputs.html).</span>
+<span class="doccomment">/// `pitchfork_config`: see [docs on `PitchforkConfig`](struct.PitchforkConfig.html).</span>
 <span class="doccomment">///</span>
 <span class="doccomment">/// Other arguments are the same as for</span>
 <span class="doccomment">/// [`haybale::symex_function()`](https://PLSysSec.github.io/haybale/haybale/fn.symex_function.html).</span>
 <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">check_for_ct_violation</span><span class="op">&lt;</span><span class="lifetime">&#39;p</span><span class="op">&gt;</span>(
     <span class="ident">funcname</span>: <span class="kw-2">&amp;</span><span class="lifetime">&#39;p</span> <span class="ident">str</span>,
     <span class="ident">project</span>: <span class="kw-2">&amp;</span><span class="lifetime">&#39;p</span> <span class="ident">Project</span>,
-    <span class="ident">args</span>: <span class="kw">impl</span> <span class="ident">IntoIterator</span><span class="op">&lt;</span><span class="ident">Item</span> <span class="op">=</span> <span class="ident">AbstractData</span><span class="op">&gt;</span>,
+    <span class="ident">args</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">AbstractData</span><span class="op">&gt;</span><span class="op">&gt;</span>,
     <span class="ident">sd</span>: <span class="kw-2">&amp;</span><span class="ident">StructDescriptions</span>,
     <span class="kw-2">mut</span> <span class="ident">config</span>: <span class="ident">Config</span><span class="op">&lt;</span><span class="lifetime">&#39;p</span>, <span class="ident">secret</span>::<span class="ident">Backend</span><span class="op">&gt;</span>,
-    <span class="ident">keep_going</span>: <span class="ident">bool</span>,
+    <span class="ident">pitchfork_config</span>: <span class="kw-2">&amp;</span><span class="ident">PitchforkConfig</span>,
 ) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">ConstantTimeResultForFunction</span><span class="op">&lt;</span><span class="lifetime">&#39;p</span><span class="op">&gt;</span> {
+    <span class="comment">// add our uninitialized-function-pointer hook, but don&#39;t override the user</span>
+    <span class="comment">// if they provided a different uninitialized-function-pointer hook</span>
     <span class="kw">if</span> <span class="op">!</span><span class="ident">config</span>.<span class="ident">function_hooks</span>.<span class="ident">is_hooked</span>(<span class="string">&quot;hook_uninitialized_function_pointer&quot;</span>) {
         <span class="ident">config</span>.<span class="ident">function_hooks</span>.<span class="ident">add</span>(<span class="string">&quot;hook_uninitialized_function_pointer&quot;</span>, <span class="kw-2">&amp;</span><span class="ident">hook_uninitialized_function_pointer</span>);
     }
+
+    <span class="comment">// insert the `pitchfork_default_hook` as the default function hook, but</span>
+    <span class="comment">// don&#39;t override the user if they provided a different default function hook</span>
+    <span class="kw">if</span> <span class="op">!</span><span class="ident">config</span>.<span class="ident">function_hooks</span>.<span class="ident">has_default_hook</span>() {
+        <span class="ident">config</span>.<span class="ident">function_hooks</span>.<span class="ident">add_default_hook</span>(<span class="kw-2">&amp;</span><span class="ident">pitchfork_default_hook</span>);
+    }
+
+    <span class="kw">let</span> (<span class="ident">log_filename</span>, <span class="ident">error_filename</span>) <span class="op">=</span> {
+        <span class="kw">use</span> <span class="ident">chrono</span>::<span class="ident">prelude</span>::<span class="ident">Local</span>;
+        <span class="kw">let</span> <span class="ident">time</span> <span class="op">=</span> <span class="ident">Local</span>::<span class="ident">now</span>().<span class="ident">format</span>(<span class="string">&quot;%Y-%m-%d_%H:%M:%S&quot;</span>).<span class="ident">to_string</span>();
+        <span class="kw">let</span> <span class="ident">dir</span> <span class="op">=</span> <span class="macro">format</span><span class="macro">!</span>(<span class="string">&quot;logs/{}&quot;</span>, <span class="ident">funcname</span>);
+        <span class="kw">let</span> <span class="ident">log_filename</span> <span class="op">=</span> <span class="kw">if</span> <span class="ident">pitchfork_config</span>.<span class="ident">progress_updates</span> {
+            <span class="ident">std</span>::<span class="ident">fs</span>::<span class="ident">create_dir_all</span>(<span class="kw-2">&amp;</span><span class="ident">dir</span>).<span class="ident">unwrap</span>();
+            <span class="prelude-val">Some</span>(<span class="macro">format</span><span class="macro">!</span>(<span class="string">&quot;{}/log_{}.log&quot;</span>, <span class="ident">dir</span>, <span class="ident">time</span>))
+        } <span class="kw">else</span> {
+            <span class="prelude-val">None</span>
+        };
+        <span class="kw">let</span> <span class="ident">error_filename</span> <span class="op">=</span> <span class="kw">if</span> <span class="ident">pitchfork_config</span>.<span class="ident">keep_going</span> <span class="kw-2">&amp;</span><span class="op">&amp;</span> <span class="ident">pitchfork_config</span>.<span class="ident">dump_errors</span> {
+            <span class="ident">std</span>::<span class="ident">fs</span>::<span class="ident">create_dir_all</span>(<span class="kw-2">&amp;</span><span class="ident">dir</span>).<span class="ident">unwrap</span>();
+            <span class="prelude-val">Some</span>(<span class="macro">format</span><span class="macro">!</span>(<span class="string">&quot;{}/errors_{}.log&quot;</span>, <span class="ident">dir</span>, <span class="ident">time</span>))
+        } <span class="kw">else</span> {
+            <span class="prelude-val">None</span>
+        };
+        (<span class="ident">log_filename</span>, <span class="ident">error_filename</span>)
+    };
+
+    <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">progress_updater</span>: <span class="ident">Box</span><span class="op">&lt;</span><span class="kw">dyn</span> <span class="ident">ProgressUpdater</span><span class="op">&lt;</span><span class="ident">secret</span>::<span class="ident">Backend</span><span class="op">&gt;</span><span class="op">&gt;</span> <span class="op">=</span> <span class="kw">if</span> <span class="ident">pitchfork_config</span>.<span class="ident">progress_updates</span> {
+        <span class="ident">Box</span>::<span class="ident">new</span>(<span class="ident">initialize_progress_updater</span>(<span class="ident">log_filename</span>.<span class="ident">as_ref</span>().<span class="ident">unwrap</span>(), <span class="ident">funcname</span>, <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">config</span>, <span class="ident">pitchfork_config</span>.<span class="ident">debug_logging</span>))
+    } <span class="kw">else</span> {
+        <span class="ident">Box</span>::<span class="ident">new</span>(<span class="ident">NullProgressUpdater</span> { })
+    };
 
     <span class="comment">// first sanity-check the StructDescriptions, ensure that all its struct names are valid</span>
     <span class="kw">let</span> <span class="ident">sd_names</span>: <span class="ident">HashSet</span><span class="op">&lt;</span><span class="kw">_</span><span class="op">&gt;</span> <span class="op">=</span> <span class="ident">sd</span>.<span class="ident">iter</span>().<span class="ident">map</span>(<span class="op">|</span>(<span class="ident">name</span>, <span class="kw">_</span>)<span class="op">|</span> <span class="ident">name</span>).<span class="ident">collect</span>();
@@ -724,7 +1153,15 @@
 
     <span class="macro">info</span><span class="macro">!</span>(<span class="string">&quot;Allocating memory for function parameters&quot;</span>);
     <span class="kw">let</span> <span class="ident">params</span> <span class="op">=</span> <span class="ident">em</span>.<span class="ident">state</span>().<span class="ident">cur_loc</span>.<span class="ident">func</span>.<span class="ident">parameters</span>.<span class="ident">iter</span>();
-    <span class="ident">allocation</span>::<span class="ident">allocate_args</span>(<span class="ident">project</span>, <span class="ident">em</span>.<span class="ident">mut_state</span>(), <span class="ident">sd</span>, <span class="ident">params</span>.<span class="ident">zip</span>(<span class="ident">args</span>.<span class="ident">into_iter</span>())).<span class="ident">unwrap</span>();
+    <span class="kw">match</span> <span class="ident">args</span> {
+        <span class="prelude-val">Some</span>(<span class="ident">args</span>) <span class="op">=</span><span class="op">&gt;</span> {
+            <span class="macro">assert_eq</span><span class="macro">!</span>(<span class="ident">params</span>.<span class="ident">len</span>(), <span class="ident">args</span>.<span class="ident">len</span>(), <span class="string">&quot;Function {:?} has {} parameters, but we received only {} argument `AbstractData`s&quot;</span>, <span class="ident">funcname</span>, <span class="ident">params</span>.<span class="ident">len</span>(), <span class="ident">args</span>.<span class="ident">len</span>());
+            <span class="ident">allocation</span>::<span class="ident">allocate_args</span>(<span class="ident">project</span>, <span class="ident">em</span>.<span class="ident">mut_state</span>(), <span class="ident">sd</span>, <span class="ident">params</span>.<span class="ident">zip</span>(<span class="ident">args</span>.<span class="ident">into_iter</span>())).<span class="ident">unwrap</span>();
+        },
+        <span class="prelude-val">None</span> <span class="op">=</span><span class="op">&gt;</span> {
+            <span class="ident">allocation</span>::<span class="ident">allocate_args</span>(<span class="ident">project</span>, <span class="ident">em</span>.<span class="ident">mut_state</span>(), <span class="ident">sd</span>, <span class="ident">params</span>.<span class="ident">zip</span>(<span class="ident">std</span>::<span class="ident">iter</span>::<span class="ident">repeat</span>(<span class="ident">AbstractData</span>::<span class="ident">default</span>()))).<span class="ident">unwrap</span>();
+        },
+    }
     <span class="macro">debug</span><span class="macro">!</span>(<span class="string">&quot;Done allocating memory for function parameters&quot;</span>);
 
     <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">blocks_seen</span> <span class="op">=</span> <span class="ident">BlocksSeen</span>::<span class="ident">new</span>();
@@ -733,32 +1170,46 @@
         <span class="kw-2">&amp;</span><span class="ident">func</span>.<span class="ident">name</span>
     };
     <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">path_results</span> <span class="op">=</span> <span class="ident">Vec</span>::<span class="ident">new</span>();
+    <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">error_file</span> <span class="op">=</span> <span class="ident">error_filename</span>.<span class="ident">as_ref</span>().<span class="ident">map</span>(<span class="op">|</span><span class="ident">filename</span><span class="op">|</span> {
+        <span class="kw">use</span> <span class="ident">std</span>::<span class="ident">fs</span>::<span class="ident">File</span>;
+        <span class="kw">use</span> <span class="ident">std</span>::<span class="ident">path</span>::<span class="ident">Path</span>;
+        <span class="ident">File</span>::<span class="ident">create</span>(<span class="kw-2">&amp;</span><span class="ident">Path</span>::<span class="ident">new</span>(<span class="ident">filename</span>))
+            .<span class="ident">unwrap_or_else</span>(<span class="op">|</span><span class="ident">e</span><span class="op">|</span> <span class="macro">panic</span><span class="macro">!</span>(<span class="string">&quot;Failed to open file {} to dump errors: {}&quot;</span>, <span class="ident">filename</span>, <span class="ident">e</span>))
+    });
+
     <span class="kw">loop</span> {
         <span class="kw">match</span> <span class="ident">em</span>.<span class="ident">next</span>() {
             <span class="prelude-val">Some</span>(<span class="prelude-val">Ok</span>(<span class="kw">_</span>)) <span class="op">=</span><span class="op">&gt;</span> {
                 <span class="macro">info</span><span class="macro">!</span>(<span class="string">&quot;Finished a path with no errors or violations&quot;</span>);
                 <span class="ident">blocks_seen</span>.<span class="ident">update_with_current_path</span>(<span class="kw-2">&amp;</span><span class="ident">em</span>);
-                <span class="ident">path_results</span>.<span class="ident">push</span>(<span class="ident">ConstantTimeResultForPath</span>::<span class="ident">IsConstantTime</span>);
+                <span class="kw">let</span> <span class="ident">path_result</span> <span class="op">=</span> <span class="ident">ConstantTimeResultForPath</span>::<span class="ident">IsConstantTime</span>;
+                <span class="ident">progress_updater</span>.<span class="ident">update_path_result</span>(<span class="kw-2">&amp;</span><span class="ident">path_result</span>);
+                <span class="ident">path_results</span>.<span class="ident">push</span>(<span class="ident">path_result</span>);
             },
             <span class="prelude-val">Some</span>(<span class="prelude-val">Err</span>(<span class="ident">error</span>)) <span class="op">=</span><span class="op">&gt;</span> {
                 <span class="ident">blocks_seen</span>.<span class="ident">update_with_current_path</span>(<span class="kw-2">&amp;</span><span class="ident">em</span>);
                 <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">full_message</span> <span class="op">=</span> <span class="ident">em</span>.<span class="ident">state</span>().<span class="ident">full_error_message_with_context</span>(<span class="ident">error</span>.<span class="ident">clone</span>());
-                <span class="kw">if</span> <span class="ident">full_message</span>.<span class="ident">contains</span>(<span class="string">&quot;RUST_LOG=haybale&quot;</span>) {
+                <span class="kw">if</span> <span class="ident">full_message</span>.<span class="ident">contains</span>(<span class="string">&quot;debug-level logging messages&quot;</span>) {
                     <span class="comment">// add our own Pitchfork-specific logging advice</span>
-                    <span class="ident">full_message</span>.<span class="ident">push_str</span>(<span class="string">&quot;note: for pitchfork-related issues, you might try `RUST_LOG=info,haybale_pitchfork,haybale`.&quot;</span>);
+                    <span class="ident">full_message</span>.<span class="ident">push_str</span>(<span class="string">&quot;note: To enable debug-level logging messages when `progress_updates` is\n&quot;</span>);
+                    <span class="ident">full_message</span>.<span class="ident">push_str</span>(<span class="string">&quot;      enabled in `PitchforkConfig`, use the `debug_logging` setting\n&quot;</span>);
                 }
-                <span class="kw">if</span> <span class="ident">full_message</span>.<span class="ident">contains</span>(<span class="string">&quot;Constant-time violation:&quot;</span>) {
+                <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>(<span class="kw-2">ref</span> <span class="kw-2">mut</span> <span class="ident">file</span>) <span class="op">=</span> <span class="ident">error_file</span> {
+                    <span class="kw">use</span> <span class="ident">std</span>::<span class="ident">io</span>::<span class="ident">Write</span>;
+                    <span class="macro">write</span><span class="macro">!</span>(<span class="ident">file</span>, <span class="string">&quot;==================\n\n{}\n\n&quot;</span>, <span class="ident">full_message</span>)
+                        .<span class="ident">unwrap_or_else</span>(<span class="op">|</span><span class="ident">e</span><span class="op">|</span> <span class="macro">warn</span><span class="macro">!</span>(<span class="string">&quot;Failed to write an error message to file: {}&quot;</span>, <span class="ident">e</span>));
+                }
+                <span class="kw">let</span> <span class="ident">path_result</span> <span class="op">=</span> <span class="kw">if</span> <span class="ident">full_message</span>.<span class="ident">contains</span>(<span class="string">&quot;Constant-time violation:&quot;</span>) {
                     <span class="macro">info</span><span class="macro">!</span>(<span class="string">&quot;Found a constant-time violation on this path&quot;</span>);
-                    <span class="ident">path_results</span>.<span class="ident">push</span>(<span class="ident">ConstantTimeResultForPath</span>::<span class="ident">NotConstantTime</span> { <span class="ident">violation_message</span>: <span class="ident">full_message</span> });
-                    <span class="kw">if</span> <span class="op">!</span><span class="ident">keep_going</span> {
-                        <span class="kw">break</span>;
-                    }
+                    <span class="ident">ConstantTimeResultForPath</span>::<span class="ident">NotConstantTime</span> { <span class="ident">violation_message</span>: <span class="ident">full_message</span> }
                 } <span class="kw">else</span> {
                     <span class="macro">info</span><span class="macro">!</span>(<span class="string">&quot;Encountered an error (other than a constant-time violation) on this path: {}&quot;</span>, <span class="ident">error</span>);
-                    <span class="ident">path_results</span>.<span class="ident">push</span>(<span class="ident">ConstantTimeResultForPath</span>::<span class="ident">OtherError</span> { <span class="ident">error</span>, <span class="ident">full_message</span> });
-                    <span class="kw">if</span> <span class="op">!</span><span class="ident">keep_going</span> {
-                        <span class="kw">break</span>;
-                    }
+                    <span class="ident">ConstantTimeResultForPath</span>::<span class="ident">OtherError</span> { <span class="ident">error</span>, <span class="ident">full_message</span> }
+                };
+                <span class="ident">progress_updater</span>.<span class="ident">update_path_result</span>(<span class="kw-2">&amp;</span><span class="ident">path_result</span>);
+                <span class="ident">path_results</span>.<span class="ident">push</span>(<span class="ident">path_result</span>);
+                <span class="kw">if</span> <span class="op">!</span><span class="ident">pitchfork_config</span>.<span class="ident">keep_going</span> {
+                    <span class="kw">break</span>;
                 }
             },
             <span class="prelude-val">None</span> <span class="op">=</span><span class="op">&gt;</span> <span class="kw">break</span>,
@@ -768,20 +1219,53 @@
     <span class="kw">let</span> <span class="ident">block_coverage</span> <span class="op">=</span> <span class="ident">blocks_seen</span>.<span class="ident">full_coverage_stats</span>();
     <span class="macro">info</span><span class="macro">!</span>(<span class="string">&quot;Block coverage of toplevel function ({:?}): {:.1}%&quot;</span>, <span class="ident">funcname</span>, <span class="number">100.0</span> <span class="op">*</span> <span class="ident">block_coverage</span>.<span class="ident">get</span>(<span class="ident">mangled_funcname</span>).<span class="ident">unwrap</span>().<span class="ident">percentage</span>);
 
+    <span class="ident">progress_updater</span>.<span class="ident">finalize</span>();
+
     <span class="ident">ConstantTimeResultForFunction</span> {
         <span class="ident">funcname</span>,
         <span class="ident">mangled_funcname</span>,
         <span class="ident">path_results</span>,
         <span class="ident">block_coverage</span>,
+        <span class="ident">error_filename</span>,
     }
 }
 
-<span class="kw">fn</span> <span class="ident">hook_uninitialized_function_pointer</span><span class="op">&lt;</span><span class="ident">B</span>: <span class="ident">Backend</span><span class="op">&gt;</span>(
-    <span class="ident">_proj</span>: <span class="kw-2">&amp;</span><span class="ident">Project</span>,
-    <span class="ident">_state</span>: <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">State</span><span class="op">&lt;</span><span class="ident">B</span><span class="op">&gt;</span>,
-    <span class="ident">_call</span>: <span class="kw-2">&amp;</span><span class="kw">dyn</span> <span class="ident">IsCall</span>,
-) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">ReturnValue</span><span class="op">&lt;</span><span class="ident">B</span>::<span class="ident">BV</span><span class="op">&gt;</span><span class="op">&gt;</span> {
-    <span class="prelude-val">Err</span>(<span class="ident">Error</span>::<span class="ident">OtherError</span>(<span class="string">&quot;Call of an uninitialized function pointer&quot;</span>.<span class="ident">to_owned</span>()))
+<span class="kw">fn</span> <span class="ident">hook_uninitialized_function_pointer</span>(
+    <span class="ident">proj</span>: <span class="kw-2">&amp;</span><span class="ident">Project</span>,
+    <span class="ident">state</span>: <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">State</span><span class="op">&lt;</span><span class="ident">secret</span>::<span class="ident">Backend</span><span class="op">&gt;</span>,
+    <span class="ident">call</span>: <span class="kw-2">&amp;</span><span class="kw">dyn</span> <span class="ident">IsCall</span>,
+) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">ReturnValue</span><span class="op">&lt;</span><span class="ident">secret</span>::<span class="ident">BV</span><span class="op">&gt;</span><span class="op">&gt;</span> {
+    <span class="macro">info</span><span class="macro">!</span>(<span class="string">&quot;Function pointer is uninitialized; trying Pitchfork default hook&quot;</span>);
+    <span class="ident">default_hook</span>::<span class="ident">pitchfork_default_hook</span>(<span class="ident">proj</span>, <span class="ident">state</span>, <span class="ident">call</span>)
+}
+
+<span class="kw">trait</span> <span class="ident">ProgressUpdater</span><span class="op">&lt;</span><span class="ident">B</span>: <span class="ident">Backend</span><span class="op">&gt;</span> {
+    <span class="kw">fn</span> <span class="ident">update_progress</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">state</span>: <span class="kw-2">&amp;</span><span class="ident">State</span><span class="op">&lt;</span><span class="ident">B</span><span class="op">&gt;</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span>()<span class="op">&gt;</span>;
+    <span class="kw">fn</span> <span class="ident">update_path_result</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">path_result</span>: <span class="kw-2">&amp;</span><span class="ident">ConstantTimeResultForPath</span>);
+    <span class="kw">fn</span> <span class="ident">process_log_message</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">record</span>: <span class="kw-2">&amp;</span><span class="ident">log</span>::<span class="ident">Record</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">std</span>::<span class="ident">result</span>::<span class="prelude-ty">Result</span><span class="op">&lt;</span>(), <span class="ident">Box</span><span class="op">&lt;</span><span class="kw">dyn</span> <span class="ident">std</span>::<span class="ident">error</span>::<span class="ident">Error</span> <span class="op">+</span> <span class="ident">Sync</span> <span class="op">+</span> <span class="ident">Send</span><span class="op">&gt;</span><span class="op">&gt;</span>;
+    <span class="kw">fn</span> <span class="ident">finalize</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>);
+}
+
+<span class="doccomment">/// a progress-updater which just no-ops all the progress-update functions</span>
+<span class="kw">struct</span> <span class="ident">NullProgressUpdater</span> { }
+
+<span class="kw">impl</span><span class="op">&lt;</span><span class="ident">B</span>: <span class="ident">Backend</span><span class="op">&gt;</span> <span class="ident">ProgressUpdater</span><span class="op">&lt;</span><span class="ident">B</span><span class="op">&gt;</span> <span class="kw">for</span> <span class="ident">NullProgressUpdater</span> {
+    <span class="kw">fn</span> <span class="ident">update_progress</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">_state</span>: <span class="kw-2">&amp;</span><span class="ident">State</span><span class="op">&lt;</span><span class="ident">B</span><span class="op">&gt;</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span>()<span class="op">&gt;</span> { <span class="prelude-val">Ok</span>(()) }
+    <span class="kw">fn</span> <span class="ident">update_path_result</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">_path_result</span>: <span class="kw-2">&amp;</span><span class="ident">ConstantTimeResultForPath</span>) { }
+    <span class="kw">fn</span> <span class="ident">process_log_message</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">_record</span>: <span class="kw-2">&amp;</span><span class="ident">log</span>::<span class="ident">Record</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">std</span>::<span class="ident">result</span>::<span class="prelude-ty">Result</span><span class="op">&lt;</span>(), <span class="ident">Box</span><span class="op">&lt;</span><span class="kw">dyn</span> <span class="ident">std</span>::<span class="ident">error</span>::<span class="ident">Error</span> <span class="op">+</span> <span class="ident">Sync</span> <span class="op">+</span> <span class="ident">Send</span><span class="op">&gt;</span><span class="op">&gt;</span> { <span class="prelude-val">Ok</span>(()) }
+    <span class="kw">fn</span> <span class="ident">finalize</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>) { }
+}
+
+<span class="comment">// initializes and returns a `progress::ProgressUpdater` if the crate feature is</span>
+<span class="comment">// enabled, else initializes and returns a `NullProgressUpdater`</span>
+<span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;progress-updates&quot;</span>)]</span>
+<span class="kw">fn</span> <span class="ident">initialize_progress_updater</span><span class="op">&lt;</span><span class="ident">B</span>: <span class="ident">Backend</span><span class="op">&gt;</span>(<span class="ident">log_filename</span>: <span class="kw-2">&amp;</span><span class="ident">str</span>, <span class="ident">funcname</span>: <span class="kw-2">&amp;</span><span class="ident">str</span>, <span class="ident">config</span>: <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">Config</span><span class="op">&lt;</span><span class="ident">B</span><span class="op">&gt;</span>, <span class="ident">debug_logging</span>: <span class="ident">bool</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">progress</span>::<span class="ident">ProgressUpdater</span> {
+    <span class="comment">// the &#39;real&#39; implementation is in the `progress` module, which only exists if the `progress_updates` crate feature is enabled</span>
+    <span class="ident">progress</span>::<span class="ident">initialize_progress_updater</span>(<span class="ident">log_filename</span>, <span class="ident">funcname</span>, <span class="ident">config</span>, <span class="ident">debug_logging</span>)
+}
+<span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">not</span>(<span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;progress-updates&quot;</span>))]</span>
+<span class="kw">fn</span> <span class="ident">initialize_progress_updater</span><span class="op">&lt;</span><span class="ident">B</span>: <span class="ident">Backend</span><span class="op">&gt;</span>(<span class="ident">_log_filename</span>: <span class="kw-2">&amp;</span><span class="ident">str</span>, <span class="ident">_funcname</span>: <span class="kw-2">&amp;</span><span class="ident">str</span>, <span class="ident">_config</span>: <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">Config</span><span class="op">&lt;</span><span class="ident">B</span><span class="op">&gt;</span>, <span class="ident">_debug_logging</span>: <span class="ident">bool</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">NullProgressUpdater</span> {
+    <span class="ident">NullProgressUpdater</span> { }
 }
 </pre></div>
 </section><section id="search" class="content hidden"></section><section class="footer"></section><script>window.rootPath = "../../";window.currentCrate = "haybale_pitchfork";</script><script src="../../aliases.js"></script><script src="../../main.js"></script><script src="../../source-script.js"></script><script src="../../source-files.js"></script><script defer src="../../search-index.js"></script></body></html>

@@ -1,4 +1,4 @@
-<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source to the Rust file `src/allocation.rs`."><meta name="keywords" content="rust, rustlang, rust-lang"><title>allocation.rs.html -- source</title><link rel="stylesheet" type="text/css" href="../../normalize.css"><link rel="stylesheet" type="text/css" href="../../rustdoc.css" id="mainThemeStyle"><link rel="stylesheet" type="text/css" href="../../dark.css"><link rel="stylesheet" type="text/css" href="../../light.css" id="themeStyle"><script src="../../storage.js"></script><noscript><link rel="stylesheet" href="../../noscript.css"></noscript><link rel="shortcut icon" href="../../favicon.ico"><style type="text/css">#crate-search{background-image:url("../../down-arrow.svg");}</style></head><body class="rustdoc source"><!--[if lte IE 8]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="sidebar-menu">&#9776;</div><a href='../../haybale_pitchfork/index.html'><div class='logo-container'><img src='../../rust-logo.png' alt='logo'></div></a></nav><div class="theme-picker"><button id="theme-picker" aria-label="Pick another theme!"><img src="../../brush.svg" width="18" alt="Pick another theme!"></button><div id="theme-choices"></div></div><script src="../../theme.js"></script><nav class="sub"><form class="search-form js-only"><div class="search-container"><div><select id="crate-search"><option value="All crates">All crates</option></select><input class="search-input" name="search" autocomplete="off" spellcheck="false" placeholder="Click or press ‘S’ to search, ‘?’ for more options…" type="search"></div><a id="settings-menu" href="../../settings.html"><img src="../../wheel.svg" width="18" alt="Change settings"></a></div></form></nav><section id="main" class="content"><pre class="line-numbers"><span id="1">  1</span>
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source to the Rust file `src/allocation.rs`."><meta name="keywords" content="rust, rustlang, rust-lang"><title>allocation.rs.html -- source</title><link rel="stylesheet" type="text/css" href="../../normalize.css"><link rel="stylesheet" type="text/css" href="../../rustdoc.css" id="mainThemeStyle"><link rel="stylesheet" type="text/css" href="../../dark.css"><link rel="stylesheet" type="text/css" href="../../light.css" id="themeStyle"><script src="../../storage.js"></script><noscript><link rel="stylesheet" href="../../noscript.css"></noscript><link rel="shortcut icon" href="../../favicon.ico"><style type="text/css">#crate-search{background-image:url("../../down-arrow.svg");}</style></head><body class="rustdoc source"><!--[if lte IE 8]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="sidebar-menu">&#9776;</div><a href='../../haybale_pitchfork/index.html'><div class='logo-container'><img src='../../rust-logo.png' alt='logo'></div></a></nav><div class="theme-picker"><button id="theme-picker" aria-label="Pick another theme!"><img src="../../brush.svg" width="18" alt="Pick another theme!"></button><div id="theme-choices"></div></div><script src="../../theme.js"></script><nav class="sub"><form class="search-form"><div class="search-container"><div><select id="crate-search"><option value="All crates">All crates</option></select><input class="search-input" name="search" disabled autocomplete="off" spellcheck="false" placeholder="Click or press ‘S’ to search, ‘?’ for more options…" type="search"></div><a id="settings-menu" href="../../settings.html"><img src="../../wheel.svg" width="18" alt="Change settings"></a></div></form></nav><section id="main" class="content"><pre class="line-numbers"><span id="1">  1</span>
 <span id="2">  2</span>
 <span id="3">  3</span>
 <span id="4">  4</span>
@@ -927,6 +927,69 @@
 <span id="927">927</span>
 <span id="928">928</span>
 <span id="929">929</span>
+<span id="930">930</span>
+<span id="931">931</span>
+<span id="932">932</span>
+<span id="933">933</span>
+<span id="934">934</span>
+<span id="935">935</span>
+<span id="936">936</span>
+<span id="937">937</span>
+<span id="938">938</span>
+<span id="939">939</span>
+<span id="940">940</span>
+<span id="941">941</span>
+<span id="942">942</span>
+<span id="943">943</span>
+<span id="944">944</span>
+<span id="945">945</span>
+<span id="946">946</span>
+<span id="947">947</span>
+<span id="948">948</span>
+<span id="949">949</span>
+<span id="950">950</span>
+<span id="951">951</span>
+<span id="952">952</span>
+<span id="953">953</span>
+<span id="954">954</span>
+<span id="955">955</span>
+<span id="956">956</span>
+<span id="957">957</span>
+<span id="958">958</span>
+<span id="959">959</span>
+<span id="960">960</span>
+<span id="961">961</span>
+<span id="962">962</span>
+<span id="963">963</span>
+<span id="964">964</span>
+<span id="965">965</span>
+<span id="966">966</span>
+<span id="967">967</span>
+<span id="968">968</span>
+<span id="969">969</span>
+<span id="970">970</span>
+<span id="971">971</span>
+<span id="972">972</span>
+<span id="973">973</span>
+<span id="974">974</span>
+<span id="975">975</span>
+<span id="976">976</span>
+<span id="977">977</span>
+<span id="978">978</span>
+<span id="979">979</span>
+<span id="980">980</span>
+<span id="981">981</span>
+<span id="982">982</span>
+<span id="983">983</span>
+<span id="984">984</span>
+<span id="985">985</span>
+<span id="986">986</span>
+<span id="987">987</span>
+<span id="988">988</span>
+<span id="989">989</span>
+<span id="990">990</span>
+<span id="991">991</span>
+<span id="992">992</span>
 </pre><div class="example-wrap"><pre class="rust ">
 <span class="kw">use</span> <span class="kw">crate</span>::<span class="ident">abstractdata</span>::<span class="kw-2">*</span>;
 <span class="kw">use</span> <span class="kw">crate</span>::<span class="ident">secret</span>;
@@ -992,8 +1055,10 @@
         <span class="ident">type_override</span>: <span class="ident">bool</span>,
     ) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">secret</span>::<span class="ident">BV</span><span class="op">&gt;</span> {
         <span class="kw">let</span> <span class="ident">arg_size</span> <span class="op">=</span> <span class="ident">arg</span>.<span class="ident">size_in_bits</span>();
-        <span class="kw">let</span> <span class="ident">param_size</span> <span class="op">=</span> <span class="ident">layout</span>::<span class="ident">size_opaque_aware</span>(<span class="kw-2">&amp;</span><span class="ident">param</span>.<span class="ident">ty</span>, <span class="self">self</span>.<span class="ident">proj</span>);
-        <span class="macro">assert_eq</span><span class="macro">!</span>(<span class="ident">arg_size</span>, <span class="ident">param_size</span>, <span class="string">&quot;Parameter size mismatch for parameter {:?}: parameter is {} bits but CompleteAbstractData is {} bits&quot;</span>, <span class="kw-2">&amp;</span><span class="ident">param</span>.<span class="ident">name</span>, <span class="ident">param_size</span>, <span class="ident">arg_size</span>);
+        <span class="kw">match</span> <span class="ident">layout</span>::<span class="ident">size_opaque_aware</span>(<span class="kw-2">&amp;</span><span class="ident">param</span>.<span class="ident">ty</span>, <span class="self">self</span>.<span class="ident">proj</span>) {
+            <span class="prelude-val">Some</span>(<span class="ident">param_size</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="macro">assert_eq</span><span class="macro">!</span>(<span class="ident">arg_size</span>, <span class="ident">param_size</span>, <span class="string">&quot;Parameter size mismatch for parameter {:?}: parameter is {} bits but CompleteAbstractData is {} bits&quot;</span>, <span class="kw-2">&amp;</span><span class="ident">param</span>.<span class="ident">name</span>, <span class="ident">param_size</span>, <span class="ident">arg_size</span>),
+            <span class="prelude-val">None</span> <span class="op">=</span><span class="op">&gt;</span> {},  <span class="comment">// can&#39;t determine the parameter size: skip performing this check</span>
+        };
         <span class="kw">match</span> <span class="ident">arg</span> {
             <span class="ident">CompleteAbstractData</span>::<span class="ident">Secret</span> { <span class="ident">bits</span> } <span class="op">=</span><span class="op">&gt;</span> {
                 <span class="macro">debug</span><span class="macro">!</span>(<span class="string">&quot;Parameter is marked secret&quot;</span>);
@@ -1105,14 +1170,15 @@
                 <span class="macro">debug</span><span class="macro">!</span>(<span class="string">&quot;Parameter is marked as a public pointer which {} be null&quot;</span>, <span class="kw">if</span> <span class="ident">maybe_null</span> { <span class="string">&quot;may&quot;</span> } <span class="kw">else</span> { <span class="string">&quot;cannot&quot;</span> });
                 <span class="kw">let</span> <span class="ident">ptr</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">state</span>.<span class="ident">allocate</span>(<span class="ident">pointee</span>.<span class="ident">size_in_bits</span>() <span class="kw">as</span> <span class="ident">u64</span>);
                 <span class="macro">debug</span><span class="macro">!</span>(<span class="string">&quot;Allocated the parameter at {:?}&quot;</span>, <span class="ident">ptr</span>);
-                <span class="kw">let</span> <span class="ident">ptr</span> <span class="op">=</span> <span class="kw">if</span> <span class="ident">maybe_null</span> {
+                <span class="kw">if</span> <span class="ident">maybe_null</span> {
                     <span class="kw">let</span> <span class="ident">ptr_width</span> <span class="op">=</span> <span class="ident">ptr</span>.<span class="ident">get_width</span>();
                     <span class="kw">let</span> <span class="ident">condition</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">state</span>.<span class="ident">new_bv_with_name</span>(<span class="ident">Name</span>::<span class="ident">from</span>(<span class="string">&quot;pointer_is_null&quot;</span>), <span class="number">1</span>)<span class="question-mark">?</span>;
-                    <span class="ident">condition</span>.<span class="ident">cond_bv</span>(<span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">state</span>.<span class="ident">zero</span>(<span class="ident">ptr_width</span>), <span class="kw-2">&amp;</span><span class="ident">ptr</span>)
+                    <span class="kw">let</span> <span class="ident">maybe_null_ptr</span> <span class="op">=</span> <span class="ident">condition</span>.<span class="ident">cond_bv</span>(<span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">state</span>.<span class="ident">zero</span>(<span class="ident">ptr_width</span>), <span class="kw-2">&amp;</span><span class="ident">ptr</span>);
+                    <span class="self">self</span>.<span class="ident">state</span>.<span class="ident">overwrite_latest_version_of_bv</span>(<span class="kw-2">&amp;</span><span class="ident">param</span>.<span class="ident">name</span>, <span class="ident">maybe_null_ptr</span>);
                 } <span class="kw">else</span> {
-                    <span class="ident">ptr</span>
-                };
-                <span class="self">self</span>.<span class="ident">state</span>.<span class="ident">overwrite_latest_version_of_bv</span>(<span class="kw-2">&amp;</span><span class="ident">param</span>.<span class="ident">name</span>, <span class="ident">ptr</span>.<span class="ident">clone</span>());
+                    <span class="self">self</span>.<span class="ident">state</span>.<span class="ident">overwrite_latest_version_of_bv</span>(<span class="kw-2">&amp;</span><span class="ident">param</span>.<span class="ident">name</span>, <span class="ident">ptr</span>.<span class="ident">clone</span>());
+                }
+                <span class="comment">// in either case, initialize the concrete pointer, not the maybe-null location</span>
                 <span class="kw">if</span> <span class="ident">type_override</span> {
                     <span class="ident">InitializationContext</span>::<span class="ident">blank</span>().<span class="ident">initialize_cad_in_memory</span>(<span class="self">self</span>, <span class="kw-2">&amp;</span><span class="ident">ptr</span>, <span class="kw-2">&amp;</span><span class="kw-2">*</span><span class="ident">pointee</span>, <span class="prelude-val">None</span>)<span class="question-mark">?</span>;
                 } <span class="kw">else</span> {
@@ -1157,6 +1223,35 @@
             <span class="ident">CompleteAbstractData</span>::<span class="ident">Array</span> { .. } <span class="op">=</span><span class="op">&gt;</span> <span class="macro">unimplemented</span><span class="macro">!</span>(<span class="string">&quot;Array passed by value&quot;</span>),
             <span class="ident">CompleteAbstractData</span>::<span class="ident">Struct</span> { .. } <span class="op">=</span><span class="op">&gt;</span> <span class="macro">unimplemented</span><span class="macro">!</span>(<span class="string">&quot;Struct passed by value&quot;</span>),
             <span class="ident">CompleteAbstractData</span>::<span class="ident">VoidOverride</span> { .. } <span class="op">=</span><span class="op">&gt;</span> <span class="macro">unimplemented</span><span class="macro">!</span>(<span class="string">&quot;VoidOverride used as an argument directly.  You probably meant to use a pointer to a VoidOverride&quot;</span>),
+            <span class="ident">CompleteAbstractData</span>::<span class="ident">PointerOverride</span> { <span class="ident">llvm_struct_name</span>, <span class="ident">data</span> } <span class="op">=</span><span class="op">&gt;</span> {
+                <span class="macro">debug</span><span class="macro">!</span>(<span class="string">&quot;Parameter is marked as a public pointer to {}, overriding LLVM type&quot;</span>, <span class="ident">data</span>);
+                <span class="kw">let</span> <span class="ident">ptr</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">state</span>.<span class="ident">allocate</span>(<span class="ident">data</span>.<span class="ident">size_in_bits</span>() <span class="kw">as</span> <span class="ident">u64</span>);
+                <span class="macro">debug</span><span class="macro">!</span>(<span class="string">&quot;Allocated the parameter at {:?}&quot;</span>, <span class="ident">ptr</span>);
+                <span class="self">self</span>.<span class="ident">state</span>.<span class="ident">overwrite_latest_version_of_bv</span>(<span class="kw-2">&amp;</span><span class="ident">param</span>.<span class="ident">name</span>, <span class="ident">ptr</span>.<span class="ident">clone</span>());
+
+                <span class="kw">if</span> <span class="op">!</span><span class="ident">type_override</span> {
+                    <span class="comment">// typecheck that the parameter is at least a pointer</span>
+                    <span class="kw">match</span> <span class="kw-2">&amp;</span><span class="ident">param</span>.<span class="ident">ty</span> {
+                        <span class="ident">Type</span>::<span class="ident">PointerType</span> { .. } <span class="op">=</span><span class="op">&gt;</span> (),
+                        <span class="ident">ty</span> <span class="op">=</span><span class="op">&gt;</span> <span class="macro">panic</span><span class="macro">!</span>(<span class="string">&quot;Mismatch for parameter {:?}: CompleteAbstractData specifies a pointer but parameter type is {:?}&quot;</span>, <span class="kw-2">&amp;</span><span class="ident">param</span>.<span class="ident">name</span>, <span class="ident">ty</span>),
+                    };
+                }
+
+                <span class="kw">match</span> <span class="ident">llvm_struct_name</span> {
+                    <span class="prelude-val">None</span> <span class="op">=</span><span class="op">&gt;</span> {
+                        <span class="ident">InitializationContext</span>::<span class="ident">blank</span>().<span class="ident">initialize_cad_in_memory</span>(<span class="self">self</span>, <span class="kw-2">&amp;</span><span class="ident">ptr</span>, <span class="kw-2">&amp;</span><span class="ident">data</span>, <span class="prelude-val">None</span>)<span class="question-mark">?</span>;
+                    },
+                    <span class="prelude-val">Some</span>(<span class="ident">llvm_struct_name</span>) <span class="op">=</span><span class="op">&gt;</span> {
+                        <span class="kw">let</span> (<span class="ident">llvm_ty</span>, <span class="kw">_</span>) <span class="op">=</span> <span class="self">self</span>.<span class="ident">proj</span>.<span class="ident">get_named_struct_type_by_name</span>(<span class="kw-2">&amp;</span><span class="ident">llvm_struct_name</span>)
+                            .<span class="ident">unwrap_or_else</span>(<span class="op">|</span><span class="op">|</span> { <span class="macro">panic</span><span class="macro">!</span>(<span class="string">&quot;PointerOverride: llvm_struct_name {:?} not found in Project&quot;</span>, <span class="ident">llvm_struct_name</span>) });
+                        <span class="kw">let</span> <span class="ident">arc</span> <span class="op">=</span> <span class="ident">llvm_ty</span>.<span class="ident">as_ref</span>().<span class="ident">unwrap_or_else</span>(<span class="op">|</span><span class="op">|</span> { <span class="macro">panic</span><span class="macro">!</span>(<span class="string">&quot;PointerOverride: llvm_struct_name {:?} is an opaque type&quot;</span>, <span class="ident">llvm_struct_name</span>) });
+                        <span class="kw">let</span> <span class="ident">llvm_ty</span>: <span class="kw-2">&amp;</span><span class="ident">Type</span> <span class="op">=</span> <span class="kw-2">&amp;</span><span class="ident">arc</span>.<span class="ident">read</span>().<span class="ident">unwrap</span>();
+                        <span class="ident">InitializationContext</span>::<span class="ident">blank</span>().<span class="ident">initialize_cad_in_memory</span>(<span class="self">self</span>, <span class="kw-2">&amp;</span><span class="ident">ptr</span>, <span class="kw-2">&amp;</span><span class="ident">data</span>, <span class="prelude-val">Some</span>(<span class="ident">llvm_ty</span>))<span class="question-mark">?</span>;
+                    },
+                }
+
+                <span class="prelude-val">Ok</span>(<span class="ident">ptr</span>)
+            },
             <span class="ident">CompleteAbstractData</span>::<span class="ident">SameSizeOverride</span> { <span class="ident">data</span> } <span class="op">=</span><span class="op">&gt;</span> {
                 <span class="comment">// we already checked above that the param size == the data size; and we will again on the recursive call, actually</span>
                 <span class="self">self</span>.<span class="ident">allocate_arg_from_cad</span>(<span class="ident">param</span>, <span class="kw-2">*</span><span class="ident">data</span>, <span class="bool-val">true</span>)
@@ -1224,6 +1319,19 @@
         }
     }
 
+    <span class="doccomment">/// Check that `ty` represents a value of `bits` bits, panicking if not</span>
+    <span class="kw">fn</span> <span class="ident">size_check_ty</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">ctx</span>: <span class="kw-2">&amp;</span><span class="ident">Context</span>, <span class="ident">ty</span>: <span class="kw-2">&amp;</span><span class="lifetime">&#39;a</span> <span class="ident">Type</span>, <span class="ident">bits</span>: <span class="ident">usize</span>) {
+        <span class="kw">match</span> <span class="ident">layout</span>::<span class="ident">size_opaque_aware</span>(<span class="ident">ty</span>, <span class="ident">ctx</span>.<span class="ident">proj</span>) {
+            <span class="prelude-val">Some</span>(<span class="ident">ty_size_bits</span>) <span class="op">=</span><span class="op">&gt;</span> {
+                <span class="kw">if</span> <span class="ident">bits</span> <span class="op">!</span><span class="op">=</span> <span class="ident">ty_size_bits</span> {
+                    <span class="self">self</span>.<span class="ident">error_backtrace</span>();
+                    <span class="macro">panic</span><span class="macro">!</span>(<span class="string">&quot;Size mismatch: type {:?} is {} bits but CompleteAbstractData is {} bits&quot;</span>, <span class="ident">ty</span>, <span class="ident">ty_size_bits</span>, <span class="ident">bits</span>);
+                }
+            },
+            <span class="prelude-val">None</span> <span class="op">=</span><span class="op">&gt;</span> {},  <span class="comment">// can&#39;t determine the size of `ty`; skip performing the check</span>
+        }
+    }
+
     <span class="doccomment">/// Initialize the data in memory at `addr` according to the given `AbstractData`.</span>
     <span class="doccomment">///</span>
     <span class="doccomment">/// `ty` should be the type of the pointed-to object (i.e., the type of the</span>
@@ -1236,15 +1344,12 @@
         <span class="ident">addr</span>: <span class="kw-2">&amp;</span><span class="lifetime">&#39;a</span> <span class="ident">secret</span>::<span class="ident">BV</span>,
         <span class="ident">data</span>: <span class="ident">AbstractData</span>,
         <span class="ident">ty</span>: <span class="kw-2">&amp;</span><span class="lifetime">&#39;a</span> <span class="ident">Type</span>,
-        <span class="ident">project</span>: <span class="kw-2">&amp;</span><span class="ident">Project</span>,
-        <span class="ident">sd</span>: <span class="kw-2">&amp;</span><span class="ident">StructDescriptions</span>,
     ) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">usize</span><span class="op">&gt;</span> {
-        <span class="self">self</span>.<span class="ident">initialize_cad_in_memory</span>(<span class="ident">ctx</span>, <span class="ident">addr</span>, <span class="kw-2">&amp;</span><span class="ident">data</span>.<span class="ident">to_complete</span>(<span class="ident">ty</span>, <span class="ident">project</span>, <span class="ident">sd</span>), <span class="prelude-val">Some</span>(<span class="ident">ty</span>))
+        <span class="self">self</span>.<span class="ident">initialize_cad_in_memory</span>(<span class="ident">ctx</span>, <span class="ident">addr</span>, <span class="kw-2">&amp;</span><span class="ident">data</span>.<span class="ident">to_complete</span>(<span class="ident">ty</span>, <span class="ident">ctx</span>.<span class="ident">proj</span>, <span class="ident">ctx</span>.<span class="ident">sd</span>), <span class="prelude-val">Some</span>(<span class="ident">ty</span>))
     }
 
     <span class="doccomment">/// Like `initialize_data_in_memory`, but takes a `CompleteAbstractData`</span>
-    <span class="doccomment">/// instead of an `AbstractData`, and thus doesn&#39;t need the `Project` or</span>
-    <span class="doccomment">/// `StructDescriptions`.</span>
+    <span class="doccomment">/// instead of an `AbstractData`.</span>
     <span class="doccomment">///</span>
     <span class="doccomment">/// Also, `ty` is optional here. As before, `ty` represents the type of the</span>
     <span class="doccomment">/// pointed-to object, not the type of `addr`. In this function, `ty` is used</span>
@@ -1314,10 +1419,7 @@
             <span class="ident">CompleteAbstractData</span>::<span class="ident">PublicValue</span> { <span class="ident">bits</span>, <span class="ident">value</span>: <span class="ident">AbstractValue</span>::<span class="ident">ExactValue</span>(<span class="ident">value</span>) } <span class="op">=</span><span class="op">&gt;</span> {
                 <span class="macro">debug</span><span class="macro">!</span>(<span class="string">&quot;setting the memory contents equal to {}&quot;</span>, <span class="ident">value</span>);
                 <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>(<span class="ident">ty</span>) <span class="op">=</span> <span class="ident">ty</span> {
-                    <span class="kw">if</span> <span class="kw-2">*</span><span class="ident">bits</span> <span class="op">!</span><span class="op">=</span> <span class="ident">layout</span>::<span class="ident">size_opaque_aware</span>(<span class="ident">ty</span>, <span class="ident">ctx</span>.<span class="ident">proj</span>) {
-                        <span class="self">self</span>.<span class="ident">error_backtrace</span>();
-                        <span class="macro">panic</span><span class="macro">!</span>(<span class="string">&quot;Size mismatch when initializing data at {:?}: type {:?} is {} bits but CompleteAbstractData is {} bits&quot;</span>, <span class="ident">addr</span>, <span class="ident">ty</span>, <span class="ident">layout</span>::<span class="ident">size_opaque_aware</span>(<span class="ident">ty</span>, <span class="ident">ctx</span>.<span class="ident">proj</span>), <span class="ident">bits</span>);
-                    }
+                    <span class="self">self</span>.<span class="ident">size_check_ty</span>(<span class="ident">ctx</span>, <span class="ident">ty</span>, <span class="kw-2">*</span><span class="ident">bits</span>);
                 }
                 <span class="kw">let</span> <span class="ident">bv</span> <span class="op">=</span> <span class="ident">ctx</span>.<span class="ident">state</span>.<span class="ident">bv_from_u64</span>(<span class="kw-2">*</span><span class="ident">value</span>, <span class="kw-2">*</span><span class="ident">bits</span> <span class="kw">as</span> <span class="ident">u32</span>);
                 <span class="ident">ctx</span>.<span class="ident">state</span>.<span class="ident">write</span>(<span class="kw-2">&amp;</span><span class="ident">addr</span>, <span class="ident">bv</span>)<span class="question-mark">?</span>;
@@ -1326,10 +1428,7 @@
             <span class="ident">CompleteAbstractData</span>::<span class="ident">PublicValue</span> { <span class="ident">bits</span>, <span class="ident">value</span>: <span class="ident">AbstractValue</span>::<span class="ident">Range</span>(<span class="ident">min</span>, <span class="ident">max</span>) } <span class="op">=</span><span class="op">&gt;</span> {
                 <span class="macro">debug</span><span class="macro">!</span>(<span class="string">&quot;constraining the memory contents to be in the range ({}, {}) inclusive&quot;</span>, <span class="ident">min</span>, <span class="ident">max</span>);
                 <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>(<span class="ident">ty</span>) <span class="op">=</span> <span class="ident">ty</span> {
-                    <span class="kw">if</span> <span class="kw-2">*</span><span class="ident">bits</span> <span class="op">!</span><span class="op">=</span> <span class="ident">layout</span>::<span class="ident">size_opaque_aware</span>(<span class="ident">ty</span>, <span class="ident">ctx</span>.<span class="ident">proj</span>) {
-                        <span class="self">self</span>.<span class="ident">error_backtrace</span>();
-                        <span class="macro">panic</span><span class="macro">!</span>(<span class="string">&quot;Size mismatch when initializing data at {:?}: type {:?} is {} bits but CompleteAbstractData is {} bits&quot;</span>, <span class="ident">addr</span>, <span class="ident">ty</span>, <span class="ident">layout</span>::<span class="ident">size_opaque_aware</span>(<span class="ident">ty</span>, <span class="ident">ctx</span>.<span class="ident">proj</span>), <span class="ident">bits</span>);
-                    }
+                    <span class="self">self</span>.<span class="ident">size_check_ty</span>(<span class="ident">ctx</span>, <span class="ident">ty</span>, <span class="kw-2">*</span><span class="ident">bits</span>);
                 }
                 <span class="kw">let</span> <span class="ident">bv</span> <span class="op">=</span> <span class="ident">ctx</span>.<span class="ident">state</span>.<span class="ident">read</span>(<span class="kw-2">&amp;</span><span class="ident">addr</span>, <span class="kw-2">*</span><span class="ident">bits</span> <span class="kw">as</span> <span class="ident">u32</span>)<span class="question-mark">?</span>;
                 <span class="ident">bv</span>.<span class="ident">ugte</span>(<span class="kw-2">&amp;</span><span class="ident">ctx</span>.<span class="ident">state</span>.<span class="ident">bv_from_u64</span>(<span class="kw-2">*</span><span class="ident">min</span>, <span class="kw-2">*</span><span class="ident">bits</span> <span class="kw">as</span> <span class="ident">u32</span>)).<span class="ident">assert</span>()<span class="question-mark">?</span>;
@@ -1339,10 +1438,7 @@
             <span class="ident">CompleteAbstractData</span>::<span class="ident">PublicValue</span> { <span class="ident">bits</span>, <span class="ident">value</span>: <span class="ident">AbstractValue</span>::<span class="ident">Unconstrained</span> } <span class="op">=</span><span class="op">&gt;</span> {
                 <span class="comment">// nothing to do, just check that the type matches</span>
                 <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>(<span class="ident">ty</span>) <span class="op">=</span> <span class="ident">ty</span> {
-                    <span class="kw">if</span> <span class="kw-2">*</span><span class="ident">bits</span> <span class="op">!</span><span class="op">=</span> <span class="ident">layout</span>::<span class="ident">size_opaque_aware</span>(<span class="ident">ty</span>, <span class="ident">ctx</span>.<span class="ident">proj</span>) {
-                        <span class="self">self</span>.<span class="ident">error_backtrace</span>();
-                        <span class="macro">panic</span><span class="macro">!</span>(<span class="string">&quot;Size mismatch when initializing data at {:?}: type {:?} is {} bits but CompleteAbstractData is {} bits&quot;</span>, <span class="ident">addr</span>, <span class="ident">ty</span>, <span class="ident">layout</span>::<span class="ident">size_opaque_aware</span>(<span class="ident">ty</span>, <span class="ident">ctx</span>.<span class="ident">proj</span>), <span class="ident">bits</span>);
-                    }
+                    <span class="self">self</span>.<span class="ident">size_check_ty</span>(<span class="ident">ctx</span>, <span class="ident">ty</span>, <span class="kw-2">*</span><span class="ident">bits</span>);
                 }
                 <span class="prelude-val">Ok</span>(<span class="kw-2">*</span><span class="ident">bits</span>)
             },
@@ -1380,10 +1476,7 @@
                             <span class="macro">panic</span><span class="macro">!</span>(<span class="string">&quot;AbstractValue::EqualTo {:?}, which has {} bits, but current value has {} bits&quot;</span>, <span class="ident">name</span>, <span class="ident">width</span>, <span class="ident">bits</span>);
                         }
                         <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>(<span class="ident">ty</span>) <span class="op">=</span> <span class="ident">ty</span> {
-                            <span class="kw">if</span> <span class="kw-2">*</span><span class="ident">bits</span> <span class="op">!</span><span class="op">=</span> <span class="ident">layout</span>::<span class="ident">size_opaque_aware</span>(<span class="ident">ty</span>, <span class="ident">ctx</span>.<span class="ident">proj</span>) {
-                                <span class="self">self</span>.<span class="ident">error_backtrace</span>();
-                                <span class="macro">panic</span><span class="macro">!</span>(<span class="string">&quot;Size mismatch when initializing data at {:?}: type {:?} is {} bits but CompleteAbstractData is {} bits&quot;</span>, <span class="ident">addr</span>, <span class="ident">ty</span>, <span class="ident">layout</span>::<span class="ident">size_opaque_aware</span>(<span class="ident">ty</span>, <span class="ident">ctx</span>.<span class="ident">proj</span>), <span class="ident">bits</span>);
-                            }
+                            <span class="self">self</span>.<span class="ident">size_check_ty</span>(<span class="ident">ctx</span>, <span class="ident">ty</span>, <span class="kw-2">*</span><span class="ident">bits</span>);
                         }
                         <span class="ident">ctx</span>.<span class="ident">state</span>.<span class="ident">write</span>(<span class="kw-2">&amp;</span><span class="ident">addr</span>, <span class="ident">bv</span>.<span class="ident">clone</span>())<span class="question-mark">?</span>;
                         <span class="prelude-val">Ok</span>(<span class="kw-2">*</span><span class="ident">bits</span>)
@@ -1403,10 +1496,7 @@
                             <span class="macro">panic</span><span class="macro">!</span>(<span class="string">&quot;AbstractValue::SignedLessThan {:?}, which has {} bits, but current value has {} bits&quot;</span>, <span class="ident">name</span>, <span class="ident">width</span>, <span class="ident">bits</span>);
                         }
                         <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>(<span class="ident">ty</span>) <span class="op">=</span> <span class="ident">ty</span> {
-                            <span class="kw">if</span> <span class="kw-2">*</span><span class="ident">bits</span> <span class="op">!</span><span class="op">=</span> <span class="ident">layout</span>::<span class="ident">size_opaque_aware</span>(<span class="ident">ty</span>, <span class="ident">ctx</span>.<span class="ident">proj</span>) {
-                                <span class="self">self</span>.<span class="ident">error_backtrace</span>();
-                                <span class="macro">panic</span><span class="macro">!</span>(<span class="string">&quot;Size mismatch when initializing data at {:?}: type {:?} is {} bits but CompleteAbstractData is {} bits&quot;</span>, <span class="ident">addr</span>, <span class="ident">ty</span>, <span class="ident">layout</span>::<span class="ident">size_opaque_aware</span>(<span class="ident">ty</span>, <span class="ident">ctx</span>.<span class="ident">proj</span>), <span class="ident">bits</span>);
-                            }
+                            <span class="self">self</span>.<span class="ident">size_check_ty</span>(<span class="ident">ctx</span>, <span class="ident">ty</span>, <span class="kw-2">*</span><span class="ident">bits</span>);
                         }
                         <span class="kw">let</span> <span class="ident">new_bv</span> <span class="op">=</span> <span class="ident">ctx</span>.<span class="ident">state</span>.<span class="ident">new_bv_with_name</span>(<span class="ident">Name</span>::<span class="ident">from</span>(<span class="macro">format</span><span class="macro">!</span>(<span class="string">&quot;SignedLessThan:{}&quot;</span>, <span class="ident">name</span>)), <span class="ident">width</span>)<span class="question-mark">?</span>;
                         <span class="ident">new_bv</span>.<span class="ident">slt</span>(<span class="kw-2">&amp;</span><span class="ident">bv</span>).<span class="ident">assert</span>()<span class="question-mark">?</span>;
@@ -1428,10 +1518,7 @@
                             <span class="macro">panic</span><span class="macro">!</span>(<span class="string">&quot;AbstractValue::SignedGreaterThan {:?}, which has {} bits, but current value has {} bits&quot;</span>, <span class="ident">name</span>, <span class="ident">width</span>, <span class="ident">bits</span>);
                         }
                         <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>(<span class="ident">ty</span>) <span class="op">=</span> <span class="ident">ty</span> {
-                            <span class="kw">if</span> <span class="kw-2">*</span><span class="ident">bits</span> <span class="op">!</span><span class="op">=</span> <span class="ident">layout</span>::<span class="ident">size_opaque_aware</span>(<span class="ident">ty</span>, <span class="ident">ctx</span>.<span class="ident">proj</span>) {
-                                <span class="self">self</span>.<span class="ident">error_backtrace</span>();
-                                <span class="macro">panic</span><span class="macro">!</span>(<span class="string">&quot;Size mismatch when initializing data at {:?}: type {:?} is {} bits but CompleteAbstractData is {} bits&quot;</span>, <span class="ident">addr</span>, <span class="ident">ty</span>, <span class="ident">layout</span>::<span class="ident">size_opaque_aware</span>(<span class="ident">ty</span>, <span class="ident">ctx</span>.<span class="ident">proj</span>), <span class="ident">bits</span>);
-                            }
+                            <span class="self">self</span>.<span class="ident">size_check_ty</span>(<span class="ident">ctx</span>, <span class="ident">ty</span>, <span class="kw-2">*</span><span class="ident">bits</span>);
                         }
                         <span class="kw">let</span> <span class="ident">new_bv</span> <span class="op">=</span> <span class="ident">ctx</span>.<span class="ident">state</span>.<span class="ident">new_bv_with_name</span>(<span class="ident">Name</span>::<span class="ident">from</span>(<span class="macro">format</span><span class="macro">!</span>(<span class="string">&quot;SignedGreaterThan:{}&quot;</span>, <span class="ident">name</span>)), <span class="ident">width</span>)<span class="question-mark">?</span>;
                         <span class="ident">new_bv</span>.<span class="ident">sgt</span>(<span class="kw-2">&amp;</span><span class="ident">bv</span>).<span class="ident">assert</span>()<span class="question-mark">?</span>;
@@ -1453,10 +1540,7 @@
                             <span class="macro">panic</span><span class="macro">!</span>(<span class="string">&quot;AbstractValue::UnsignedLessThan {:?}, which has {} bits, but current value has {} bits&quot;</span>, <span class="ident">name</span>, <span class="ident">width</span>, <span class="ident">bits</span>);
                         }
                         <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>(<span class="ident">ty</span>) <span class="op">=</span> <span class="ident">ty</span> {
-                            <span class="kw">if</span> <span class="kw-2">*</span><span class="ident">bits</span> <span class="op">!</span><span class="op">=</span> <span class="ident">layout</span>::<span class="ident">size_opaque_aware</span>(<span class="ident">ty</span>, <span class="ident">ctx</span>.<span class="ident">proj</span>) {
-                                <span class="self">self</span>.<span class="ident">error_backtrace</span>();
-                                <span class="macro">panic</span><span class="macro">!</span>(<span class="string">&quot;Size mismatch when initializing data at {:?}: type {:?} is {} bits but CompleteAbstractData is {} bits&quot;</span>, <span class="ident">addr</span>, <span class="ident">ty</span>, <span class="ident">layout</span>::<span class="ident">size_opaque_aware</span>(<span class="ident">ty</span>, <span class="ident">ctx</span>.<span class="ident">proj</span>), <span class="ident">bits</span>);
-                            }
+                            <span class="self">self</span>.<span class="ident">size_check_ty</span>(<span class="ident">ctx</span>, <span class="ident">ty</span>, <span class="kw-2">*</span><span class="ident">bits</span>);
                         }
                         <span class="kw">let</span> <span class="ident">new_bv</span> <span class="op">=</span> <span class="ident">ctx</span>.<span class="ident">state</span>.<span class="ident">new_bv_with_name</span>(<span class="ident">Name</span>::<span class="ident">from</span>(<span class="macro">format</span><span class="macro">!</span>(<span class="string">&quot;UnsignedLessThan:{}&quot;</span>, <span class="ident">name</span>)), <span class="ident">width</span>)<span class="question-mark">?</span>;
                         <span class="ident">new_bv</span>.<span class="ident">ult</span>(<span class="kw-2">&amp;</span><span class="ident">bv</span>).<span class="ident">assert</span>()<span class="question-mark">?</span>;
@@ -1478,10 +1562,7 @@
                             <span class="macro">panic</span><span class="macro">!</span>(<span class="string">&quot;AbstractValue::UnsignedGreaterThan {:?}, which has {} bits, but current value has {} bits&quot;</span>, <span class="ident">name</span>, <span class="ident">width</span>, <span class="ident">bits</span>);
                         }
                         <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>(<span class="ident">ty</span>) <span class="op">=</span> <span class="ident">ty</span> {
-                            <span class="kw">if</span> <span class="kw-2">*</span><span class="ident">bits</span> <span class="op">!</span><span class="op">=</span> <span class="ident">layout</span>::<span class="ident">size_opaque_aware</span>(<span class="ident">ty</span>, <span class="ident">ctx</span>.<span class="ident">proj</span>) {
-                                <span class="self">self</span>.<span class="ident">error_backtrace</span>();
-                                <span class="macro">panic</span><span class="macro">!</span>(<span class="string">&quot;Size mismatch when initializing data at {:?}: type {:?} is {} bits but CompleteAbstractData is {} bits&quot;</span>, <span class="ident">addr</span>, <span class="ident">ty</span>, <span class="ident">layout</span>::<span class="ident">size_opaque_aware</span>(<span class="ident">ty</span>, <span class="ident">ctx</span>.<span class="ident">proj</span>), <span class="ident">bits</span>);
-                            }
+                            <span class="self">self</span>.<span class="ident">size_check_ty</span>(<span class="ident">ctx</span>, <span class="ident">ty</span>, <span class="kw-2">*</span><span class="ident">bits</span>);
                         }
                         <span class="kw">let</span> <span class="ident">new_bv</span> <span class="op">=</span> <span class="ident">ctx</span>.<span class="ident">state</span>.<span class="ident">new_bv_with_name</span>(<span class="ident">Name</span>::<span class="ident">from</span>(<span class="macro">format</span><span class="macro">!</span>(<span class="string">&quot;UnsignedGreaterThan:{}&quot;</span>, <span class="ident">name</span>)), <span class="ident">width</span>)<span class="question-mark">?</span>;
                         <span class="ident">new_bv</span>.<span class="ident">ugt</span>(<span class="kw-2">&amp;</span><span class="ident">bv</span>).<span class="ident">assert</span>()<span class="question-mark">?</span>;
@@ -1504,19 +1585,19 @@
 
                 <span class="comment">// allocate memory for the pointee</span>
                 <span class="kw">let</span> <span class="ident">inner_ptr</span> <span class="op">=</span> <span class="ident">ctx</span>.<span class="ident">state</span>.<span class="ident">allocate</span>(<span class="ident">pointee</span>.<span class="ident">size_in_bits</span>() <span class="kw">as</span> <span class="ident">u64</span>);
+                <span class="kw">let</span> <span class="ident">bits</span> <span class="op">=</span> <span class="ident">inner_ptr</span>.<span class="ident">get_width</span>();
                 <span class="macro">debug</span><span class="macro">!</span>(<span class="string">&quot;allocated memory for the pointee at {:?}, and will constrain the memory contents at {:?} to have that pointer value{}&quot;</span>, <span class="ident">inner_ptr</span>, <span class="ident">addr</span>, <span class="kw">if</span> <span class="kw-2">*</span><span class="ident">maybe_null</span> { <span class="string">&quot; or null&quot;</span> } <span class="kw">else</span> { <span class="string">&quot;&quot;</span> });
 
                 <span class="comment">// make `addr` point to a pointer to the newly allocated memory (or point to NULL if appropriate)</span>
-                <span class="kw">let</span> <span class="ident">bits</span> <span class="op">=</span> <span class="ident">inner_ptr</span>.<span class="ident">get_width</span>();
-                <span class="kw">let</span> <span class="ident">inner_ptr</span> <span class="op">=</span> <span class="kw">if</span> <span class="kw-2">*</span><span class="ident">maybe_null</span> {
+                <span class="kw">if</span> <span class="kw-2">*</span><span class="ident">maybe_null</span> {
                     <span class="kw">let</span> <span class="ident">condition</span> <span class="op">=</span> <span class="ident">ctx</span>.<span class="ident">state</span>.<span class="ident">new_bv_with_name</span>(<span class="ident">Name</span>::<span class="ident">from</span>(<span class="string">&quot;pointer_is_null&quot;</span>), <span class="number">1</span>)<span class="question-mark">?</span>;
-                    <span class="ident">condition</span>.<span class="ident">cond_bv</span>(<span class="kw-2">&amp;</span><span class="ident">ctx</span>.<span class="ident">state</span>.<span class="ident">zero</span>(<span class="ident">bits</span>), <span class="kw-2">&amp;</span><span class="ident">inner_ptr</span>)
+                    <span class="kw">let</span> <span class="ident">maybe_null_ptr</span> <span class="op">=</span> <span class="ident">condition</span>.<span class="ident">cond_bv</span>(<span class="kw-2">&amp;</span><span class="ident">ctx</span>.<span class="ident">state</span>.<span class="ident">zero</span>(<span class="ident">bits</span>), <span class="kw-2">&amp;</span><span class="ident">inner_ptr</span>);
+                    <span class="ident">ctx</span>.<span class="ident">state</span>.<span class="ident">write</span>(<span class="kw-2">&amp;</span><span class="ident">addr</span>, <span class="ident">maybe_null_ptr</span>)<span class="question-mark">?</span>;
                 } <span class="kw">else</span> {
-                    <span class="ident">inner_ptr</span>
+                    <span class="ident">ctx</span>.<span class="ident">state</span>.<span class="ident">write</span>(<span class="kw-2">&amp;</span><span class="ident">addr</span>, <span class="ident">inner_ptr</span>.<span class="ident">clone</span>())<span class="question-mark">?</span>;
                 };
-                <span class="ident">ctx</span>.<span class="ident">state</span>.<span class="ident">write</span>(<span class="kw-2">&amp;</span><span class="ident">addr</span>, <span class="ident">inner_ptr</span>.<span class="ident">clone</span>())<span class="question-mark">?</span>;
 
-                <span class="comment">// initialize the pointee</span>
+                <span class="comment">// in either case, initialize the pointee at the concrete address (not at the maybe-null location)</span>
                 <span class="self">self</span>.<span class="ident">initialize_cad_in_memory</span>(<span class="ident">ctx</span>, <span class="kw-2">&amp;</span><span class="ident">inner_ptr</span>, <span class="kw-2">&amp;</span><span class="kw-2">*</span><span class="kw-2">*</span><span class="ident">pointee</span>, <span class="ident">pointee_ty</span>)<span class="question-mark">?</span>;
 
                 <span class="prelude-val">Ok</span>(<span class="ident">bits</span> <span class="kw">as</span> <span class="ident">usize</span>)
@@ -1698,12 +1779,14 @@
                     <span class="kw">match</span> <span class="ident">element_type</span> {
                         <span class="prelude-val">None</span> <span class="op">=</span><span class="op">&gt;</span> {},  <span class="comment">// element_type is an opaque struct type, there&#39;s no size check we can make.</span>
                         <span class="prelude-val">Some</span>(<span class="ident">element_type</span>) <span class="op">=</span><span class="op">&gt;</span> {
-                            <span class="kw">let</span> <span class="ident">llvm_element_size_bits</span> <span class="op">=</span> <span class="ident">layout</span>::<span class="ident">size_opaque_aware</span>(<span class="kw-2">&amp;</span><span class="ident">element_type</span>.<span class="ident">read</span>().<span class="ident">unwrap</span>(), <span class="ident">ctx</span>.<span class="ident">proj</span>);
-                            <span class="kw">if</span> <span class="ident">llvm_element_size_bits</span> <span class="op">!</span><span class="op">=</span> <span class="number">0</span> {
-                                <span class="kw">if</span> <span class="ident">element_size_bits</span> <span class="op">!</span><span class="op">=</span> <span class="ident">llvm_element_size_bits</span> {
-                                    <span class="self">self</span>.<span class="ident">error_backtrace</span>();
-                                    <span class="macro">panic</span><span class="macro">!</span>( <span class="string">&quot;CompleteAbstractData element size of {} bits does not match LLVM element size of {} bits&quot;</span>, <span class="ident">element_size_bits</span>, <span class="ident">llvm_element_size_bits</span>);
-                                }
+                           <span class="kw">match</span> <span class="ident">layout</span>::<span class="ident">size_opaque_aware</span>(<span class="kw-2">&amp;</span><span class="ident">element_type</span>.<span class="ident">read</span>().<span class="ident">unwrap</span>(), <span class="ident">ctx</span>.<span class="ident">proj</span>) {
+                                <span class="prelude-val">Some</span>(<span class="ident">llvm_element_size_bits</span>) <span class="kw">if</span> <span class="ident">llvm_element_size_bits</span> <span class="op">!</span><span class="op">=</span> <span class="number">0</span> <span class="op">=</span><span class="op">&gt;</span> {
+                                    <span class="kw">if</span> <span class="ident">element_size_bits</span> <span class="op">!</span><span class="op">=</span> <span class="ident">llvm_element_size_bits</span> {
+                                        <span class="self">self</span>.<span class="ident">error_backtrace</span>();
+                                        <span class="macro">panic</span><span class="macro">!</span>( <span class="string">&quot;CompleteAbstractData element size of {} bits does not match LLVM element size of {} bits&quot;</span>, <span class="ident">element_size_bits</span>, <span class="ident">llvm_element_size_bits</span>);
+                                    }
+                                },
+                                <span class="kw">_</span> <span class="op">=</span><span class="op">&gt;</span> {},  <span class="comment">// skip performing the check: llvm element size is either 0 bits or can&#39;t be determined</span>
                             }
                         }
                     }
@@ -1789,12 +1872,14 @@
                     <span class="self">self</span>.<span class="ident">within_structs</span>.<span class="ident">get_mut</span>(<span class="ident">within_structs_len</span> <span class="op">-</span> <span class="number">1</span>).<span class="ident">unwrap</span>().<span class="ident">element_index</span> <span class="op">=</span> <span class="ident">element_idx</span>;
                     <span class="kw">let</span> <span class="ident">element_size_bits</span> <span class="op">=</span> <span class="ident">element</span>.<span class="ident">size_in_bits</span>();
                     <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>(<span class="ident">element_ty</span>) <span class="op">=</span> <span class="kw-2">&amp;</span><span class="ident">element_ty</span> {
-                        <span class="kw">let</span> <span class="ident">llvm_element_size_bits</span> <span class="op">=</span> <span class="ident">layout</span>::<span class="ident">size_opaque_aware</span>(<span class="kw-2">&amp;</span><span class="ident">element_ty</span>, <span class="ident">ctx</span>.<span class="ident">proj</span>);
-                        <span class="kw">if</span> <span class="ident">llvm_element_size_bits</span> <span class="op">!</span><span class="op">=</span> <span class="number">0</span> {
-                            <span class="kw">if</span> <span class="ident">element_size_bits</span> <span class="op">!</span><span class="op">=</span> <span class="ident">llvm_element_size_bits</span> {
-                                <span class="self">self</span>.<span class="ident">error_backtrace</span>();
-                                <span class="macro">panic</span><span class="macro">!</span>(<span class="string">&quot;CompleteAbstractData element size of {} bits does not match LLVM element size of {} bits&quot;</span>, <span class="ident">element_size_bits</span>, <span class="ident">llvm_element_size_bits</span>);
-                            }
+                        <span class="kw">match</span> <span class="ident">layout</span>::<span class="ident">size_opaque_aware</span>(<span class="kw-2">&amp;</span><span class="ident">element_ty</span>, <span class="ident">ctx</span>.<span class="ident">proj</span>) {
+                            <span class="prelude-val">Some</span>(<span class="ident">llvm_element_size_bits</span>) <span class="kw">if</span> <span class="ident">llvm_element_size_bits</span> <span class="op">!</span><span class="op">=</span> <span class="number">0</span> <span class="op">=</span><span class="op">&gt;</span> {
+                                <span class="kw">if</span> <span class="ident">element_size_bits</span> <span class="op">!</span><span class="op">=</span> <span class="ident">llvm_element_size_bits</span> {
+                                    <span class="self">self</span>.<span class="ident">error_backtrace</span>();
+                                    <span class="macro">panic</span><span class="macro">!</span>(<span class="string">&quot;CompleteAbstractData element size of {} bits does not match LLVM element size of {} bits&quot;</span>, <span class="ident">element_size_bits</span>, <span class="ident">llvm_element_size_bits</span>);
+                                }
+                            },
+                            <span class="kw">_</span> <span class="op">=</span><span class="op">&gt;</span> {},  <span class="comment">// skip performing the check: llvm element size is either 0 bits or can&#39;t be determined</span>
                         }
                     }
                     <span class="kw">if</span> <span class="ident">element_size_bits</span> <span class="op">%</span> <span class="number">8</span> <span class="op">!</span><span class="op">=</span> <span class="number">0</span> {
@@ -1839,10 +1924,51 @@
                     },
                 }
             },
+            <span class="ident">CompleteAbstractData</span>::<span class="ident">PointerOverride</span> { <span class="ident">llvm_struct_name</span>, <span class="ident">data</span> } <span class="op">=</span><span class="op">&gt;</span> {
+                <span class="comment">// first check that we&#39;re overriding a pointer type</span>
+                <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>(<span class="ident">ty</span>) <span class="op">=</span> <span class="ident">ty</span> {
+                    <span class="kw">match</span> <span class="ident">ty</span> {
+                        <span class="ident">Type</span>::<span class="ident">PointerType</span> { .. } <span class="op">=</span><span class="op">&gt;</span> {},
+                        <span class="kw">_</span> <span class="op">=</span><span class="op">&gt;</span> {
+                            <span class="self">self</span>.<span class="ident">error_backtrace</span>();
+                            <span class="macro">panic</span><span class="macro">!</span>(<span class="string">&quot;Type mismatch: CompleteAbstractData specifies a pointer, but found type {:?}&quot;</span>, <span class="ident">ty</span>)
+                        },
+                    };
+                }
+
+                <span class="comment">// allocate memory for the pointee, which is `data` (ignoring LLVM type)</span>
+                <span class="kw">let</span> <span class="ident">inner_ptr</span> <span class="op">=</span> <span class="ident">ctx</span>.<span class="ident">state</span>.<span class="ident">allocate</span>(<span class="ident">data</span>.<span class="ident">size_in_bits</span>() <span class="kw">as</span> <span class="ident">u64</span>);
+                <span class="macro">debug</span><span class="macro">!</span>(<span class="string">&quot;allocated memory for the pointee at {:?}, and will constrain the memory contents at {:?} to have that pointer value&quot;</span>, <span class="ident">inner_ptr</span>, <span class="ident">addr</span>);
+
+                <span class="comment">// make `addr` point to a pointer to the newly allocated memory</span>
+                <span class="kw">let</span> <span class="ident">bits</span> <span class="op">=</span> <span class="ident">inner_ptr</span>.<span class="ident">get_width</span>();
+                <span class="ident">ctx</span>.<span class="ident">state</span>.<span class="ident">write</span>(<span class="kw-2">&amp;</span><span class="ident">addr</span>, <span class="ident">inner_ptr</span>.<span class="ident">clone</span>())<span class="question-mark">?</span>;
+
+                <span class="comment">// initialize the pointee</span>
+                <span class="kw">match</span> <span class="ident">llvm_struct_name</span> {
+                    <span class="prelude-val">None</span> <span class="op">=</span><span class="op">&gt;</span> {
+                        <span class="self">self</span>.<span class="ident">initialize_cad_in_memory</span>(<span class="ident">ctx</span>, <span class="kw-2">&amp;</span><span class="ident">inner_ptr</span>, <span class="ident">data</span>, <span class="prelude-val">None</span>)<span class="question-mark">?</span>;
+                    },
+                    <span class="prelude-val">Some</span>(<span class="ident">llvm_struct_name</span>) <span class="op">=</span><span class="op">&gt;</span> {
+                        <span class="kw">let</span> (<span class="ident">llvm_ty</span>, <span class="kw">_</span>) <span class="op">=</span> <span class="ident">ctx</span>.<span class="ident">proj</span>.<span class="ident">get_named_struct_type_by_name</span>(<span class="kw-2">&amp;</span><span class="ident">llvm_struct_name</span>)
+                            .<span class="ident">unwrap_or_else</span>(<span class="op">|</span><span class="op">|</span> { <span class="self">self</span>.<span class="ident">error_backtrace</span>(); <span class="macro">panic</span><span class="macro">!</span>(<span class="string">&quot;PointerOverride: llvm_struct_name {:?} not found in Project&quot;</span>, <span class="ident">llvm_struct_name</span>) });
+                        <span class="kw">let</span> <span class="ident">arc</span> <span class="op">=</span> <span class="ident">llvm_ty</span>.<span class="ident">as_ref</span>().<span class="ident">unwrap_or_else</span>(<span class="op">|</span><span class="op">|</span> { <span class="self">self</span>.<span class="ident">error_backtrace</span>(); <span class="macro">panic</span><span class="macro">!</span>(<span class="string">&quot;PointerOverride: llvm_struct_name {:?} is an opaque type&quot;</span>, <span class="ident">llvm_struct_name</span>) });
+                        <span class="kw">let</span> <span class="ident">llvm_ty</span>: <span class="kw-2">&amp;</span><span class="ident">Type</span> <span class="op">=</span> <span class="kw-2">&amp;</span><span class="ident">arc</span>.<span class="ident">read</span>().<span class="ident">unwrap</span>();
+                        <span class="self">self</span>.<span class="ident">initialize_cad_in_memory</span>(<span class="ident">ctx</span>, <span class="kw-2">&amp;</span><span class="ident">inner_ptr</span>, <span class="ident">data</span>, <span class="prelude-val">Some</span>(<span class="ident">llvm_ty</span>))<span class="question-mark">?</span>;
+                    },
+                }
+
+                <span class="prelude-val">Ok</span>(<span class="ident">bits</span> <span class="kw">as</span> <span class="ident">usize</span>)
+            },
             <span class="ident">CompleteAbstractData</span>::<span class="ident">SameSizeOverride</span> { <span class="ident">data</span> } <span class="op">=</span><span class="op">&gt;</span> {
                 <span class="comment">// first check that the type we&#39;re overriding is the right size</span>
                 <span class="kw">match</span> <span class="ident">ty</span> {
-                    <span class="prelude-val">Some</span>(<span class="ident">ty</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="macro">assert_eq</span><span class="macro">!</span>(<span class="ident">data</span>.<span class="ident">size_in_bits</span>(), <span class="ident">layout</span>::<span class="ident">size_opaque_aware</span>(<span class="ident">ty</span>, <span class="ident">ctx</span>.<span class="ident">proj</span>), <span class="string">&quot;same_size_override: size mismatch: specified something of size {} bits, but the LLVM type has size {} bits&quot;</span>, <span class="ident">data</span>.<span class="ident">size_in_bits</span>(), <span class="ident">layout</span>::<span class="ident">size_opaque_aware</span>(<span class="ident">ty</span>, <span class="ident">ctx</span>.<span class="ident">proj</span>)),
+                    <span class="prelude-val">Some</span>(<span class="ident">ty</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="kw">match</span> <span class="ident">layout</span>::<span class="ident">size_opaque_aware</span>(<span class="ident">ty</span>, <span class="ident">ctx</span>.<span class="ident">proj</span>) {
+                        <span class="prelude-val">Some</span>(<span class="ident">ty_size</span>) <span class="op">=</span><span class="op">&gt;</span> {
+                            <span class="macro">assert_eq</span><span class="macro">!</span>(<span class="ident">data</span>.<span class="ident">size_in_bits</span>(), <span class="ident">ty_size</span>, <span class="string">&quot;same_size_override: size mismatch: specified something of size {} bits, but the LLVM type has size {} bits&quot;</span>, <span class="ident">data</span>.<span class="ident">size_in_bits</span>(), <span class="ident">ty_size</span>);
+                        },
+                        <span class="prelude-val">None</span> <span class="op">=</span><span class="op">&gt;</span> {},  <span class="comment">// can&#39;t determine the size, so skip performing the check</span>
+                    },
                     <span class="prelude-val">None</span> <span class="op">=</span><span class="op">&gt;</span> {},
                 };
                 <span class="self">self</span>.<span class="ident">initialize_cad_in_memory</span>(<span class="ident">ctx</span>, <span class="ident">addr</span>, <span class="kw-2">&amp;</span><span class="kw-2">*</span><span class="kw-2">*</span><span class="ident">data</span>, <span class="prelude-val">None</span>)
