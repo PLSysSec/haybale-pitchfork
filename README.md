@@ -117,7 +117,7 @@ We can use [`check_for_ct_violation_in_inputs()`] to analyze this function,
 considering all of its inputs (in this case just `x`) to be secret:
 
 ```rust
-let result = check_for_ct_violation_in_inputs("foo", &project, Config::default(), true);
+let result = check_for_ct_violation_in_inputs("foo", &project, Config::default(), &PitchforkConfig::default());
 ```
 
 and then pretty-print the result of the analysis:
@@ -164,7 +164,7 @@ we'll see a constant-time violation, since the `option` argument is used in a
 branch condition:
 
 ```rust
-println!("{}", check_for_ct_violation_in_inputs("ct", &project, Config::default(), true));
+println!("{}", check_for_ct_violation_in_inputs("ct", &project, Config::default(), &PitchforkConfig::default()));
 ```
 
 However, let's suppose the `option` argument to this function actually
@@ -197,10 +197,10 @@ descriptions:
 println!("{}", check_for_ct_violation(
     "ct",
     &project,
-    vec![AbstractData::secret(), AbstractData::secret(), AbstractData::default()],
+    Some(vec![AbstractData::secret(), AbstractData::secret(), AbstractData::default()]),
     &StructDescriptions::new(),
     Config::default(),
-    true,
+    &PitchforkConfig::default(),
 ));
 ```
 
@@ -234,14 +234,14 @@ We can express that using `AbstractData` like this:
 println!("{}", check_for_ct_violation(
     "ct",
     &project,
-    vec![
+    Some(vec![
         AbstractData::secret(),
         AbstractData::secret(),
         AbstractData::pub_i32(AbstractValue::ExactValue(5)),
-    ],
+    ]),
     &StructDescriptions::new(),
     Config::default(),
-    true,
+    &PitchforkConfig::default(),
 ));
 ```
 
@@ -286,10 +286,10 @@ Using `AbstractData::secret()` for `arr` might not work how you expect:
 println!("{}", check_for_ct_violation(
     "secret_array",
     &project,
-    vec![AbstractData::secret()],
+    Some(vec![AbstractData::secret()]),
     &StructDescriptions::new(),
     Config::default(),
-    true,
+    &PitchforkConfig::default(),
 ));
 ```
 
@@ -345,15 +345,15 @@ annotations...
 println!("{}", check_for_ct_violation(
     "secret_array_var_length",
     &project,
-    vec![
+    Some(vec![
         AbstractData::default(),
         AbstractData::default(),
         AbstractData::pub_pointer_to(AbstractData::array_of(AbstractData::secret(), 32)),
         AbstractData::default(),
-    ],
+    ]),
     &StructDescriptions::new(),
     config,  // with loop_bound set to 100 as above
-    true,
+    &PitchforkConfig::default(),
 ));
 ```
 
@@ -372,15 +372,15 @@ constrain both `public_arr_len` and `i` to be within this maximum length:
 println!("{}", check_for_ct_violation(
     "secret_array_var_length",
     &project,
-    vec![
+    Some(vec![
         AbstractData::pub_pointer_to(AbstractData::array_of(AbstractData::default(), 72)),
         AbstractData::pub_i32(AbstractValue::Range(0, 72)),
         AbstractData::pub_pointer_to(AbstractData::array_of(AbstractData::secret(), 32)),
         AbstractData::pub_i32(AbstractValue::Range(0, 71)),
-    ],
+    ]),
     &StructDescriptions::new(),
     config,  // with loop_bound set to 100 as above
-    true,
+    &PitchforkConfig::default(),
 ));
 ```
 
@@ -445,7 +445,7 @@ We can do this using `AbstractData::_struct`:
 println!("{}", check_for_ct_violation(
     "uses_a_struct",
     &project,
-    vec![
+    Some(vec![
         AbstractData::pub_pointer_to(AbstractData::_struct("Context", vec![
             AbstractData::default(),  // public_option
             AbstractData::default(),  // another_thing
@@ -453,10 +453,10 @@ println!("{}", check_for_ct_violation(
         ])),
         AbstractData::default(),  // public_input
         AbstractData::default(),  // public_output
-    ],
+    ]),
     &StructDescriptions::new(),
     config,  // with loop_bound set to 100 as above
-    true,
+    &PitchforkConfig::default(),
 ));
 ```
 
@@ -483,14 +483,14 @@ account the description of the `Context` struct which we give in the
 println!("{}", check_for_ct_violation(
     "uses_a_struct",
     &project,
-    vec![
+    Some(vec![
         AbstractData::default(),  // ctx
         AbstractData::default(),  // public_input
         AbstractData::default(),  // public_output
-    ],
+    ]),
     &sd,
     config,  // with loop_bound set to 100 as above
-    true,
+    &PitchforkConfig::default(),
 ));
 ```
 
