@@ -5,7 +5,6 @@ use crate::secret;
 use colored::*;
 use haybale::{Config, Project};
 use haybale::config::NullPointerChecking;
-use haybale::function_hooks::FunctionHooks;
 use itertools::Itertools;
 use std::time::Duration;
 
@@ -97,14 +96,15 @@ impl Default for CommandLineOptions {
 ///     `get_args_for_funcname`: a function which takes a function name and returns
 ///         the `AbstractData` arguments to use for its arguments. `None` implies to just
 ///         use all `AbstractData::default()`s.
-///     `add_function_hooks`: a function which takes a `FunctionHooks` and adds any
-///         function hooks you wish to use for your analysis
-pub fn main_func(
+///     `get_config`: a closure which, when called, produces the `Config` you
+///         want to use. Note that some parts of the `Config` may be overridden by
+///         command-line arguments.
+pub fn main_func<F>(
     get_project: impl FnOnce() -> Project,
     get_struct_descriptions: impl FnOnce() -> StructDescriptions,
     get_args_for_funcname: impl Fn(&str) -> Option<Vec<AbstractData>>,
-    add_function_hooks: impl Fn(&mut FunctionHooks<secret::Backend>),
-) {
+    get_config: F,
+) where for<'p> F: Fn(&'p Project) -> Config<'p, secret::Backend> {
     let mut cmdlineoptions = CommandLineOptions::default();
 
     let mut args = std::env::args().skip(1);
@@ -148,7 +148,7 @@ pub fn main_func(
                 return ();
             },
             funcname => {
-                process_nonoption_args(std::iter::once(funcname.into()).chain(args), cmdlineoptions, get_project, get_struct_descriptions, get_args_for_funcname, add_function_hooks);
+                process_nonoption_args(std::iter::once(funcname.into()).chain(args), cmdlineoptions, get_project, get_struct_descriptions, get_args_for_funcname, get_config);
                 return ();
             },
         }
@@ -159,14 +159,14 @@ pub fn main_func(
     usage();
 }
 
-fn process_nonoption_args(
+fn process_nonoption_args<F>(
     nonoption_args: impl Iterator<Item = String>,
     cmdlineoptions: CommandLineOptions,
     get_project: impl FnOnce() -> Project,
     get_struct_descriptions: impl FnOnce() -> StructDescriptions,
     get_args_for_funcname: impl Fn(&str) -> Option<Vec<AbstractData>>,
-    add_function_hooks: impl Fn(&mut FunctionHooks<secret::Backend>),
-) {
+    get_config: F,
+) where for<'p> F: Fn(&'p Project) -> Config<'p, secret::Backend> {
     let mut results = Vec::new();
     if !cmdlineoptions.pitchfork_config.progress_updates || cfg!(not(feature = "progress-updates")) {
         use env_logger::Env;
@@ -186,8 +186,8 @@ fn process_nonoption_args(
         }
         if cmdlineoptions.prefix {
             for full_funcname in proj.all_functions().map(|(func, _)| &func.name).filter(|proj_funcname| proj_funcname.starts_with(funcname)) {
-                let mut config = make_config(&cmdlineoptions);
-                add_function_hooks(&mut config.function_hooks);
+                let mut config = get_config(&proj);
+                set_cmdline_overrides(&mut config, &cmdlineoptions);
                 let result = check_for_ct_violation(
                     full_funcname,
                     &proj,
@@ -200,8 +200,8 @@ fn process_nonoption_args(
                 results.push(result);
             }
         } else {
-            let mut config = make_config(&cmdlineoptions);
-            add_function_hooks(&mut config.function_hooks);
+            let mut config = get_config(&proj);
+            set_cmdline_overrides(&mut config, &cmdlineoptions);
             let result = check_for_ct_violation(
                 funcname,
                 &proj,
@@ -230,12 +230,10 @@ fn process_nonoption_args(
     }
 }
 
-fn make_config<'p>(cmdlineoptions: &CommandLineOptions) -> Config<'p, secret::Backend> {
-    let mut config = Config::default();
+fn set_cmdline_overrides(config: &mut Config<secret::Backend>, cmdlineoptions: &CommandLineOptions) {
     config.loop_bound = cmdlineoptions.loop_bound;
     config.max_callstack_depth = cmdlineoptions.max_callstack_depth;
     config.solver_query_timeout = cmdlineoptions.solver_timeout;
     config.max_memcpy_length = Some(cmdlineoptions.max_memcpy_length);
     config.null_pointer_checking = NullPointerChecking::SplitPath;
-    config
 }
