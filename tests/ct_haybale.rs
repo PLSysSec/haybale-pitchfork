@@ -27,7 +27,7 @@ pub fn is_constant_time_in_inputs<'p>(
 #[test]
 fn haybale_basic() {
     init_logging();
-    let project = Project::from_bc_path(&Path::new("../haybale/tests/bcfiles/basic.bc"))
+    let project = Project::from_bc_path(&Path::new("tests/bcfiles/haybale/basic.bc"))
         .unwrap_or_else(|e| panic!("Failed to create project: {}", e));
 
     // Most of the functions in basic.bc are constant-time
@@ -60,7 +60,7 @@ fn haybale_basic() {
 #[test]
 fn haybale_memory() {
     init_logging();
-    let project = Project::from_bc_path(&Path::new("../haybale/tests/bcfiles/memory.bc"))
+    let project = Project::from_bc_path(&Path::new("tests/bcfiles/haybale/memory.bc"))
         .unwrap_or_else(|e| panic!("Failed to create project: {}", e));
 
     // local_ptr is the only function in this file that is constant-time in its inputs
