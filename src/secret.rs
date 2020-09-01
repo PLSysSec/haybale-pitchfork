@@ -5,7 +5,7 @@
 //! The `BV`, `Memory`, and `Backend` in this module are
 //! intended to be used qualified whenever there is a chance of confusing
 //! them with `haybale::backend::{BV, Memory, Backend}`,
-//! `haybale::{memory,simple_memory}::Memory`, or `boolector::BV`.
+//! `haybale::{cell_memory,simple_memory}::Memory`, or `boolector::BV`.
 
 use boolector::{Btor, BVSolution};
 use haybale::{Error, Result};
@@ -612,19 +612,19 @@ impl haybale::backend::Memory for Memory {
     type Index = BV;
     type Value = BV;
 
-    fn new_uninitialized(btor: BtorRef, null_detection: bool, name: Option<&str>) -> Self {
+    fn new_uninitialized(btor: BtorRef, null_detection: bool, name: Option<&str>, addr_bits: u32) -> Self {
         assert_ne!(name, Some("shadow_mem"), "can't use {:?} as a name for a secret::Memory, as we reserve that name", name);
         Self {
-            mem: haybale::backend::Memory::new_uninitialized(btor.0.clone(), null_detection, name),
-            shadow_mem: haybale::backend::Memory::new_zero_initialized(btor.0.clone(), null_detection, Some("shadow_mem")), // shadow bits are zero-initialized (all public) even though the memory contents are uninitialized
+            mem: haybale::backend::Memory::new_uninitialized(btor.0.clone(), null_detection, name, addr_bits),
+            shadow_mem: haybale::backend::Memory::new_zero_initialized(btor.0.clone(), null_detection, Some("shadow_mem"), addr_bits), // shadow bits are zero-initialized (all public) even though the memory contents are uninitialized
             btor,  // out of order so it can be used above but moved in here
         }
     }
-    fn new_zero_initialized(btor: BtorRef, null_detection: bool, name: Option<&str>) -> Self {
+    fn new_zero_initialized(btor: BtorRef, null_detection: bool, name: Option<&str>, addr_bits: u32) -> Self {
         assert_ne!(name, Some("shadow_mem"), "can't use {:?} as a name for a secret::Memory, as we reserve that name", name);
         Self {
-            mem: haybale::backend::Memory::new_zero_initialized(btor.0.clone(), null_detection, name),
-            shadow_mem: haybale::backend::Memory::new_zero_initialized(btor.0.clone(), null_detection, Some("shadow_mem")), // initialize to all public zeroes
+            mem: haybale::backend::Memory::new_zero_initialized(btor.0.clone(), null_detection, name, addr_bits),
+            shadow_mem: haybale::backend::Memory::new_zero_initialized(btor.0.clone(), null_detection, Some("shadow_mem"), addr_bits), // initialize to all public zeroes
             btor,  // out of order so it can be used above but moved in here
         }
     }
@@ -844,8 +844,8 @@ mod tests {
     #[test]
     fn read_and_write() {
         let btor = BtorRef::new();
-        let mut mem = super::Memory::new_uninitialized(btor.clone(), false, Some("mem"));
-        let initialized_mem = super::Memory::new_zero_initialized(btor.clone(), false, Some("init_mem"));
+        let mut mem = super::Memory::new_uninitialized(btor.clone(), false, Some("mem"), 64);
+        let initialized_mem = super::Memory::new_zero_initialized(btor.clone(), false, Some("init_mem"), 64);
         let addr = super::BV::from_u64(btor.clone(), 0x1000, 64);
         let addr_plus_two = addr.add(&super::BV::from_u32(btor.clone(), 2, 64));
         let secret = super::BV::Secret { btor: btor.clone(), width: 64, symbol: Some("secret".into()) };

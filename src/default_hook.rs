@@ -3,7 +3,8 @@ use either::Either;
 use haybale::{Error, Project, Result, ReturnValue, State};
 use haybale::backend::BV;
 use haybale::function_hooks::IsCall;
-use llvm_ir::{Constant, Name, Operand, Type, Typed};
+use llvm_ir::{Constant, Name, Operand, Type};
+use llvm_ir::types::NamedStructDef;
 use log::info;
 
 pub fn pitchfork_default_hook(
@@ -13,8 +14,11 @@ pub fn pitchfork_default_hook(
 ) -> Result<ReturnValue<secret::BV>> {
     let called_funcname = match call.get_called_func() {
         Either::Left(_) => panic!("invoked default hook for an inline assembly call"),  // this shouldn't happen
-        Either::Right(Operand::ConstantOperand(Constant::GlobalReference { name: Name::Name(name), .. })) => Some(name),
-        Either::Right(Operand::ConstantOperand(Constant::GlobalReference { name, .. })) => panic!("Function with a numbered name: {:?}", name),
+        Either::Right(Operand::ConstantOperand(cref)) => match cref.as_ref() {
+            Constant::GlobalReference { name: Name::Name(name), .. } => Some(name),
+            Constant::GlobalReference { name, .. } => panic!("Function with a numbered name: {:?}", name),
+            _ => None,  // some constant function pointer apparently
+        },
         Either::Right(_) => None,  // a function pointer
     };
     let pretty_funcname = match called_funcname {
@@ -26,7 +30,7 @@ pub fn pitchfork_default_hook(
     for (i, arg) in call.get_arguments().iter().map(|(arg, _)| arg).enumerate() {
         // if the arg is secret, or points to any secret data, then raise an error and require a manually-specified hook or LLVM definition
         let arg_bv = state.operand_to_bv(arg)?;
-        match is_or_points_to_secret(proj, state, &arg_bv, &arg.get_type())? {
+        match is_or_points_to_secret(proj, state, &arg_bv, &state.type_of(arg))? {
             ArgumentKind::Secret => match called_funcname {
                 Some(funcname) => {
                     let demangled = state.demangle(funcname);
@@ -77,7 +81,7 @@ pub(crate) fn is_or_points_to_secret(proj: &Project, state: &mut State<secret::B
                     // function pointers don't point to secret data
                     return Ok(ArgumentKind::Public);
                 }
-                let pointee_size_bits = match haybale::layout::size_opaque_aware(&**pointee_type, proj) {
+                let pointee_size_bits = match state.size_in_bits(&pointee_type) {
                     None => return Ok(ArgumentKind::Unknown),
                     Some(size) => size,
                 };
@@ -108,9 +112,9 @@ pub(crate) fn is_or_points_to_secret(proj: &Project, state: &mut State<secret::B
             },
             Type::VectorType { element_type, num_elements } | Type::ArrayType { element_type, num_elements } => {
                 // TODO: this could be made more efficient
-                let element_bits = match haybale::layout::size_opaque_aware(&**element_type, proj) {
+                let element_bits = match state.size_in_bits(&element_type) {
                     None => return Ok(ArgumentKind::Unknown),
-                    Some(size) => size as u32,
+                    Some(size) => size,
                 };
                 if element_bits == 0 {
                     Ok(ArgumentKind::Public)  // Elements of size 0 bits can't contain secret information
@@ -132,9 +136,9 @@ pub(crate) fn is_or_points_to_secret(proj: &Project, state: &mut State<secret::B
                 let mut offset_bits = 0;
                 let mut retval = ArgumentKind::Public;
                 for element_ty in element_types {
-                    let element_bits = match haybale::layout::size_opaque_aware(element_ty, proj) {
+                    let element_bits = match state.size_in_bits(element_ty) {
                         None => return Ok(ArgumentKind::Unknown),  // we have no way to keep going - we don't know the next offset
-                        Some(size) => size as u32,
+                        Some(size) => size,
                     };
                     if element_bits == 0 {
                         // nothing to do.  An element of size 0 bits can't contain secret information, and we don't need to update the current offset
@@ -151,10 +155,10 @@ pub(crate) fn is_or_points_to_secret(proj: &Project, state: &mut State<secret::B
                 }
                 Ok(retval)  // this will be Unknown if we ever encountered an Unknown, or Public if everything came back Public
             },
-            Type::NamedStructType { .. } => {
-                match proj.get_inner_struct_type_from_named(ty) {
-                    None => Ok(ArgumentKind::Unknown),
-                    Some(arc) => is_or_points_to_secret(proj, state, bv, &arc.read().unwrap()),
+            Type::NamedStructType { name } => {
+                match proj.get_named_struct_def(name)? {
+                    (NamedStructDef::Opaque, _) => Ok(ArgumentKind::Unknown),
+                    (NamedStructDef::Defined(ty), _) => is_or_points_to_secret(proj, state, bv, &ty),
                 }
             },
             _ => Ok(ArgumentKind::Public),  // for any other type, the `is_secret()` check above was sufficient

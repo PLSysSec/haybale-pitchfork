@@ -1,15 +1,16 @@
 use crate::abstractdata::*;
 use crate::secret;
-use haybale::{layout, Project, State};
+use haybale::{Project, State};
 use haybale::backend::*;
 use haybale::Result;
 use haybale::watchpoints::Watchpoint;
 use llvm_ir::*;
+use llvm_ir::types::NamedStructDef;
 use log::debug;
 use std::collections::HashMap;
 use std::collections::hash_map::Entry::*;
+use std::convert::TryInto;
 use std::fmt;
-use std::sync::{Arc, RwLock};
 
 /// Allocate the function parameters given in `params` with their corresponding `AbstractData` descriptions.
 ///
@@ -62,7 +63,7 @@ impl<'p, 's> Context<'p, 's> {
         type_override: bool,
     ) -> Result<secret::BV> {
         let arg_size = arg.size_in_bits();
-        match layout::size_opaque_aware(&param.ty, self.proj) {
+        match self.state.size_in_bits(&param.ty) {
             Some(param_size) => assert_eq!(arg_size, param_size, "Parameter size mismatch for parameter {:?}: parameter is {} bits but CompleteAbstractData is {} bits", &param.name, param_size, arg_size),
             None => {},  // can't determine the parameter size: skip performing this check
         };
@@ -189,7 +190,7 @@ impl<'p, 's> Context<'p, 's> {
                 if type_override {
                     InitializationContext::blank().initialize_cad_in_memory(self, &ptr, &*pointee, None)?;
                 } else {
-                    let pointee_ty = match &param.ty {
+                    let pointee_ty = match param.ty.as_ref() {
                         Type::PointerType { pointee_type, .. } => pointee_type,
                         ty => panic!("Mismatch for parameter {:?}: CompleteAbstractData specifies a pointer but parameter type is {:?}", &param.name, ty),
                     };
@@ -200,7 +201,7 @@ impl<'p, 's> Context<'p, 's> {
             CompleteAbstractData::PublicPointerToFunction(funcname) => {
                 debug!("Parameter is marked as a public pointer to the function {:?}", funcname);
                 if type_override {
-                    match &param.ty {
+                    match param.ty.as_ref() {
                         Type::PointerType { .. } => {},
                         ty => panic!("Mismatch for parameter {:?}: CompleteAbstractData specifies a pointer but parameter type is {:?}", &param.name, ty),
                     };
@@ -214,7 +215,7 @@ impl<'p, 's> Context<'p, 's> {
             CompleteAbstractData::PublicPointerToHook(funcname) => {
                 debug!("Parameter is marked as a public pointer to the active hook for function {:?}", funcname);
                 if type_override {
-                    match &param.ty {
+                    match param.ty.as_ref() {
                         Type::PointerType { .. } => {},
                         ty => panic!("Mismatch for parameter {:?}: CompleteAbstractData specifies a pointer but parameter type is {:?}", &param.name, ty),
                     };
@@ -238,7 +239,7 @@ impl<'p, 's> Context<'p, 's> {
 
                 if !type_override {
                     // typecheck that the parameter is at least a pointer
-                    match &param.ty {
+                    match param.ty.as_ref() {
                         Type::PointerType { .. } => (),
                         ty => panic!("Mismatch for parameter {:?}: CompleteAbstractData specifies a pointer but parameter type is {:?}", &param.name, ty),
                     };
@@ -249,11 +250,16 @@ impl<'p, 's> Context<'p, 's> {
                         InitializationContext::blank().initialize_cad_in_memory(self, &ptr, &data, None)?;
                     },
                     Some(llvm_struct_name) => {
-                        let (llvm_ty, _) = self.proj.get_named_struct_type_by_name(&llvm_struct_name)
-                            .unwrap_or_else(|| { panic!("PointerOverride: llvm_struct_name {:?} not found in Project", llvm_struct_name) });
-                        let arc = llvm_ty.as_ref().unwrap_or_else(|| { panic!("PointerOverride: llvm_struct_name {:?} is an opaque type", llvm_struct_name) });
-                        let llvm_ty: &Type = &arc.read().unwrap();
-                        InitializationContext::blank().initialize_cad_in_memory(self, &ptr, &data, Some(llvm_ty))?;
+                        let (structdef, _) = self.proj.get_named_struct_def(&llvm_struct_name)
+                            .map_err(|e| { panic!("PointerOverride: {}", e) })?;
+                        match structdef {
+                            NamedStructDef::Opaque => {
+                                panic!("PointerOverride: llvm_struct_name {:?} is an opaque type", llvm_struct_name);
+                            },
+                            NamedStructDef::Defined(ty) => {
+                                InitializationContext::blank().initialize_cad_in_memory(self, &ptr, &data, Some(ty))?;
+                            },
+                        }
                     },
                 }
 
@@ -327,8 +333,8 @@ impl<'a> InitializationContext<'a> {
     }
 
     /// Check that `ty` represents a value of `bits` bits, panicking if not
-    fn size_check_ty(&self, ctx: &Context, ty: &'a Type, bits: usize) {
-        match layout::size_opaque_aware(ty, ctx.proj) {
+    fn size_check_ty(&self, ctx: &Context, ty: &'a Type, bits: u32) {
+        match ctx.state.size_in_bits(ty) {
             Some(ty_size_bits) => {
                 if bits != ty_size_bits {
                     self.error_backtrace();
@@ -351,7 +357,7 @@ impl<'a> InitializationContext<'a> {
         addr: &'a secret::BV,
         data: AbstractData,
         ty: &'a Type,
-    ) -> Result<usize> {
+    ) -> Result<u32> {
         self.initialize_cad_in_memory(ctx, addr, &data.to_complete(ty, ctx.proj, ctx.sd), Some(ty))
     }
 
@@ -369,7 +375,7 @@ impl<'a> InitializationContext<'a> {
         addr: &'a secret::BV,
         data: &CompleteAbstractData,
         ty: Option<&'a Type>,
-    ) -> Result<usize> {
+    ) -> Result<u32> {
         // First we handle the case where the LLVM type is array-of-one-element
         if let Some(Type::ArrayType { num_elements: 1, element_type }) | Some(Type::VectorType { num_elements: 1, element_type }) = ty {
             match data {
@@ -392,12 +398,11 @@ impl<'a> InitializationContext<'a> {
                     return self.initialize_cad_in_memory(ctx, addr, data, Some(&element_types[0]));
                 }
             },
-            Some(ty@Type::NamedStructType { .. }) => {
-                match ctx.proj.get_inner_struct_type_from_named(ty) {
-                    None => {},  // we're looking for where LLVM type is a struct of one element. Opaque struct type is a different problem.
-                    Some(arc) => {
-                        let actual_ty: &Type = &arc.read().unwrap();
-                        if let Type::StructType { element_types, .. } = actual_ty {
+            Some(Type::NamedStructType { name }) => {
+                match ctx.proj.get_named_struct_def(name)? {
+                    (NamedStructDef::Opaque, _) => {},  // we're looking for where LLVM type is a struct of one element. Opaque struct type is a different problem.
+                    (NamedStructDef::Defined(ty), _) => {
+                        if let Type::StructType { element_types, .. } = ty.as_ref() {
                             if element_types.len() == 1 {
                                 // the LLVM type is struct of one element.  Proceed as in the above case
                                 if !data.could_describe_a_struct_of_one_element() {
@@ -428,7 +433,7 @@ impl<'a> InitializationContext<'a> {
                 if let Some(ty) = ty {
                     self.size_check_ty(ctx, ty, *bits);
                 }
-                let bv = ctx.state.bv_from_u64(*value, *bits as u32);
+                let bv = ctx.state.bv_from_u64(*value, *bits);
                 ctx.state.write(&addr, bv)?;
                 Ok(*bits)
             },
@@ -437,9 +442,9 @@ impl<'a> InitializationContext<'a> {
                 if let Some(ty) = ty {
                     self.size_check_ty(ctx, ty, *bits);
                 }
-                let bv = ctx.state.read(&addr, *bits as u32)?;
-                bv.ugte(&ctx.state.bv_from_u64(*min, *bits as u32)).assert()?;
-                bv.ulte(&ctx.state.bv_from_u64(*max, *bits as u32)).assert()?;
+                let bv = ctx.state.read(&addr, *bits)?;
+                bv.ugte(&ctx.state.bv_from_u64(*min, *bits)).assert()?;
+                bv.ulte(&ctx.state.bv_from_u64(*max, *bits)).assert()?;
                 Ok(*bits)
             }
             CompleteAbstractData::PublicValue { bits, value: AbstractValue::Unconstrained } => {
@@ -456,7 +461,7 @@ impl<'a> InitializationContext<'a> {
                     self.error_backtrace();
                     panic!("AbstractValue::Named {:?}: specified {} bits, but value is {} bits", name, bits, initialized_bits);
                 }
-                let bv = ctx.state.read(addr, *bits as u32)?;
+                let bv = ctx.state.read(addr, *bits)?;
                 match ctx.namedvals.entry(name.to_owned()) {
                     Vacant(v) => {
                         v.insert(bv);
@@ -464,7 +469,7 @@ impl<'a> InitializationContext<'a> {
                     Occupied(bv_for_name) => {
                         let bv_for_name = bv_for_name.get();
                         let width = bv_for_name.get_width();
-                        assert_eq!(width, *bits as u32, "AbstractValue::Named {:?}: multiple values with different bitwidths given this name: one with width {} bits, another with width {} bits", name, width, *bits);
+                        assert_eq!(width, *bits, "AbstractValue::Named {:?}: multiple values with different bitwidths given this name: one with width {} bits, another with width {} bits", name, width, *bits);
                         bv._eq(&bv_for_name).assert()?;
                     },
                 };
@@ -478,7 +483,7 @@ impl<'a> InitializationContext<'a> {
                     },
                     Some(bv) => {
                         let width = bv.get_width();
-                        if width != *bits as u32 {
+                        if width != *bits {
                             self.error_backtrace();
                             panic!("AbstractValue::EqualTo {:?}, which has {} bits, but current value has {} bits", name, width, bits);
                         }
@@ -498,7 +503,7 @@ impl<'a> InitializationContext<'a> {
                     },
                     Some(bv) => {
                         let width = bv.get_width();
-                        if width != *bits as u32 {
+                        if width != *bits {
                             self.error_backtrace();
                             panic!("AbstractValue::SignedLessThan {:?}, which has {} bits, but current value has {} bits", name, width, bits);
                         }
@@ -520,7 +525,7 @@ impl<'a> InitializationContext<'a> {
                     },
                     Some(bv) => {
                         let width = bv.get_width();
-                        if width != *bits as u32 {
+                        if width != *bits {
                             self.error_backtrace();
                             panic!("AbstractValue::SignedGreaterThan {:?}, which has {} bits, but current value has {} bits", name, width, bits);
                         }
@@ -542,7 +547,7 @@ impl<'a> InitializationContext<'a> {
                     },
                     Some(bv) => {
                         let width = bv.get_width();
-                        if width != *bits as u32 {
+                        if width != *bits {
                             self.error_backtrace();
                             panic!("AbstractValue::UnsignedLessThan {:?}, which has {} bits, but current value has {} bits", name, width, bits);
                         }
@@ -564,7 +569,7 @@ impl<'a> InitializationContext<'a> {
                     },
                     Some(bv) => {
                         let width = bv.get_width();
-                        if width != *bits as u32 {
+                        if width != *bits {
                             self.error_backtrace();
                             panic!("AbstractValue::UnsignedGreaterThan {:?}, which has {} bits, but current value has {} bits", name, width, bits);
                         }
@@ -607,7 +612,7 @@ impl<'a> InitializationContext<'a> {
                 // in either case, initialize the pointee at the concrete address (not at the maybe-null location)
                 self.initialize_cad_in_memory(ctx, &inner_ptr, &**pointee, pointee_ty)?;
 
-                Ok(bits as usize)
+                Ok(bits)
             },
             CompleteAbstractData::PublicPointerToFunction(funcname) => {
                 if let Some(ty) = ty {
@@ -625,7 +630,7 @@ impl<'a> InitializationContext<'a> {
                 debug!("setting the memory contents equal to {:?}", inner_ptr);
                 let bits = inner_ptr.get_width();
                 ctx.state.write(&addr, inner_ptr)?; // make `addr` point to a pointer to the function
-                Ok(bits as usize)
+                Ok(bits)
             }
             CompleteAbstractData::PublicPointerToHook(funcname) => {
                 if let Some(ty) = ty {
@@ -643,7 +648,7 @@ impl<'a> InitializationContext<'a> {
                 debug!("setting the memory contents equal to {:?}", inner_ptr);
                 let bits = inner_ptr.get_width();
                 ctx.state.write(&addr, inner_ptr)?; // make `addr` point to a pointer to the hook
-                Ok(bits as usize)
+                Ok(bits)
             }
             CompleteAbstractData::PublicPointerToSelf => {
                 match self.cur_struct {
@@ -660,16 +665,20 @@ impl<'a> InitializationContext<'a> {
                                     // typecheck passes, do nothing
                                 } else if let Type::NamedStructType { name, .. } = pointee_ty {
                                     // LLVM type is pointer to a named struct type, try unwrapping it and see if that makes the types equal
-                                    let arc = ctx.proj.get_inner_struct_type_from_named(pointee_ty).unwrap_or_else(|| {
-                                        self.error_backtrace();
-                                        panic!("CompleteAbstractData specifies pointer-to-self, but self type (struct named {:?}) is fully opaque and has no definition in this Project", name);
-                                    });
-                                    let actual_ty: &Type = &arc.read().unwrap();
-                                    if actual_ty == cur_struct_ty {
-                                        // typecheck passes, do nothing
-                                    } else {
-                                        self.error_backtrace();
-                                        panic!("Type mismatch: CompleteAbstractData specifies pointer-to-self, but found pointer to a different type.\n  Self type: {:?}\n  Found type: struct named {:?}: {:?}\n", cur_struct_ty, name, actual_ty);
+                                    let (structdef, _) = ctx.proj.get_named_struct_def(name)?;
+                                    match structdef {
+                                        NamedStructDef::Opaque => {
+                                            self.error_backtrace();
+                                            panic!("CompleteAbstractData specifies pointer-to-self, but self type (struct named {:?}) is fully opaque and has no definition in this Project", name);
+                                        },
+                                        NamedStructDef::Defined(ty) => {
+                                            if ty.as_ref() == cur_struct_ty {
+                                                // typecheck passes, do nothing
+                                            } else {
+                                                self.error_backtrace();
+                                                panic!("Type mismatch: CompleteAbstractData specifies pointer-to-self, but found pointer to a different type.\n  Self type: {:?}\n  Found type: struct named {:?}: {:?}\n", cur_struct_ty, name, ty);
+                                            }
+                                        },
                                     }
                                 } else {
                                     self.error_backtrace();
@@ -686,7 +695,7 @@ impl<'a> InitializationContext<'a> {
                         debug!("setting the memory contents equal to {:?}", cur_struct_ptr);
                         let bits = cur_struct_ptr.get_width();
                         ctx.state.write(&addr, cur_struct_ptr.clone())?;
-                        Ok(bits as usize)
+                        Ok(bits)
                     }
                 }
             }
@@ -701,15 +710,19 @@ impl<'a> InitializationContext<'a> {
                                 Some(parent_ptr)
                             } else if let Type::NamedStructType { name, .. } = pointee_ty {
                                 // LLVM type is pointer to a named struct type, try unwrapping it and see if that makes the types equal
-                                let arc = ctx.proj.get_inner_struct_type_from_named(pointee_ty).unwrap_or_else(|| {
-                                    self.error_backtrace();
-                                    panic!("CompleteAbstractData specifies pointer-to-parent, but parent type (struct named {:?}) is fully opaque and has no definition in this Project", name);
-                                });
-                                let actual_ty: &Type = &arc.read().unwrap();
-                                if actual_ty == parent_ty {
-                                    Some(parent_ptr)
-                                } else {
-                                    None
+                                let (structdef, _) = ctx.proj.get_named_struct_def(name)?;
+                                match structdef {
+                                    NamedStructDef::Opaque => {
+                                        self.error_backtrace();
+                                        panic!("CompleteAbstractData specifies pointer-to-parent, but parent type (struct named {:?}) is fully opaque and has no definition in this Project", name);
+                                    },
+                                    NamedStructDef::Defined(ty) => {
+                                        if ty.as_ref() == parent_ty {
+                                            Some(parent_ptr)
+                                        } else {
+                                            None
+                                        }
+                                    },
                                 }
                             } else {
                                 None
@@ -734,7 +747,7 @@ impl<'a> InitializationContext<'a> {
                         debug!("setting the memory contents equal to {:?}", parent_ptr);
                         let bits = parent_ptr.get_width();
                         ctx.state.write(&addr, parent_ptr.clone())?;
-                        Ok(bits as usize)
+                        Ok(bits)
                     },
                     (None, Some(pointee)) => {
                         // parent type mismatches, or parent doesn't exist: use the backup
@@ -759,7 +772,7 @@ impl<'a> InitializationContext<'a> {
                 }
             },
             CompleteAbstractData::Array { element_type: element_abstractdata, num_elements } => {
-                let element_type = ty.map(|ty| match ty {
+                let element_type: Option<&Type> = ty.map(|ty| match ty {
                     Type::ArrayType { element_type, num_elements: found_num_elements } => {
                         if *found_num_elements != 0 {
                             if num_elements != found_num_elements {
@@ -774,19 +787,22 @@ impl<'a> InitializationContext<'a> {
                     _ => ty,  // an array, but the LLVM type is just pointer.  E.g., *int instead of *{array of 16 ints}.
                 });
                 let element_size_bits = element_abstractdata.size_in_bits();
+                let num_elements: u32 = (*num_elements).try_into().unwrap();
                 if let Some(element_type) = element_type {
-                    let element_type: Option<Arc<RwLock<Type>>> = match element_type {
-                        Type::NamedStructType { ty: None, name: llvm_struct_name } => {
-                            // This is an opaque struct definition. Try to find a non-opaque definition for the same struct.
-                            let (ty, _) = ctx.proj.get_named_struct_type_by_name(&llvm_struct_name).unwrap_or_else(|| panic!("Struct name {:?} not found in the project", llvm_struct_name));
-                            ty.clone()
+                    let element_type: Option<&Type> = match element_type {
+                        Type::NamedStructType { name: llvm_struct_name } => {
+                            let (structdef, _) = ctx.proj.get_named_struct_def(&llvm_struct_name)?;
+                            match structdef {
+                                NamedStructDef::Opaque => None,
+                                NamedStructDef::Defined(ty) => Some(&ty),
+                            }
                         },
-                        _ => Some(Arc::new(RwLock::new(element_type.clone()))),
+                        _ => Some(element_type),
                     };
                     match element_type {
                         None => {},  // element_type is an opaque struct type, there's no size check we can make.
                         Some(element_type) => {
-                           match layout::size_opaque_aware(&element_type.read().unwrap(), ctx.proj) {
+                           match ctx.state.size_in_bits(&element_type) {
                                 Some(llvm_element_size_bits) if llvm_element_size_bits != 0 => {
                                     if element_size_bits != llvm_element_size_bits {
                                         self.error_backtrace();
@@ -801,14 +817,14 @@ impl<'a> InitializationContext<'a> {
                 match **element_abstractdata {
                     CompleteAbstractData::Secret { .. } => {
                         // special-case this, as we can initialize with one big write
-                        let array_size_bits = element_size_bits * *num_elements;
+                        let array_size_bits = element_size_bits * num_elements;
                         debug!("initializing the entire array as {} secret bits", array_size_bits);
                         self.initialize_cad_in_memory(ctx, &addr, &CompleteAbstractData::sec_integer(array_size_bits), ty)
                     },
                     CompleteAbstractData::PublicValue { bits, value: AbstractValue::Unconstrained } => {
                         // special-case this, as no initialization is necessary for the entire array
                         debug!("array contents are entirely public unconstrained bits");
-                        Ok(bits * *num_elements)
+                        Ok(bits * num_elements)
                     },
                     _ => {
                         // the general case. This would work in all cases, but would be slower than the optimized special-case above
@@ -817,20 +833,20 @@ impl<'a> InitializationContext<'a> {
                             panic!("Array element size is not a multiple of 8 bits: {}", element_size_bits);
                         }
                         let element_size_bytes = element_size_bits / 8;
-                        if *num_elements == 0 {
+                        if num_elements == 0 {
                             // it might seem like we could just do nothing here, but
                             // actually there's no way to return the correct value
                             // (Boolector doesn't support 0-width BVs), so we have to panic
                             self.error_backtrace();
                             panic!("Array with 0 elements (and element type {:?})", element_type);
                         }
-                        for i in 0 .. *num_elements {
+                        for i in 0 .. num_elements {
                             debug!("initializing element {} of the array", i);
                             let element_addr = addr.add(&ctx.state.bv_from_u64((i*element_size_bytes) as u64, addr.get_width()));
                             self.clone().initialize_cad_in_memory(ctx, &element_addr, element_abstractdata, element_type)?;
                         }
                         debug!("done initializing the array at {:?}", addr);
-                        Ok(element_size_bits * *num_elements)
+                        Ok(element_size_bits * num_elements)
                     },
                 }
             },
@@ -839,11 +855,10 @@ impl<'a> InitializationContext<'a> {
                 let element_types = match ty {
                     Some(ty) => match ty {
                         Type::StructType { element_types, .. } => element_types.iter().cloned().map(Some).collect::<Vec<_>>(),
-                        Type::NamedStructType { .. } => {
-                            match ctx.proj.get_inner_struct_type_from_named(ty) {
-                                Some(arc) => {
-                                    let actual_ty: &Type = &arc.read().unwrap();
-                                    match actual_ty {
+                        Type::NamedStructType { name } => {
+                            match ctx.proj.get_named_struct_def(name)? {
+                                (NamedStructDef::Defined(ty), _) => {
+                                    match ty.as_ref() {
                                         Type::StructType { element_types, .. } => element_types.iter().cloned().map(Some).collect::<Vec<_>>(),
                                         ty => {
                                             self.error_backtrace();
@@ -851,7 +866,7 @@ impl<'a> InitializationContext<'a> {
                                         },
                                     }
                                 },
-                                None => {
+                                (NamedStructDef::Opaque, _) => {
                                     // This struct has only opaque definitions in the Project.
                                     // We also assume it isn't in the StructDescriptions, since that would have been caught in to_complete().
                                     // Just treat this as if `ty` was `None`
@@ -879,7 +894,7 @@ impl<'a> InitializationContext<'a> {
                     self.within_structs.get_mut(within_structs_len - 1).unwrap().element_index = element_idx;
                     let element_size_bits = element.size_in_bits();
                     if let Some(element_ty) = &element_ty {
-                        match layout::size_opaque_aware(&element_ty, ctx.proj) {
+                        match ctx.state.size_in_bits(&element_ty) {
                             Some(llvm_element_size_bits) if llvm_element_size_bits != 0 => {
                                 if element_size_bits != llvm_element_size_bits {
                                     self.error_backtrace();
@@ -896,7 +911,7 @@ impl<'a> InitializationContext<'a> {
                     total_bits += element_size_bits;
                     let element_size_bytes = element_size_bits / 8;
                     debug!("initializing element {} of struct {}; element's address is {:?}", element_idx, name, &cur_addr);
-                    let bits = self.clone().initialize_cad_in_memory(ctx, &cur_addr, element, element_ty.as_ref())?;
+                    let bits = self.clone().initialize_cad_in_memory(ctx, &cur_addr, element, element_ty.as_deref())?;
                     if bits != element_size_bits {
                         self.error_backtrace();
                         panic!("Element {} of struct {} should be {} bits based on its type, but we seem to have initialized {} bits", element_idx, name, element_size_bits, bits);
@@ -923,11 +938,17 @@ impl<'a> InitializationContext<'a> {
                 match llvm_struct_name {
                     None => self.initialize_cad_in_memory(ctx, addr, &data, None),
                     Some(llvm_struct_name) => {
-                        let (llvm_ty, _) = ctx.proj.get_named_struct_type_by_name(&llvm_struct_name)
-                            .unwrap_or_else(|| { self.error_backtrace(); panic!("VoidOverride: llvm_struct_name {:?} not found in Project", llvm_struct_name) });
-                        let arc = llvm_ty.as_ref().unwrap_or_else(|| { self.error_backtrace(); panic!("VoidOverride: llvm_struct_name {:?} is an opaque type", llvm_struct_name) });
-                        let llvm_ty: &Type = &arc.read().unwrap();
-                        self.initialize_cad_in_memory(ctx, addr, &data, Some(llvm_ty))
+                        let (structdef, _) = ctx.proj.get_named_struct_def(&llvm_struct_name)
+                            .map_err(|e| { self.error_backtrace(); panic!("VoidOverride: {}", e) })?;
+                        match structdef {
+                            NamedStructDef::Opaque => {
+                                self.error_backtrace();
+                                panic!("VoidOverride: llvm_struct_name {:?} is an opaque type", llvm_struct_name);
+                            },
+                            NamedStructDef::Defined(ty) => {
+                                self.initialize_cad_in_memory(ctx, addr, &data, Some(&ty))
+                            },
+                        }
                     },
                 }
             },
@@ -957,20 +978,26 @@ impl<'a> InitializationContext<'a> {
                         self.initialize_cad_in_memory(ctx, &inner_ptr, data, None)?;
                     },
                     Some(llvm_struct_name) => {
-                        let (llvm_ty, _) = ctx.proj.get_named_struct_type_by_name(&llvm_struct_name)
-                            .unwrap_or_else(|| { self.error_backtrace(); panic!("PointerOverride: llvm_struct_name {:?} not found in Project", llvm_struct_name) });
-                        let arc = llvm_ty.as_ref().unwrap_or_else(|| { self.error_backtrace(); panic!("PointerOverride: llvm_struct_name {:?} is an opaque type", llvm_struct_name) });
-                        let llvm_ty: &Type = &arc.read().unwrap();
-                        self.initialize_cad_in_memory(ctx, &inner_ptr, data, Some(llvm_ty))?;
+                        let (structdef, _) = ctx.proj.get_named_struct_def(&llvm_struct_name)
+                            .map_err(|e| { self.error_backtrace(); panic!("PointerOverride: {}", e) })?;
+                        match structdef {
+                            NamedStructDef::Opaque => {
+                                self.error_backtrace();
+                                panic!("PointerOverride: llvm_struct_name {:?} is an opaque type", llvm_struct_name);
+                            },
+                            NamedStructDef::Defined(ty) => {
+                                self.initialize_cad_in_memory(ctx, &inner_ptr, data, Some(ty))?;
+                            }
+                        }
                     },
                 }
 
-                Ok(bits as usize)
+                Ok(bits)
             },
             CompleteAbstractData::SameSizeOverride { data } => {
                 // first check that the type we're overriding is the right size
                 match ty {
-                    Some(ty) => match layout::size_opaque_aware(ty, ctx.proj) {
+                    Some(ty) => match ctx.state.size_in_bits(ty) {
                         Some(ty_size) => {
                             assert_eq!(data.size_in_bits(), ty_size, "same_size_override: size mismatch: specified something of size {} bits, but the LLVM type has size {} bits", data.size_in_bits(), ty_size);
                         },

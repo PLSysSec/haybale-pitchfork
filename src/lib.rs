@@ -18,7 +18,7 @@ mod main_func;
 pub use main_func::main_func;
 
 use colored::*;
-use haybale::{layout, symex_function, backend::Backend, ExecutionManager, State, ReturnValue};
+use haybale::{symex_function, backend::Backend, ExecutionManager, State, ReturnValue};
 use haybale::{Error, Result};
 pub use haybale::{Config, Project};
 use haybale::function_hooks::IsCall;
@@ -441,7 +441,14 @@ pub fn check_for_ct_violation_in_inputs<'p>(
     }
 
     let (func, _) = project.get_func_by_name(funcname).expect("Failed to find function");
-    let args = func.parameters.iter().map(|p| AbstractData::sec_integer(layout::size(&p.ty))).collect();
+    let args = func.parameters
+        .iter()
+        .map(|p| {
+            let param_size_bits = project.size_in_bits(&p.ty)
+                .expect("Parameter type shouldn't be an opaque struct type");
+            AbstractData::sec_integer(param_size_bits)
+        })
+        .collect();
     check_for_ct_violation(funcname, project, Some(args), &BLANK_STRUCT_DESCRIPTIONS, config, pitchfork_config)
 }
 

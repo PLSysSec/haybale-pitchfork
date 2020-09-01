@@ -1,8 +1,9 @@
-use haybale::{layout, Project};
+use haybale::Project;
 use lazy_static::lazy_static;
-use llvm_ir::Type;
+use llvm_ir::types::{NamedStructDef, Type};
 use log::warn;
 use std::collections::{HashMap, HashSet};
+use std::convert::TryInto;
 use std::fmt;
 use std::sync::Mutex;
 
@@ -22,10 +23,10 @@ pub(crate) enum CompleteAbstractData {
     ///
     /// This may be used for either a non-pointer value, or for a pointer value
     /// if you want to specify the exact numerical value of the pointer (e.g. `NULL`).
-    PublicValue { bits: usize, value: AbstractValue },
+    PublicValue { bits: u32, value: AbstractValue },
 
     /// A secret value (pointer or non-pointer, doesn't matter) of the given size in bits
-    Secret { bits: usize },
+    Secret { bits: u32 },
 
     /// A (first-class) array of values
     Array { element_type: Box<Self>, num_elements: usize },
@@ -140,7 +141,7 @@ impl CompleteAbstractData {
     }
 
     /// a public value with the given number of bits
-    pub fn pub_integer(bits: usize, value: AbstractValue) -> Self {
+    pub fn pub_integer(bits: u32, value: AbstractValue) -> Self {
         Self::PublicValue { bits, value }
     }
 
@@ -165,7 +166,7 @@ impl CompleteAbstractData {
     }
 
     /// a secret value with the given number of bits
-    pub fn sec_integer(bits: usize) -> Self {
+    pub fn sec_integer(bits: u32) -> Self {
         Self::Secret { bits }
     }
 
@@ -293,14 +294,19 @@ impl CompleteAbstractData {
 
 #[allow(dead_code)]
 impl CompleteAbstractData {
-    pub const POINTER_SIZE_BITS: usize = 64;
+    pub const POINTER_SIZE_BITS: u32 = 64;
 
     /// Get the size of the `CompleteAbstractData`, in bits
-    pub fn size_in_bits(&self) -> usize {
+    pub fn size_in_bits(&self) -> u32 {
         match self {
             Self::PublicValue { bits, .. } => *bits,
-            Self::Array { element_type, num_elements } => element_type.size_in_bits() * num_elements,
-            Self::Struct { elements, .. } => elements.iter().map(Self::size_in_bits).sum(),
+            Self::Array { element_type, num_elements } => {
+                let num_elements: u32 = (*num_elements).try_into().unwrap();
+                element_type.size_in_bits() * num_elements
+            },
+            Self::Struct { elements, .. } => {
+                elements.iter().map(Self::size_in_bits).sum()
+            },
             Self::PublicPointerTo { .. } => Self::POINTER_SIZE_BITS,
             Self::PublicPointerToFunction(_) => Self::POINTER_SIZE_BITS,
             Self::PublicPointerToHook(_) => Self::POINTER_SIZE_BITS,
@@ -316,7 +322,7 @@ impl CompleteAbstractData {
 
     /// Get the size of the nth (0-indexed) field/element of the `CompleteAbstractData`, in bits.
     /// The `CompleteAbstractData` must be a `Struct` or `Array`.
-    pub fn field_size_in_bits(&self, n: usize) -> usize {
+    pub fn field_size_in_bits(&self, n: usize) -> u32 {
         match self {
             Self::Struct { elements, .. } => Self::size_in_bits(&elements[n]),
             Self::Array { element_type, .. } => Self::size_in_bits(element_type),
@@ -329,10 +335,15 @@ impl CompleteAbstractData {
 
     /// Get the offset of the nth (0-indexed) field/element of the `CompleteAbstractData`, in bits.
     /// The `CompleteAbstractData` must be a `Struct` or `Array`.
-    pub fn offset_in_bits(&self, n: usize) -> usize {
+    pub fn offset_in_bits(&self, n: usize) -> u32 {
         match self {
-            Self::Struct { elements, .. } => elements.iter().take(n).map(Self::size_in_bits).sum(),
-            Self::Array { element_type, .. } => element_type.size_in_bits() * n,
+            Self::Struct { elements, .. } => {
+                elements.iter().take(n).map(Self::size_in_bits).sum()
+            },
+            Self::Array { element_type, .. } => {
+                let n: u32 = n.try_into().unwrap();
+                element_type.size_in_bits() * n
+            },
             Self::VoidOverride { data, .. } => data.offset_in_bits(n),
             Self::SameSizeOverride { data, .. } => data.offset_in_bits(n),
             Self::WithWatchpoint { data, .. } => data.offset_in_bits(n),
@@ -362,7 +373,7 @@ impl CompleteAbstractData {
     /// Get the size of the data this `CompleteAbstractData` _points to_.
     ///
     /// Panics if `self` is not a pointer of some kind.
-    pub fn pointee_size_in_bits(&self) -> usize {
+    pub fn pointee_size_in_bits(&self) -> u32 {
         match self {
             Self::PublicValue { .. } => panic!("pointee_size_in_bits() on a non-pointer: {:?}", self),
             Self::Array { .. } => panic!("pointee_size_in_bits() on a non-pointer: {:?}", self),
@@ -550,7 +561,7 @@ impl AbstractData {
     }
 
     /// a public value with the given number of bits
-    pub fn pub_integer(bits: usize, value: AbstractValue) -> Self {
+    pub fn pub_integer(bits: u32, value: AbstractValue) -> Self {
         Self(UnderspecifiedAbstractData::Complete(CompleteAbstractData::pub_integer(bits, value)))
     }
 
@@ -575,7 +586,7 @@ impl AbstractData {
     }
 
     /// a secret value with the given number of bits
-    pub fn sec_integer(bits: usize) -> Self {
+    pub fn sec_integer(bits: u32) -> Self {
         Self(UnderspecifiedAbstractData::Complete(CompleteAbstractData::sec_integer(bits)))
     }
 
@@ -823,7 +834,7 @@ pub type StructDescriptions = HashMap<String, AbstractData>;
 
 impl AbstractData {
     pub const DEFAULT_ARRAY_LENGTH: usize = 1024;
-    pub const POINTER_SIZE_BITS: usize = CompleteAbstractData::POINTER_SIZE_BITS;
+    pub const POINTER_SIZE_BITS: u32 = CompleteAbstractData::POINTER_SIZE_BITS;
     pub const OPAQUE_STRUCT_SIZE_BYTES: usize = 1024 * 64;
 
     /// Fill in the default `CompleteAbstractData` for any parts of the
@@ -919,12 +930,11 @@ impl UnderspecifiedAbstractData {
                     return self.to_complete_rec(Some(&element_types[0]), ctx);
                 }
             },
-            Some(ty@Type::NamedStructType { .. }) => {
-                match ctx.proj.get_inner_struct_type_from_named(ty) {
-                    None => {},  // we're looking for where LLVM type is a struct of one element. Opaque struct type is a different problem.
-                    Some(arc) => {
-                        let actual_ty: &Type = &arc.read().unwrap();
-                        if let Type::StructType { element_types, .. } = actual_ty {
+            Some(Type::NamedStructType { name }) => {
+                match ctx.proj.get_named_struct_def(name).expect("Named struct type should be defined in the given Project") {
+                    (NamedStructDef::Opaque, _) => {},  // we're looking for where LLVM type is a struct of one element. Opaque struct type is a different problem.
+                    (NamedStructDef::Defined(ty), _) => {
+                        if let Type::StructType { element_types, .. } = ty.as_ref() {
                             if element_types.len() == 1 {
                                 // the LLVM type is struct of one element.  Proceed as in the above case
                                 if !self.could_describe_a_struct_of_one_element() {
@@ -944,14 +954,26 @@ impl UnderspecifiedAbstractData {
         match self {
             Self::Complete(abstractdata) => abstractdata,
             Self::Unconstrained => match ty {
-                Some(ty) => CompleteAbstractData::PublicValue { bits: layout::size(ty), value: AbstractValue::Unconstrained },
+                Some(ty) => {
+                    let bits = ctx.proj.size_in_bits(ty).unwrap_or_else(|| {
+                        ctx.error_backtrace();
+                        panic!("Encountered an AbstractData::unconstrained() on an opaque struct");
+                    });
+                    CompleteAbstractData::PublicValue { bits, value: AbstractValue::Unconstrained }
+                },
                 None => {
                     ctx.error_backtrace();
                     panic!("Encountered an AbstractData::unconstrained() but don't have an LLVM type to use");
                 },
             },
             Self::Secret => match ty {
-                Some(ty) => CompleteAbstractData::Secret { bits: layout::size(ty) },
+                Some(ty) => {
+                    let bits = ctx.proj.size_in_bits(ty).unwrap_or_else(|| {
+                        ctx.error_backtrace();
+                        panic!("Encountered an AbstractData::secret() on an opaque struct");
+                    });
+                    CompleteAbstractData::Secret { bits }
+                },
                 None => {
                     ctx.error_backtrace();
                     panic!("Encountered an AbstractData::secret() but don't have an LLVM type to use");
@@ -961,21 +983,27 @@ impl UnderspecifiedAbstractData {
             Self::VoidOverride { llvm_struct_name, data } => match llvm_struct_name {
                 None => CompleteAbstractData::void_override(None, data.to_complete_rec(None, ctx)),
                 Some(llvm_struct_name) => {
-                    let (llvm_ty, _) = ctx.proj.get_named_struct_type_by_name(&llvm_struct_name)
-                        .unwrap_or_else(|| { ctx.error_backtrace(); panic!("VoidOverride: llvm_struct_name {:?} not found in Project", llvm_struct_name) });
-                    let arc = llvm_ty.as_ref().unwrap_or_else(|| { ctx.error_backtrace(); panic!("VoidOverride: llvm_struct_name {:?} is an opaque type", llvm_struct_name) });
-                    let ty = &arc.read().unwrap();
-                    CompleteAbstractData::void_override(Some(&llvm_struct_name), data.to_complete_rec(Some(ty), ctx))
+                    let (structdef, _) = ctx.proj.get_named_struct_def(&llvm_struct_name)
+                        .unwrap_or_else(|e| { ctx.error_backtrace(); panic!("VoidOverride: {}", e) });
+                    match structdef {
+                        NamedStructDef::Opaque => { ctx.error_backtrace(); panic!("VoidOverride: llvm_struct_name {:?} is an opaque type", llvm_struct_name) },
+                        NamedStructDef::Defined(ty) => {
+                            CompleteAbstractData::void_override(Some(&llvm_struct_name), data.to_complete_rec(Some(&ty), ctx))
+                        }
+                    }
                 },
             },
             Self::PointerOverride { llvm_struct_name, data } => match llvm_struct_name {
                 None => CompleteAbstractData::pointer_override(None, data.to_complete_rec(None, ctx)),
                 Some(llvm_struct_name) => {
-                    let (llvm_ty, _) = ctx.proj.get_named_struct_type_by_name(&llvm_struct_name)
-                        .unwrap_or_else(|| { ctx.error_backtrace(); panic!("PointerOverride: llvm_struct_name {:?} not found in Project", llvm_struct_name) });
-                    let arc = llvm_ty.as_ref().unwrap_or_else(|| { ctx.error_backtrace(); panic!("PointerOverride: llvm_struct_name {:?} is an opaque type", llvm_struct_name) });
-                    let ty = &arc.read().unwrap();
-                    CompleteAbstractData::pointer_override(Some(&llvm_struct_name), data.to_complete_rec(Some(ty), ctx))
+                    let (structdef, _) = ctx.proj.get_named_struct_def(&llvm_struct_name)
+                        .unwrap_or_else(|e| { ctx.error_backtrace(); panic!("PointerOverride: {}", e) });
+                    match structdef {
+                        NamedStructDef::Opaque => { ctx.error_backtrace(); panic!("PointerOverride: llvm_struct_name {:?} is an opaque type", llvm_struct_name) },
+                        NamedStructDef::Defined(ty) => {
+                            CompleteAbstractData::pointer_override(Some(&llvm_struct_name), data.to_complete_rec(Some(&ty), ctx))
+                        },
+                    }
                 },
             },
             Self::SameSizeOverride { data } => CompleteAbstractData::same_size_override(data.to_complete_rec(None, ctx)),
@@ -984,14 +1012,14 @@ impl UnderspecifiedAbstractData {
                     CompleteAbstractData::PublicPointerTo { pointee: Box::new(match &pointee.0 {
                         Self::Array { num_elements, .. } => {
                             // AbstractData is pointer-to-array, but LLVM type may be pointer-to-scalar
-                            match &**pointee_type {
+                            match pointee_type.as_ref() {
                                 ty@Type::ArrayType { .. } | ty@Type::VectorType { .. } => {
                                     pointee.to_complete_rec(Some(ty), ctx)  // LLVM type is array or vector as well, it matches
                                 },
-                                ty => {
+                                _ => {
                                     // LLVM type is scalar, but AbstractData is array, so it's actually pointer-to-array
                                     let num_elements = *num_elements;
-                                    pointee.to_complete_rec(Some(&Type::ArrayType { element_type: Box::new(ty.clone()), num_elements }), ctx)
+                                    pointee.to_complete_rec(Some(&Type::ArrayType { element_type: pointee_type.clone(), num_elements }), ctx)
                                 },
                             }
                         },
@@ -1037,13 +1065,14 @@ impl UnderspecifiedAbstractData {
                 },
             }
             Self::Struct { elements, name } => match ty {
-                Some(ty@Type::NamedStructType { .. }) => {
-                    match ctx.proj.get_inner_struct_type_from_named(ty) {
-                        Some(arc) => {
-                            let actual_ty: &Type = &arc.read().unwrap();
-                            Self::Struct { elements, name }.to_complete_rec(Some(actual_ty), ctx)
+                Some(Type::NamedStructType { name: llvm_name }) => {
+                    match ctx.proj.get_named_struct_def(llvm_name).expect("Named struct type should be defined in the given Project") {
+                        (NamedStructDef::Defined(ty), _) => {
+                            Self::Struct { elements, name }.to_complete_rec(Some(ty), ctx)
                         },
-                        None => Self::Struct { elements, name }.to_complete_rec(None, ctx),
+                        (NamedStructDef::Opaque, _) => {
+                            Self::Struct { elements, name }.to_complete_rec(None, ctx)
+                        },
                     }
                 },
                 Some(Type::StructType { element_types, .. }) => {
@@ -1092,14 +1121,17 @@ impl UnderspecifiedAbstractData {
                 },
                 None => {
                     // working as intended - use this `llvm_struct_name` as the type from here on out
-                    let (llvm_struct_ty_arc, _) = ctx.proj.get_named_struct_type_by_name(&llvm_struct_name)
-                        .unwrap_or_else(|| { ctx.error_backtrace(); panic!("default_for_llvm_struct_name: struct name {:?} not found in the Project", llvm_struct_name); });
-                    let llvm_struct_ty_arc = llvm_struct_ty_arc
-                        .as_ref()
-                        .unwrap_or_else(|| { ctx.error_backtrace(); panic!("default_for_llvm_struct_name: struct name {:?} is entirely opaque in this Project", llvm_struct_name); })
-                        .clone();
-                    let llvm_struct_ty: &Type = &llvm_struct_ty_arc.read().unwrap();
-                    Self::Unspecified.to_complete_rec(Some(llvm_struct_ty), ctx)
+                    let (structdef, _) = ctx.proj.get_named_struct_def(&llvm_struct_name)
+                        .unwrap_or_else(|e| { ctx.error_backtrace(); panic!("default_for_llvm_struct_name: {}", e); });
+                    match structdef {
+                        NamedStructDef::Opaque => {
+                            ctx.error_backtrace();
+                            panic!("default_for_llvm_struct_name: struct name {:?} is entirely opaque in this Project", llvm_struct_name);
+                        },
+                        NamedStructDef::Defined(ty) => {
+                            Self::Unspecified.to_complete_rec(Some(ty), ctx)
+                        },
+                    }
                 },
             },
             Self::Unspecified => match ty {
@@ -1108,14 +1140,14 @@ impl UnderspecifiedAbstractData {
                     panic!("Encountered an AbstractData::default() but don't have an LLVM type to use; this is either because:\n  (1) either same_size_override or void_override with llvm_struct_name == None were used, but the specified AbstractData contained a default() somewhere; or\n  (2) a struct in the StructDescriptions is opaque in this Project, but the specified AbstractData contained a default() somewhere");
                 },
                 Some(ty) => match ty {
-                    ty@Type::IntegerType { .. } =>
-                        CompleteAbstractData::pub_integer(layout::size(ty), AbstractValue::Unconstrained),
+                    Type::IntegerType { bits, .. } =>
+                        CompleteAbstractData::pub_integer(*bits, AbstractValue::Unconstrained),
                     Type::PointerType { pointee_type, .. } => match &**pointee_type {
                         Type::FuncType { .. } =>
                             CompleteAbstractData::pub_pointer_to_hook("hook_uninitialized_function_pointer"),
                         Type::IntegerType { bits } =>
                             CompleteAbstractData::pub_pointer_to(CompleteAbstractData::array_of(
-                                CompleteAbstractData::pub_integer(*bits as usize, AbstractValue::Unconstrained),
+                                CompleteAbstractData::pub_integer(*bits, AbstractValue::Unconstrained),
                                 AbstractData::DEFAULT_ARRAY_LENGTH,
                             )),
                         Type::ArrayType { num_elements: 0, element_type } =>
@@ -1131,17 +1163,18 @@ impl UnderspecifiedAbstractData {
                             *num_elements,
                         ),
                     Type::NamedStructType { name, .. } => {
-                        let arc = ctx.proj.get_inner_struct_type_from_named(ty);
+                        let (structdef, _) = ctx.proj.get_named_struct_def(name)
+                            .unwrap_or_else(|e| { ctx.error_backtrace(); panic!("{}", e); });
                         if !ctx.unspecified_named_structs.insert(name) {
-                            match arc {
-                                Some(arc) => {
+                            match structdef {
+                                NamedStructDef::Defined(ty) => {
                                     if WARNED_STRUCTS.lock().unwrap().insert(name.clone()) {
                                         warn!("Setting the contents of a {:?} to unconstrained in order to avoid infinite recursion. We will not warn again for infinite recursion on a {:?}", name, name);
                                     }
-                                    let inner_ty: &Type = &arc.read().unwrap();
-                                    return CompleteAbstractData::PublicValue { bits: layout::size(inner_ty), value: AbstractValue::Unconstrained };
+                                    let bits = ctx.proj.size_in_bits(ty).expect("Inner struct type shouldn't be an opaque struct type");
+                                    return CompleteAbstractData::PublicValue { bits, value: AbstractValue::Unconstrained };
                                 },
-                                None => {
+                                NamedStructDef::Opaque => {
                                     ctx.error_backtrace();
                                     panic!("Encountered infinite recursion in struct {:?}, which is opaque; this should be impossible");
                                 },
@@ -1151,25 +1184,23 @@ impl UnderspecifiedAbstractData {
                             Some(abstractdata) => {
                                 // This is in the StructDescriptions, so use the description there
                                 ctx.within_structs.push(name.clone());
-                                match arc {
-                                    Some(arc) => {
-                                        let inner_ty: &Type = &arc.read().unwrap();
-                                        abstractdata.clone().to_complete_rec(Some(inner_ty), ctx)
+                                match structdef {
+                                    NamedStructDef::Defined(ty) => {
+                                        abstractdata.clone().to_complete_rec(Some(ty), ctx)
                                     },
-                                    None => abstractdata.clone().to_complete_rec(None, ctx),
+                                    NamedStructDef::Opaque => abstractdata.clone().to_complete_rec(None, ctx),
                                 }
                             },
-                            None => match arc {
-                                Some(arc) => {
+                            None => match structdef {
+                                NamedStructDef::Defined(ty) => {
                                     // We have an LLVM struct definition, so use that
                                     ctx.within_structs.push(name.clone());
-                                    let inner_ty: &Type = &arc.read().unwrap();
-                                    match self.to_complete_rec(Some(inner_ty), ctx) {
+                                    match self.to_complete_rec(Some(ty), ctx) {
                                         CompleteAbstractData::Struct { elements, .. } => CompleteAbstractData::_struct(name.clone(), elements),  // put in the correct struct name
                                         cad => panic!("Expected to end up with a Struct from this call, but got {:?}", cad),
                                     }
                                 },
-                                None => {
+                                NamedStructDef::Opaque => {
                                     // all definitions of the struct in the project are opaque, and it isn't in the StructDescriptions
                                     // allocate OPAQUE_STRUCT_SIZE_BYTES unconstrained bytes and call it good
                                     CompleteAbstractData::array_of(CompleteAbstractData::pub_i8(AbstractValue::Unconstrained), AbstractData::OPAQUE_STRUCT_SIZE_BYTES)

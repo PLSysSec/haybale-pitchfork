@@ -4,8 +4,8 @@
 use crate::default_hook::{ArgumentKind, is_or_points_to_secret};
 use crate::secret;
 use haybale::function_hooks::{IsCall, generic_stub_hook};
-use haybale::{Project, Result, ReturnValue, State};
-use llvm_ir::{Name, Type, Typed};
+use haybale::{Error, Project, Result, ReturnValue, State};
+use llvm_ir::{Name, Type};
 
 /// This hook will ignore all of the function arguments and simply return an
 /// unconstrained public value of the appropriate size, or void for void-typed
@@ -27,11 +27,12 @@ pub fn return_secret(
     state: &mut State<secret::Backend>,
     call: &dyn IsCall,
 ) -> Result<ReturnValue<secret::BV>> {
-    match call.get_type() {
+    match state.type_of(call).as_ref() {
         Type::VoidType => Ok(ReturnValue::ReturnVoid),
         ty => {
-            let width = haybale::layout::size(&ty);
-            let bv = state.new_bv_with_name(Name::from("return_secret_retval"), width as u32)?;
+            let width = state.size_in_bits(&ty)
+                .ok_or_else(|| Error::OtherError("Call return type is an opaque struct type".into()))?;
+            let bv = state.new_bv_with_name(Name::from("return_secret_retval"), width)?;
             Ok(ReturnValue::Return(bv))
         },
     }
@@ -50,7 +51,7 @@ pub fn propagate_taint(
 ) -> Result<ReturnValue<secret::BV>> {
     for arg in call.get_arguments().iter().map(|(arg, _)| arg) {
         let arg_bv = state.operand_to_bv(arg)?;
-        match is_or_points_to_secret(proj, state, &arg_bv, &arg.get_type())? {
+        match is_or_points_to_secret(proj, state, &arg_bv, &state.type_of(arg))? {
             ArgumentKind::Public | ArgumentKind::Unknown => {},
             ArgumentKind::Secret => return return_secret(proj, state, call),
         }

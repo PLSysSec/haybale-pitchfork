@@ -25,7 +25,7 @@ pub fn fill_unconstrained_with_length<B: Backend>(
     let out_buffer: B::BV = match out_buffer {
         Either::Left(op) => {
             // sanity-check the type
-            match op.get_type() {
+            match state.type_of(op).as_ref() {
                 Type::PointerType { .. } => {},
                 ty => return Err(Error::OtherError(format!("fill_unconstrained_with_length: expected out_buffer to be some pointer type, got {:?}", ty))),
             };
@@ -36,9 +36,9 @@ pub fn fill_unconstrained_with_length<B: Backend>(
     let out_len_ptr: B::BV = match out_len_ptr {
         Either::Left(op) => {
             // sanity-check the type
-            match op.get_type() {
-                Type::PointerType { pointee_type, .. } => match *pointee_type {
-                    Type::IntegerType { bits } if bits == out_len_bitwidth => {},
+            match state.type_of(op).as_ref() {
+                Type::PointerType { pointee_type, .. } => match pointee_type.as_ref() {
+                    Type::IntegerType { bits } if *bits == out_len_bitwidth => {},
                     _ => return Err(Error::OtherError(format!("fill_unconstrained_with_length: expected out_len_ptr to be pointer-to-64-bit-integer type, got pointer to {:?}", pointee_type))),
                 },
                 ty => return Err(Error::OtherError(format!("fill_unconstrained_with_length: expected out_len_ptr to be some pointer type, got {:?}", ty))),
@@ -79,7 +79,7 @@ pub fn fill_secret_with_length(
     let out_buffer: secret::BV = match out_buffer {
         Either::Left(op) => {
             // sanity-check the type
-            match op.get_type() {
+            match state.type_of(op).as_ref() {
                 Type::PointerType { .. } => {},
                 ty => return Err(Error::OtherError(format!("fill_secret_with_length: expected out_buffer to be some pointer type, got {:?}", ty))),
             };
@@ -90,9 +90,9 @@ pub fn fill_secret_with_length(
     let out_len_ptr: secret::BV = match out_len_ptr {
         Either::Left(op) => {
             // sanity-check the type
-            match op.get_type() {
-                Type::PointerType { pointee_type, .. } => match *pointee_type {
-                    Type::IntegerType { bits } if bits == out_len_bitwidth => {},
+            match state.type_of(op).as_ref() {
+                Type::PointerType { pointee_type, .. } => match pointee_type.as_ref() {
+                    Type::IntegerType { bits } if *bits == out_len_bitwidth => {},
                     _ => return Err(Error::OtherError(format!("fill_secret_with_length: expected out_len_ptr to be pointer-to-64-bit-integer type, got pointer to {:?}", pointee_type))),
                 },
                 ty => return Err(Error::OtherError(format!("fill_secret_with_length: expected out_len_ptr to be some pointer type, got {:?}", ty))),
@@ -140,7 +140,8 @@ pub fn reinitialize_pointee<'p>(
     sd: &'p StructDescriptions,
 ) -> Result<()> {
     let ptr = state.operand_to_bv(pointer)?;
-    let pointee_ty = match pointer.get_type() {
+    let pointer_ty = state.type_of(pointer);
+    let pointee_ty = match pointer_ty.as_ref() {
         Type::PointerType { pointee_type, .. } => pointee_type,
         ty => return Err(Error::OtherError(format!("reinitialize_pointee: expected `pointer` to be a pointer, got {:?}", ty))),
     };
