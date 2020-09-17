@@ -1,6 +1,12 @@
+//! For an introduction to the crate and how to get started,
+//! see the [crate's README](https://github.com/PLSysSec/haybale-pitchfork/blob/master/README.md).
+
 // this ensures that crate users generating docs with --no-deps will still
 // properly get links to the public docs for Pitchfork's types
-#![doc(html_root_url = "https://PLSysSec.github.io/haybale-pitchfork")]
+// it was especially necessary when the docs.rs docs weren't working for any
+// llvm-sys consumers; now that we have docs.rs as the official docs, I'm not
+// sure if this is necessary or helpful anymore
+#![doc(html_root_url = "https://docs.rs/haybale-pitchfork/0.3.0")]
 
 mod abstractdata;
 pub use abstractdata::*;

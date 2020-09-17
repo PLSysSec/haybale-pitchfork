@@ -1,10 +1,10 @@
 [package]
 name = "haybale-pitchfork"
-version = "0.2.0"
+version = "0.3.0"
 authors = ["Craig Disselkoen <craigdissel@gmail.com>"]
 edition = "2018"
 description = "Verifying constant-time code with symbolic execution"
-documentation = "https://PLSysSec.github.io/haybale-pitchfork"
+documentation = "https://docs.rs/haybale-pitchfork"
 repository = "https://github.com/PLSysSec/haybale-pitchfork"
 readme = "README.md"
 keywords = ["constant-time", "symbolic", "llvm", "SMT"]
@@ -12,7 +12,7 @@ license = "MIT"
 
 [dependencies]
 boolector = "0.4.1"
-haybale = { git = "https://github.com/PLSysSec/haybale" }
+haybale = "0.6.1"
 llvm-ir = "0.7.1"
 log = "0.4.8"
 lazy_static = "1.4"
