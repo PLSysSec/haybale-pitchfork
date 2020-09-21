@@ -94,14 +94,14 @@ impl Default for CommandLineOptions {
 /// It processes command-line arguments and coordinates the overall analysis.
 ///
 /// All you have to provide is:
-///     `get_project`: a closure which, when called, produces the `Project` you want
+///   - `get_project`: a closure which, when called, produces the `Project` you want
 ///         to analyze
-///     `get_struct_descriptions`: a closure which, when called, produces the
+///   - `get_struct_descriptions`: a closure which, when called, produces the
 ///         `StructDescriptions` you want to use
-///     `get_args_for_funcname`: a function which takes a function name and returns
+///   - `get_args_for_funcname`: a function which takes a function name and returns
 ///         the `AbstractData` arguments to use for its arguments. `None` implies to just
 ///         use all `AbstractData::default()`s.
-///     `get_config`: a closure which, when called, produces the `Config` you
+///   - `get_config`: a closure which, when called, produces the `Config` you
 ///         want to use. Note that some parts of the `Config` may be overridden by
 ///         command-line arguments.
 pub fn main_func<F>(
