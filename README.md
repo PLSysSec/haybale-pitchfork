@@ -499,6 +499,13 @@ println!("{}", check_for_ct_violation(
 Furthermore, any other `Context` structs it encounters as part of the same or
 other arguments will also use this description.
 
+### Using Pitchfork's `main_func`
+
+Pitchfork also provides a [`main_func()`] with numerous command-line options
+for doing constant-time checking on a library of your choice.
+All you have to do is provide your `Project`, `StructDescriptions`, `Config`,
+etc, and then call `main_func()` in your own `main()`.
+
 [`haybale`]: https://github.com/PLSysSec/haybale
 [dependency renaming]: https://doc.rust-lang.org/cargo/reference/specifying-dependencies.html#renaming-dependencies-in-cargotoml
 [`llvm-sys`]: https://crates.io/crates/llvm-sys
@@ -511,3 +518,4 @@ other arguments will also use this description.
 [`AbstractData`]: https://docs.rs/haybale-pitchfork/0.3.0/haybale_pitchfork/struct.AbstractData.html
 [`AbstractValue`]: https://docs.rs/haybale-pitchfork/0.3.0/haybale_pitchfork/enum.AbstractValue.html
 [`AbstractData::default()`]: https://docs.rs/haybale-pitchfork/0.3.0/haybale_pitchfork/struct.AbstractData.html#method.default
+[`main_func()`]: https://docs.rs/haybale-pitchfork/0.3.0/haybale_pitchfork/fn.main_func.html

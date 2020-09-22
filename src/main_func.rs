@@ -90,7 +90,7 @@ impl Default for CommandLineOptions {
     }
 }
 
-/// This function is designed to be called in your main().
+/// This function is designed to be called in your `main()`.
 /// It processes command-line arguments and coordinates the overall analysis.
 ///
 /// All you have to provide is:
