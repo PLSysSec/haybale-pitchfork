@@ -12,8 +12,8 @@ license = "MIT"
 
 [dependencies]
 boolector = "0.4.1"
-haybale = "0.6.1"
-llvm-ir = "0.7.1"
+haybale = "0.6.3"
+llvm-ir = "0.7.4"
 log = "0.4.8"
 lazy_static = "1.4"
 colored = "1.9"
@@ -31,12 +31,14 @@ default = ["progress-updates"]
 # You _must_ enable exactly one of the following features.
 llvm-9 = ["haybale/llvm-9", "llvm-ir/llvm-9"]
 llvm-10 = ["haybale/llvm-10", "llvm-ir/llvm-10"]
+llvm-11 = ["haybale/llvm-11", "llvm-ir/llvm-11"]
 
 # These features select the corresponding LLVM version, and require an exact
 # match between the system LLVM version and the LLVM version chosen here. For
 # more information, see the "strict-versioning" feature on `llvm-sys`.
 llvm-9-strict = ["llvm-9", "haybale/llvm-9-strict", "llvm-ir/llvm-9-strict"]
 llvm-10-strict = ["llvm-10", "haybale/llvm-10-strict", "llvm-ir/llvm-10-strict"]
+llvm-11-strict = ["llvm-11", "haybale/llvm-11-strict", "llvm-ir/llvm-11-strict"]
 
 # This feature enables the `progress_updates` option in `PitchforkConfig`.
 # For more details, see the documentation of that option.

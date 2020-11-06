@@ -1028,14 +1028,16 @@ impl UnderspecifiedAbstractData {
                             pointee.to_complete_rec(Some(&**pointee_type), ctx)
                         },
                     }), maybe_null },
-                Some(Type::ArrayType { num_elements: 1, element_type }) | Some(Type::VectorType { num_elements: 1, element_type }) => {
-                    // auto-unwrap LLVM type if it is array or vector of one element
-                    Self::PublicPointerTo { pointee, maybe_null }.to_complete_rec(Some(&**element_type), ctx)
-                },
                 None => CompleteAbstractData::PublicPointerTo { pointee: Box::new(pointee.to_complete_rec(None, ctx)), maybe_null },
                 _ => {
-                    ctx.error_backtrace();
-                    panic!("Type mismatch: AbstractData::PublicPointerTo but LLVM type is {:?}", ty);
+                    // auto-unwrap LLVM type if it is array or vector of one element
+                    if let Some(Some(element_type)) = ty.map(array_of_one_element) {
+                        Self::PublicPointerTo { pointee, maybe_null }.to_complete_rec(Some(element_type), ctx)
+                    } else {
+                        // otherwise it's a type mismatch
+                        ctx.error_backtrace();
+                        panic!("Type mismatch: AbstractData::PublicPointerTo but LLVM type is {:?}", ty);
+                    }
                 },
             },
             Self::PublicPointerToParentOr(ad) => {
@@ -1051,7 +1053,7 @@ impl UnderspecifiedAbstractData {
             },
             Self::Array { element_type, num_elements } => match ty {
                 Some(Type::ArrayType { element_type: llvm_element_type, num_elements: llvm_num_elements })
-                | Some(Type::VectorType { element_type: llvm_element_type, num_elements: llvm_num_elements }) => {
+                | Some(Type::VectorType { element_type: llvm_element_type, num_elements: llvm_num_elements, .. }) => {
                     if *llvm_num_elements != 0 && *llvm_num_elements != num_elements {
                         ctx.error_backtrace();
                         panic!("Type mismatch: AbstractData specifies an array with {} elements, but found an array with {} elements", num_elements, llvm_num_elements);
@@ -1087,17 +1089,19 @@ impl UnderspecifiedAbstractData {
                         .map(|(el_data, el_type)| el_data.to_complete_rec(Some(el_type), ctx.clone()))
                     )
                 },
-                Some(Type::ArrayType { num_elements: 1, element_type }) | Some(Type::VectorType { num_elements: 1, element_type }) => {
-                    // auto-unwrap LLVM type if it is array or vector of one element
-                    Self::Struct { elements, name }.to_complete_rec(Some(&**element_type), ctx.clone())
-                },
                 None => {
                     ctx.within_structs.push(name.clone());
                     CompleteAbstractData::_struct(name, elements.into_iter().map(|el_data| el_data.to_complete_rec(None, ctx.clone())))
                 }
                 _ => {
-                    ctx.error_backtrace();
-                    panic!("Type mismatch: AbstractData::Struct {}, but LLVM type is {:?}", name, ty);
+                    // auto-unwrap LLVM type if it is array or vector of one element
+                    if let Some(Some(element_type)) = ty.map(array_of_one_element) {
+                        Self::Struct { elements, name }.to_complete_rec(Some(element_type), ctx.clone())
+                    } else {
+                        // otherwise it's a type mismatch
+                        ctx.error_backtrace();
+                        panic!("Type mismatch: AbstractData::Struct {}, but LLVM type is {:?}", name, ty);
+                    }
                 },
             },
             Self::DefaultForLLVMStructName { llvm_struct_name } => match ty {
@@ -1157,7 +1161,12 @@ impl UnderspecifiedAbstractData {
                             )),
                         ty => CompleteAbstractData::pub_pointer_to(Self::Unspecified.to_complete_rec(Some(ty), ctx)),
                     },
-                    Type::VectorType { element_type, num_elements } | Type::ArrayType { element_type, num_elements } =>
+                    #[cfg(feature = "llvm-11")]
+                    Type::VectorType { scalable: true, .. } => {
+                        ctx.error_backtrace();
+                        unimplemented!("scalable vectors")
+                    },
+                    Type::VectorType { element_type, num_elements, .. } | Type::ArrayType { element_type, num_elements } =>
                         CompleteAbstractData::array_of(
                             Self::Unspecified.to_complete_rec(Some(element_type), ctx),
                             *num_elements,
@@ -1254,5 +1263,30 @@ impl AbstractValue {
             name: name.to_owned(),
             value: Box::new(value),
         }
+    }
+}
+
+/// Miscellaneous helper function
+///
+/// If the `Type` represents an array of a single element, returns `Some` with the element type.
+/// Otherwise, returns `None`.
+#[cfg(feature = "llvm-11")]
+pub(crate) fn array_of_one_element<'t>(ty: &'t Type) -> Option<&'t Type> {
+    if let Type::ArrayType { num_elements: 1, element_type } = ty {
+        Some(element_type)
+    } else if let Type::VectorType { num_elements: 1, scalable: false, element_type } = ty {
+        Some(element_type)
+    } else {
+        None
+    }
+}
+#[cfg(not(feature = "llvm-11"))]
+pub(crate) fn array_of_one_element<'t>(ty: &'t Type) -> Option<&'t Type> {
+    if let Type::ArrayType { num_elements: 1, element_type } = ty {
+        Some(element_type)
+    } else if let Type::VectorType { num_elements: 1, element_type } = ty {
+        Some(element_type)
+    } else {
+        None
     }
 }

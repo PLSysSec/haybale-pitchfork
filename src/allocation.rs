@@ -377,7 +377,7 @@ impl<'a> InitializationContext<'a> {
         ty: Option<&'a Type>,
     ) -> Result<u32> {
         // First we handle the case where the LLVM type is array-of-one-element
-        if let Some(Type::ArrayType { num_elements: 1, element_type }) | Some(Type::VectorType { num_elements: 1, element_type }) = ty {
+        if let Some(Some(element_type)) = ty.map(array_of_one_element) {
             match data {
                 CompleteAbstractData::Array { num_elements: 1, element_type: element_abstractdata } => {
                     // both LLVM and CAD type are array-of-one-element.  Unwrap and call recursively

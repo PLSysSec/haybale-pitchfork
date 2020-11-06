@@ -110,7 +110,7 @@ pub(crate) fn is_or_points_to_secret(proj: &Project, state: &mut State<secret::B
                 }
                 retval
             },
-            Type::VectorType { element_type, num_elements } | Type::ArrayType { element_type, num_elements } => {
+            Type::VectorType { element_type, num_elements, .. } | Type::ArrayType { element_type, num_elements } => {
                 // TODO: this could be made more efficient
                 let element_bits = match state.size_in_bits(&element_type) {
                     None => return Ok(ArgumentKind::Unknown),

@@ -43,7 +43,8 @@ the name `haybale-pitchfork`. You can add it as a dependency in your
 haybale-pitchfork = { version = "0.3.0", features = ["llvm-10"] }
 ```
 
-Currently, the supported LLVM versions are `llvm-9` and `llvm-10`.
+As of 0.3.0, the supported LLVM versions are `llvm-9` and `llvm-10`.
+(The Git version you're looking at also supports `llvm-11`.)
 
 If you want to use the name `pitchfork` instead of `haybale_pitchfork` in
 your code, you can use Cargo's [dependency renaming] feature:
