@@ -5,7 +5,7 @@ use crate::default_hook::{ArgumentKind, is_or_points_to_secret};
 use crate::secret;
 use haybale::function_hooks::{IsCall, generic_stub_hook};
 use haybale::{Error, Project, Result, ReturnValue, State};
-use llvm_ir::{Name, Type};
+use llvm_ir::Type;
 
 /// This hook will ignore all of the function arguments and simply return an
 /// unconstrained public value of the appropriate size, or void for void-typed
@@ -32,7 +32,12 @@ pub fn return_secret(
         ty => {
             let width = state.size_in_bits(&ty)
                 .ok_or_else(|| Error::OtherError("Call return type is an opaque struct type".into()))?;
-            let bv = state.new_bv_with_name(Name::from("return_secret_retval"), width)?;
+            assert_ne!(width, 0, "Call return type has size 0 bits but isn't void type"); // void type was handled above
+            let bv = secret::BV::Secret {
+                btor: state.solver.clone(),
+                width,
+                symbol: Some("return_secret_retval".into()),
+            };
             Ok(ReturnValue::Return(bv))
         },
     }
