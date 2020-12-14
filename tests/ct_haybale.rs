@@ -15,12 +15,12 @@ pub fn is_constant_time_in_inputs<'p>(
     config: Config<'p, secret::Backend>
 ) -> bool {
     let mut pitchfork_config = PitchforkConfig::default();
-    pitchfork_config.keep_going = false;
+    pitchfork_config.keep_going = KeepGoing::Stop;
     pitchfork_config.dump_errors = false;
     pitchfork_config.progress_updates = false;
-    check_for_ct_violation_in_inputs(funcname, project, config, &pitchfork_config)
-        .first_error_or_violation()
-        .is_none()
+    let result = check_for_ct_violation_in_inputs(funcname, project, config, &pitchfork_config);
+    assert!(result.first_error().is_none());
+    result.ct_violations.get(0).is_none()
 }
 
 /// Whether each of the functions in haybale's `basic.bc` are constant-time in their inputs

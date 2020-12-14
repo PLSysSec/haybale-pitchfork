@@ -1,5 +1,5 @@
 use crate::check_for_ct_violation;
-use crate::{AbstractData, PitchforkConfig, StructDescriptions};
+use crate::{AbstractData, KeepGoing, PitchforkConfig, StructDescriptions};
 use crate::secret;
 
 use colored::*;
@@ -75,7 +75,7 @@ impl Default for CommandLineOptions {
             pitchfork_config: {
                 let mut pitchfork_config = PitchforkConfig::default();
                 // Our desired defaults may not be the same as the PitchforkConfig defaults
-                pitchfork_config.keep_going = true;
+                pitchfork_config.keep_going = KeepGoing::StopPerPath;
                 pitchfork_config.dump_errors = true;
                 pitchfork_config.progress_updates = true;
                 pitchfork_config.debug_logging = false;
@@ -223,8 +223,8 @@ fn process_nonoption_args<F>(
         println!("\n=======\n\nSummary of results:\n");
         for result in results {
             let path_stats = result.path_statistics();
-            let is_ct = result.path_results.len() == path_stats.num_ct_paths;
             let have_violation = path_stats.num_ct_violations > 0;
+            let is_ct = !have_violation && result.path_results.len() == path_stats.num_complete;
             println!("{} {}", result.funcname,
                 if is_ct { "is constant-time".green() }
                 else if have_violation { "is not constant-time".red() }

@@ -92,7 +92,7 @@ pub(crate) fn is_or_points_to_secret(state: &mut State<secret::Backend>, bv: &se
                     // to avoid a null dereference when reading the pointed-to data
                     state.solver.push(1);
                     need_pop = true;
-                    bv._ne(&state.zero(bv.get_width())).assert()?;
+                    state.assert(&bv._ne(&state.zero(bv.get_width())))?;
                 }
                 let pointee = match state.read(&bv, pointee_size_bits as u32) {
                     Ok(pointee) => pointee,
