@@ -9,30 +9,21 @@
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub struct PitchforkConfig {
-    /// If `true`, then even if we encounter an error or violation, we will
-    /// continue exploring as many paths as we can in the function before
-    /// returning, possibly reporting many different errors and/or violations.
-    /// (Although we can't keep going on the errored path itself, we can still try to
-    /// explore other paths that don't contain the error.)
-    /// If `false`, then as soon as we encounter an error or violation, we will quit
-    /// and return the results we have.
-    /// It is recommended to only use `keep_going == true` in conjunction with solver
-    /// query timeouts; see the `solver_query_timeout` setting in `Config`.
+    /// See notes on the [`KeepGoing`](../enum.KeepGoing.html) enum.
     ///
-    /// Default is `false`.
-    pub keep_going: bool,
+    /// Default is `KeepGoing::Stop`.
+    pub keep_going: KeepGoing,
 
-    /// Even if `keep_going` is set to `true`, the `Display` impl for
-    /// `ConstantTimeResultForFunction` only displays a summary of the kinds of
+    /// Regardless of the setting of `keep_going`, the `Display` impl for
+    /// `FunctionResult` only displays a summary of the kinds of
     /// errors encountered, and full details about a single error.
     /// With `dump_errors == true`, `pitchfork` will dump detailed descriptions
     /// of all errors encountered to a file.
     ///
-    /// This setting only applies if `keep_going == true`; it is completely ignored
-    /// if `keep_going == false`.
+    /// If `keep_going == KeepGoing::Stop`, then this setting is completely
+    /// ignored (treated as `false` regardless of its actual value).
     ///
-    /// Default is `true`, meaning that if `keep_going` is enabled, then detailed
-    /// error descriptions will be dumped to a file.
+    /// Default is `true`.
     pub dump_errors: bool,
 
     /// If `true`, `pitchfork` will dump detailed coverage stats for the analysis
@@ -88,11 +79,39 @@ pub struct PitchforkConfig {
 impl Default for PitchforkConfig {
     fn default() -> Self {
         Self {
-            keep_going: false,
+            keep_going: KeepGoing::Stop,
             dump_errors: true,
             dump_coverage_stats: true,
             progress_updates: true,
             debug_logging: false,
         }
     }
+}
+
+/// Enum for the `keep_going` option in `PitchforkConfig`
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum KeepGoing {
+    /// Stop at the first error encountered (and return the results we have).
+    ///
+    /// For constant-time violations, finishes the current path until either it
+    /// ends or we get a hard error, then stops. This can result in multiple
+    /// constant-time violations reported.
+    Stop,
+    /// Stop at the first error or constant-time violation on each path,
+    /// but continue exploring other paths, potentially finding many errors
+    /// and/or violations.
+    ///
+    /// It is recommended to only use this in conjunction with solver query
+    /// timeouts; see the `solver_query_timeout` setting in `Config`.
+    StopPerPath,
+    /// Like `StopPerPath`, but also don't stop at constant-time violations.
+    /// (We still have to stop at errors.)
+    /// This allows us to find subsequent constant-time violations (or errors)
+    /// even on the same path where we've already found a violation.
+    /// The analysis loses some soundness, and finding violations after the first
+    /// on each path is on a best-effort basis.
+    ///
+    /// It is recommended to only use this in conjunction with solver query
+    /// timeouts; see the `solver_query_timeout` setting in `Config`.
+    Full,
 }

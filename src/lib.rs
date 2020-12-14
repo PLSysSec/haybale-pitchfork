@@ -21,7 +21,7 @@ pub mod secret;
 mod path_statistics;
 pub use path_statistics::PathStatistics;
 mod pitchfork_config;
-pub use pitchfork_config::PitchforkConfig;
+pub use pitchfork_config::{KeepGoing, PitchforkConfig};
 mod logging;
 mod progress;
 mod main_func;
@@ -37,16 +37,15 @@ use log::{debug, info, warn};
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 
-/// Holds information about the results of a constant-time analysis of a single
-/// path.
+/// Holds information about the analysis result for a single path.
 #[derive(Clone, Debug)]
-pub enum ConstantTimeResultForPath {
-    IsConstantTime,
-    NotConstantTime {
-        /// A `String` describing the violation found on this path.
-        violation_message: String,
-    },
-    OtherError {
+pub enum PathResult {
+    /// Fully completed analysis of this path and reported any constant-time
+    /// violations found.
+    PathComplete,
+    /// Encountered an error while analyzing this path, and could not complete
+    /// the analysis.
+    Error {
         /// The `Error` encountered on this path.
         error: Error,
         /// The full error message with "rich context" (backtrace, full path, etc)
@@ -54,29 +53,52 @@ pub enum ConstantTimeResultForPath {
     },
 }
 
-/// Holds information about the results of a constant-time analysis of a
-/// particular function.
-pub struct ConstantTimeResultForFunction<'a> {
+#[derive(Clone, Debug, PartialEq)]
+pub struct CTViolation {
+    /// Short message describing the violation
+    pub msg: String,
+    /// Backtrace where the violation occurred
+    pub backtrace: String,
+    /// LLVM path to violation
+    pub llvm_path: String,
+    /// Source-language path to violation
+    pub src_path: String,
+}
+
+impl<'p> fmt::Display for CTViolation {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}\n\n", &self.msg)?;
+        write!(f, "Backtrace:\n{}\n", &self.backtrace)?;
+        write!(f, "LLVM path to violation:\n{}\n", &self.llvm_path)?;
+        write!(f, "Source-language path to violation:\n{}\n", &self.src_path)?;
+        Ok(())
+    }
+}
+
+/// Holds information about the analysis result for a particular function.
+pub struct FunctionResult<'a> {
     /// Name of the toplevel function we analyzed
     pub funcname: &'a str,
     /// Mangled name of the toplevel function we analyzed
     /// (this may be the same as `funcname`, e.g. for C code)
     mangled_funcname: &'a str,
-    /// the `ConstantTimeResultForPath`s for each path in that function.
-    /// Note that since we can't progress beyond a `NotConstantTime` or
-    /// `OtherError` result on a particular path, there may be many more paths
-    /// than the ones listed here.
+    /// the `PathResult`s for each path in that function.
+    /// Note that since we can't progress beyond an `Error` result on a
+    /// particular path (and, depending on configuration, may not progress past a
+    /// CT violation either), there may be many more paths than the ones listed
+    /// here.
     /// We simply have no way of knowing how many more paths there might be
     /// beyond one of these errors.
-    pub path_results: Vec<ConstantTimeResultForPath>,
+    pub path_results: Vec<PathResult>,
+    /// Constant-time violations found during the analysis
+    pub ct_violations: Vec<CTViolation>,
     /// Map from function names to statistics on the block coverage of those
     /// functions. Functions not appearing in the map were not encountered on
     /// any path, or were hooked.
     ///
-    /// Note that in the case of `ConstantTimeResultForPath::NotConstantTime` or
-    /// `ConstantTimeResultForPath::OtherError`, the coverage stats consider the
-    /// block in which the error occurred to be covered, even if the portion of
-    /// the block after where the error occurred was not covered.
+    /// Note that in the case of `PathResult::Error`, the coverage stats consider
+    /// the block in which the error occurred to be covered, even if the portion
+    /// of the block after where the error occurred was not covered.
     pub block_coverage: HashMap<String, BlockCoverage>,
     /// If we logged all the detailed error messages, then this is the name of
     /// the file they were logged to.
@@ -93,24 +115,12 @@ pub struct ConstantTimeResultForFunction<'a> {
     pub coverage_filename: Option<String>,
 }
 
-impl<'a> ConstantTimeResultForFunction<'a> {
-    /// Return the `violation_message` for the first `NotConstantTime` result
-    /// encountered, if there is one.
-    pub fn first_ct_violation(&self) -> Option<&str> {
-        self.path_results.iter().find_map(|path_result| match path_result {
-            ConstantTimeResultForPath::IsConstantTime => None,
-            ConstantTimeResultForPath::NotConstantTime { violation_message } => Some(violation_message as &str),
-            ConstantTimeResultForPath::OtherError { .. } => None,
-        })
-    }
-
-    /// Return the first `NotConstantTime` or `OtherError` result encountered,
-    /// if there is one.
-    pub fn first_error_or_violation(&self) -> Option<&ConstantTimeResultForPath> {
+impl<'a> FunctionResult<'a> {
+    /// Return the first `Error` result encountered, if there is one.
+    pub fn first_error(&self) -> Option<&PathResult> {
         self.path_results.iter().find(|path_result| match path_result {
-            ConstantTimeResultForPath::IsConstantTime => false,
-            ConstantTimeResultForPath::NotConstantTime { .. } => true,
-            ConstantTimeResultForPath::OtherError { .. } => true,
+            PathResult::PathComplete => false,
+            PathResult::Error { .. } => true,
         })
     }
 
@@ -119,18 +129,21 @@ impl<'a> ConstantTimeResultForFunction<'a> {
         for result in &self.path_results {
             path_stats.add_path_result(result);
         }
+        for violation in &self.ct_violations {
+            path_stats.add_ct_violation(violation);
+        }
         path_stats
     }
 }
 
 /// Produces a pretty (even colored!) description of the
-/// `ConstantTimeResultForFunction`, including selected coverage statistics
-impl<'a> fmt::Display for ConstantTimeResultForFunction<'a> {
+/// `FunctionResult`, including selected coverage statistics
+impl<'a> fmt::Display for FunctionResult<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         writeln!(f, "\nResults for {}:\n", self.funcname)?;
 
         if self.path_results.is_empty() {
-            writeln!(f, "No valid paths were found and no errors or violations were encountered")?;
+            writeln!(f, "No valid paths were found and no errors were encountered")?;
             return Ok(());
         }
 
@@ -139,7 +152,7 @@ impl<'a> fmt::Display for ConstantTimeResultForFunction<'a> {
         writeln!(f)?;
 
         // is the function entirely verified (no CT violations or other errors)?
-        let is_ct = self.path_results.len() == path_stats.num_ct_paths;
+        let is_ct = path_stats.num_ct_violations == 0 && self.path_results.len() == path_stats.num_complete;
 
         // if the function was entirely verified, show coverage stats here directly.
         if is_ct {
@@ -148,24 +161,23 @@ impl<'a> fmt::Display for ConstantTimeResultForFunction<'a> {
         }
 
         if path_stats.num_ct_violations > 0 {
-            match self.first_ct_violation() {
+            match self.ct_violations.get(0) {
                 None => panic!("we counted a ct violation, but now can't find one"),
-                Some(violation_message) => {
+                Some(violation) => {
                     writeln!(f, "{} {}", self.funcname, "is not constant-time".red())?;
                     if let Some(filename) = &self.error_filename {
                         writeln!(f, "All errors and violations have been logged to {}", filename)?;
-                        writeln!(f, "  and the first constant-time violation is described below:\n\n{}", violation_message)?;
+                        writeln!(f, "  and the first constant-time violation is described below:\n\n{}", violation)?;
                     } else {
-                        writeln!(f, "First constant-time violation encountered:\n\n{}", violation_message)?;
+                        writeln!(f, "First constant-time violation encountered:\n\n{}", violation)?;
                     }
                 },
             }
         } else if !is_ct {
-            match self.first_error_or_violation() {
-                None => panic!("we counted a non-ct path, but now can't find one"),
-                Some(ConstantTimeResultForPath::IsConstantTime) => panic!("first_error_or_violation shouldn't return an IsConstantTime"),
-                Some(ConstantTimeResultForPath::NotConstantTime { .. }) => panic!("we counted no ct violations, but now somehow found one"),
-                Some(ConstantTimeResultForPath::OtherError { full_message, .. }) => {
+            match self.first_error() {
+                None => panic!("we counted an error, but now can't find one"),
+                Some(PathResult::PathComplete) => panic!("first_error shouldn't return a PathComplete"),
+                Some(PathResult::Error { full_message, .. }) => {
                     if let Some(filename) = &self.error_filename {
                         writeln!(f, "All errors have been logged to {}", filename)?;
                         writeln!(f, "  and the first error encountered is described below:\n\n{}", full_message)?;
@@ -218,7 +230,7 @@ pub fn check_for_ct_violation_in_inputs<'p>(
     project: &'p Project,
     config: Config<'p, secret::Backend>,
     pitchfork_config: &PitchforkConfig,
-) -> ConstantTimeResultForFunction<'p> {
+) -> FunctionResult<'p> {
     lazy_static! {
         static ref BLANK_STRUCT_DESCRIPTIONS: StructDescriptions = StructDescriptions::new();
     }
@@ -262,7 +274,7 @@ pub fn check_for_ct_violation<'p>(
     sd: &StructDescriptions,
     mut config: Config<'p, secret::Backend>,
     pitchfork_config: &PitchforkConfig,
-) -> ConstantTimeResultForFunction<'p> {
+) -> FunctionResult<'p> {
     // add our uninitialized-function-pointer hook, but don't override the user
     // if they provided a different uninitialized-function-pointer hook
     if !config.function_hooks.is_hooked("hook_uninitialized_function_pointer") {
@@ -285,7 +297,7 @@ pub fn check_for_ct_violation<'p>(
         } else {
             None
         };
-        let error_filename = if pitchfork_config.keep_going && pitchfork_config.dump_errors {
+        let error_filename = if pitchfork_config.dump_errors && pitchfork_config.keep_going != KeepGoing::Stop {
             std::fs::create_dir_all(&dir).unwrap();
             Some(format!("{}/errors_{}.log", dir, time))
         } else {
@@ -335,6 +347,7 @@ pub fn check_for_ct_violation<'p>(
         &func.name
     };
     let mut path_results = Vec::new();
+    let mut ct_violations = Vec::new();
     let mut error_file = error_filename.as_ref().map(|filename| {
         use std::fs::File;
         use std::path::Path;
@@ -345,13 +358,38 @@ pub fn check_for_ct_violation<'p>(
     loop {
         match em.next() {
             Some(Ok(_)) => {
-                info!("Finished a path with no errors or violations");
+                info!("Finished a path with no errors");
                 blocks_seen.update_with_current_path(&em);
-                let path_result = ConstantTimeResultForPath::IsConstantTime;
+                let path_result = PathResult::PathComplete;
                 progress_updater.update_path_result(&path_result);
                 path_results.push(path_result);
+                let mut have_violation = false;
+                while let Some(warning) = em.mut_state().get_and_dismiss_oldest_warning() {
+                    if warning.msg.starts_with("Constant-time violation") {
+                        have_violation = true;
+                        let violation = CTViolation {
+                            msg: warning.msg,
+                            backtrace: warning.backtrace,
+                            llvm_path: warning.llvm_path,
+                            src_path: warning.src_path,
+                        };
+                        progress_updater.update_ct_violation(&violation);
+                        if let Some(ref mut file) = error_file {
+                            use std::io::Write;
+                            write!(file, "==================\n\n{}\n\n", &violation)
+                                .unwrap_or_else(|e| warn!("Failed to write a violation message to file: {}", e));
+                        }
+                        ct_violations.push(violation);
+                    } else {
+                        warn!("warning: {}", warning.msg)
+                    }
+                }
+                if have_violation && pitchfork_config.keep_going == KeepGoing::Stop {
+                    break;
+                }
             },
             Some(Err(error)) => {
+                info!("Encountered an error on this path: {}", error);
                 blocks_seen.update_with_current_path(&em);
                 let mut full_message = em.state().full_error_message_with_context(error.clone());
                 if full_message.contains("debug-level logging messages") {
@@ -364,16 +402,10 @@ pub fn check_for_ct_violation<'p>(
                     write!(file, "==================\n\n{}\n\n", full_message)
                         .unwrap_or_else(|e| warn!("Failed to write an error message to file: {}", e));
                 }
-                let path_result = if full_message.contains("Constant-time violation:") {
-                    info!("Found a constant-time violation on this path");
-                    ConstantTimeResultForPath::NotConstantTime { violation_message: full_message }
-                } else {
-                    info!("Encountered an error (other than a constant-time violation) on this path: {}", error);
-                    ConstantTimeResultForPath::OtherError { error, full_message }
-                };
+                let path_result = PathResult::Error { error, full_message };
                 progress_updater.update_path_result(&path_result);
                 path_results.push(path_result);
-                if !pitchfork_config.keep_going {
+                if pitchfork_config.keep_going == KeepGoing::Stop {
                     break;
                 }
             },
@@ -406,10 +438,11 @@ pub fn check_for_ct_violation<'p>(
 
     progress_updater.finalize();
 
-    ConstantTimeResultForFunction {
+    FunctionResult {
         funcname,
         mangled_funcname,
         path_results,
+        ct_violations,
         block_coverage,
         error_filename,
         coverage_filename,
@@ -426,7 +459,8 @@ fn hook_uninitialized_function_pointer(
 
 trait ProgressUpdater<B: Backend> {
     fn update_progress(&self, state: &State<B>) -> Result<()>;
-    fn update_path_result(&self, path_result: &ConstantTimeResultForPath);
+    fn update_path_result(&self, path_result: &PathResult);
+    fn update_ct_violation(&self, violation: &CTViolation);
     fn process_log_message(&self, record: &log::Record) -> std::result::Result<(), Box<dyn std::error::Error + Sync + Send>>;
     fn finalize(&mut self);
 }
@@ -436,7 +470,8 @@ struct NullProgressUpdater { }
 
 impl<B: Backend> ProgressUpdater<B> for NullProgressUpdater {
     fn update_progress(&self, _state: &State<B>) -> Result<()> { Ok(()) }
-    fn update_path_result(&self, _path_result: &ConstantTimeResultForPath) { }
+    fn update_path_result(&self, _path_result: &PathResult) { }
+    fn update_ct_violation(&self, _violation: &CTViolation) { }
     fn process_log_message(&self, _record: &log::Record) -> std::result::Result<(), Box<dyn std::error::Error + Sync + Send>> { Ok(()) }
     fn finalize(&mut self) { }
 }

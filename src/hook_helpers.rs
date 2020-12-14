@@ -50,7 +50,7 @@ pub fn fill_unconstrained_with_length<B: Backend>(
 
     // write the output length
     let out_len = state.new_bv_with_name(Name::from(format!("{}_length", buffer_name)), out_len_bitwidth)?;
-    out_len.ulte(&state.bv_from_u32(max_buffer_len_bytes, out_len_bitwidth)).assert()?;
+    state.assert(&out_len.ulte(&state.bv_from_u32(max_buffer_len_bytes, out_len_bitwidth)))?;
     state.write(&out_len_ptr, out_len)?;
 
     // write the buffer contents
@@ -104,7 +104,7 @@ pub fn fill_secret_with_length(
 
     // write the output length
     let out_len = state.new_bv_with_name(Name::from(format!("{}_length", buffer_name)), out_len_bitwidth)?;
-    out_len.ulte(&state.bv_from_u32(max_buffer_len_bytes, out_len_bitwidth)).assert()?;
+    state.assert(&out_len.ulte(&state.bv_from_u32(max_buffer_len_bytes, out_len_bitwidth)))?;
     state.write(&out_len_ptr, out_len)?;
 
     // write the buffer contents

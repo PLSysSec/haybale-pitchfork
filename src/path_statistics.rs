@@ -1,16 +1,17 @@
 use colored::*;
-use crate::ConstantTimeResultForPath;
+use crate::{CTViolation, PathResult};
 use haybale::Error;
 use std::fmt;
 
 /// Some statistics which can be computed from a
-/// [`ConstantTimeResultForFunction`](struct.ConstantTimeResultForFunction.html).
+/// [`FunctionResult`](struct.FunctionResult.html).
 #[derive(PartialEq, Eq, Clone, Debug)]
 pub struct PathStatistics {
-    /// How many paths "passed", that is, had no error or constant-time violation
-    pub num_ct_paths: usize,
-    /// How many constant-time violations did we find
+    /// How many constant-time violations were found (across all paths)
     pub num_ct_violations: usize,
+
+    /// How many paths completed analysis without errors
+    pub num_complete: usize,
     /// How many Unsat errors did we find
     pub num_unsats: usize,
     /// How many LoopBoundExceeded errors did we find
@@ -39,8 +40,8 @@ impl PathStatistics {
     /// A fresh `PathStatistics` with all zeroes
     pub(crate) fn new() -> Self {
         Self {
-            num_ct_paths: 0,
             num_ct_violations: 0,
+            num_complete: 0,
             num_unsats: 0,
             num_loop_bound_exceeded: 0,
             num_null_ptr_deref: 0,
@@ -55,40 +56,43 @@ impl PathStatistics {
         }
     }
 
-    pub(crate) fn add_path_result(&mut self, path_result: &ConstantTimeResultForPath) {
+    pub(crate) fn add_path_result(&mut self, path_result: &PathResult) {
         match path_result {
-            ConstantTimeResultForPath::IsConstantTime => self.num_ct_paths += 1,
-            ConstantTimeResultForPath::NotConstantTime { .. } => self.num_ct_violations += 1,
-            ConstantTimeResultForPath::OtherError { error: Error::Unsat, .. } => self.num_unsats += 1,
-            ConstantTimeResultForPath::OtherError { error: Error::LoopBoundExceeded(_), .. } => self.num_loop_bound_exceeded += 1,
-            ConstantTimeResultForPath::OtherError { error: Error::NullPointerDereference, .. } => self.num_null_ptr_deref += 1,
-            ConstantTimeResultForPath::OtherError { error: Error::FunctionNotFound(_), .. } => self.num_function_not_found += 1,
-            ConstantTimeResultForPath::OtherError { error: Error::SolverError(_), .. } => self.num_solver_errors += 1,
-            ConstantTimeResultForPath::OtherError { error: Error::UnsupportedInstruction(_), .. } => self.num_unsupported_instruction += 1,
-            ConstantTimeResultForPath::OtherError { error: Error::MalformedInstruction(_), .. } => self.num_malformed_instruction += 1,
-            ConstantTimeResultForPath::OtherError { error: Error::UnreachableInstruction, .. } => self.num_unreachable_instruction += 1,
-            ConstantTimeResultForPath::OtherError { error: Error::FailedToResolveFunctionPointer(_), .. } => self.num_failed_resolve_fptr += 1,
-            ConstantTimeResultForPath::OtherError { error: Error::HookReturnValueMismatch(_), .. } => self.num_hook_retval_mismatch += 1,
-            ConstantTimeResultForPath::OtherError { error: Error::OtherError(_), .. } => self.num_other_errors += 1,
+            PathResult::PathComplete => self.num_complete += 1,
+            PathResult::Error { error: Error::Unsat, .. } => self.num_unsats += 1,
+            PathResult::Error { error: Error::LoopBoundExceeded(_), .. } => self.num_loop_bound_exceeded += 1,
+            PathResult::Error { error: Error::NullPointerDereference, .. } => self.num_null_ptr_deref += 1,
+            PathResult::Error { error: Error::FunctionNotFound(_), .. } => self.num_function_not_found += 1,
+            PathResult::Error { error: Error::SolverError(_), .. } => self.num_solver_errors += 1,
+            PathResult::Error { error: Error::UnsupportedInstruction(_), .. } => self.num_unsupported_instruction += 1,
+            PathResult::Error { error: Error::MalformedInstruction(_), .. } => self.num_malformed_instruction += 1,
+            PathResult::Error { error: Error::UnreachableInstruction, .. } => self.num_unreachable_instruction += 1,
+            PathResult::Error { error: Error::FailedToResolveFunctionPointer(_), .. } => self.num_failed_resolve_fptr += 1,
+            PathResult::Error { error: Error::HookReturnValueMismatch(_), .. } => self.num_hook_retval_mismatch += 1,
+            PathResult::Error { error: Error::OtherError(_), .. } => self.num_other_errors += 1,
         }
+    }
+
+    pub(crate) fn add_ct_violation(&mut self, _violation: &CTViolation) {
+        self.num_ct_violations += 1;
     }
 }
 
 impl fmt::Display for PathStatistics {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        // We always show "verified paths" and "constant-time violations found"
-        writeln!(f, "verified paths: {}",
-            if self.num_ct_paths > 0 {
-                self.num_ct_paths.to_string().green()
+        // We always show "paths completed" and "constant-time violations found"
+        writeln!(f, "paths completed: {}",
+            if self.num_complete > 0 {
+                self.num_complete.to_string().green()
             } else {
-                self.num_ct_paths.to_string().normal()
+                self.num_complete.to_string().normal()
             }
         )?;
         writeln!(f, "constant-time violations found: {}",
             if self.num_ct_violations > 0 {
                 self.num_ct_violations.to_string().red()
             } else {
-                self.num_ct_violations.to_string().normal()
+                self.num_ct_violations.to_string().green()
             }
         )?;
 

@@ -83,8 +83,8 @@ impl<'p, 's> Context<'p, 's> {
             CompleteAbstractData::PublicValue { bits, value: AbstractValue::Range(min, max) } => {
                 debug!("Parameter is marked public, in the range ({}, {}) inclusive", min, max);
                 let parambv = self.state.new_bv_with_name(param.name.clone(), bits as u32).unwrap();
-                parambv.ugte(&self.state.bv_from_u64(min, bits as u32)).assert()?;
-                parambv.ulte(&self.state.bv_from_u64(max, bits as u32)).assert()?;
+                self.state.assert(&parambv.ugte(&self.state.bv_from_u64(min, bits as u32)))?;
+                self.state.assert(&parambv.ulte(&self.state.bv_from_u64(max, bits as u32)))?;
                 self.state.overwrite_latest_version_of_bv(&param.name, parambv.clone());
                 Ok(parambv)
             }
@@ -105,7 +105,7 @@ impl<'p, 's> Context<'p, 's> {
                         let bv_for_name = bv_for_name.get();
                         let width = bv_for_name.get_width();
                         assert_eq!(width, bits as u32, "AbstractValue::Named {:?}: multiple values with different bitwidths given this name: one with width {} bits, another with width {} bits", name, width, bits);
-                        bv._eq(&bv_for_name).assert()?;
+                        self.state.assert(&bv._eq(&bv_for_name))?;
                     },
                 };
                 self.state.overwrite_latest_version_of_bv(&param.name, bv.clone());
@@ -129,7 +129,7 @@ impl<'p, 's> Context<'p, 's> {
                         let width = bv.get_width();
                         assert_eq!(width, bits as u32, "AbstractValue::SignedLessThan {:?}, which has {} bits, but current value has {} bits", name, width, bits);
                         let new_bv = self.state.new_bv_with_name(Name::from(format!("SignedLessThan{}:", name)), width)?;
-                        new_bv.slt(&bv).assert()?;
+                        self.state.assert(&new_bv.slt(&bv))?;
                         self.state.overwrite_latest_version_of_bv(&param.name, new_bv.clone());
                         Ok(new_bv)
                     }
@@ -142,7 +142,7 @@ impl<'p, 's> Context<'p, 's> {
                         let width = bv.get_width();
                         assert_eq!(width, bits as u32, "AbstractValue::SignedGreaterThan {:?}, which has {} bits, but current value has {} bits", name, width, bits);
                         let new_bv = self.state.new_bv_with_name(Name::from(format!("SignedGreaterThan:{}", name)), width)?;
-                        new_bv.sgt(&bv).assert()?;
+                        self.state.assert(&new_bv.sgt(&bv))?;
                         self.state.overwrite_latest_version_of_bv(&param.name, new_bv.clone());
                         Ok(new_bv)
                     }
@@ -155,7 +155,7 @@ impl<'p, 's> Context<'p, 's> {
                         let width = bv.get_width();
                         assert_eq!(width, bits as u32, "AbstractValue::UnsignedLessThan {:?}, which has {} bits, but current value has {} bits", name, width, bits);
                         let new_bv = self.state.new_bv_with_name(Name::from(format!("UnsignedLessThan:{}", name)), width)?;
-                        new_bv.ult(&bv).assert()?;
+                        self.state.assert(&new_bv.ult(&bv))?;
                         self.state.overwrite_latest_version_of_bv(&param.name, new_bv.clone());
                         Ok(new_bv)
                     }
@@ -168,7 +168,7 @@ impl<'p, 's> Context<'p, 's> {
                         let width = bv.get_width();
                         assert_eq!(width, bits as u32, "AbstractValue::UnsignedGreaterThan {:?}, which has {} bits, but current value has {} bits", name, width, bits);
                         let new_bv = self.state.new_bv_with_name(Name::from(format!("UnsignedGreaterThan:{}", name)), width)?;
-                        new_bv.ugt(&bv).assert()?;
+                        self.state.assert(&new_bv.ugt(&bv))?;
                         self.state.overwrite_latest_version_of_bv(&param.name, new_bv.clone());
                         Ok(new_bv)
                     }
@@ -443,8 +443,8 @@ impl<'a> InitializationContext<'a> {
                     self.size_check_ty(ctx, ty, *bits);
                 }
                 let bv = ctx.state.read(&addr, *bits)?;
-                bv.ugte(&ctx.state.bv_from_u64(*min, *bits)).assert()?;
-                bv.ulte(&ctx.state.bv_from_u64(*max, *bits)).assert()?;
+                ctx.state.assert(&bv.ugte(&ctx.state.bv_from_u64(*min, *bits)))?;
+                ctx.state.assert(&bv.ulte(&ctx.state.bv_from_u64(*max, *bits)))?;
                 Ok(*bits)
             }
             CompleteAbstractData::PublicValue { bits, value: AbstractValue::Unconstrained } => {
@@ -470,7 +470,7 @@ impl<'a> InitializationContext<'a> {
                         let bv_for_name = bv_for_name.get();
                         let width = bv_for_name.get_width();
                         assert_eq!(width, *bits, "AbstractValue::Named {:?}: multiple values with different bitwidths given this name: one with width {} bits, another with width {} bits", name, width, *bits);
-                        bv._eq(&bv_for_name).assert()?;
+                        ctx.state.assert(&bv._eq(&bv_for_name))?;
                     },
                 };
                 Ok(*bits)
@@ -511,7 +511,7 @@ impl<'a> InitializationContext<'a> {
                             self.size_check_ty(ctx, ty, *bits);
                         }
                         let new_bv = ctx.state.new_bv_with_name(Name::from(format!("SignedLessThan:{}", name)), width)?;
-                        new_bv.slt(&bv).assert()?;
+                        ctx.state.assert(&new_bv.slt(&bv))?;
                         ctx.state.write(&addr, new_bv)?;
                         Ok(*bits)
                     }
@@ -533,7 +533,7 @@ impl<'a> InitializationContext<'a> {
                             self.size_check_ty(ctx, ty, *bits);
                         }
                         let new_bv = ctx.state.new_bv_with_name(Name::from(format!("SignedGreaterThan:{}", name)), width)?;
-                        new_bv.sgt(&bv).assert()?;
+                        ctx.state.assert(&new_bv.sgt(&bv))?;
                         ctx.state.write(&addr, new_bv)?;
                         Ok(*bits)
                     }
@@ -555,7 +555,7 @@ impl<'a> InitializationContext<'a> {
                             self.size_check_ty(ctx, ty, *bits);
                         }
                         let new_bv = ctx.state.new_bv_with_name(Name::from(format!("UnsignedLessThan:{}", name)), width)?;
-                        new_bv.ult(&bv).assert()?;
+                        ctx.state.assert(&new_bv.ult(&bv))?;
                         ctx.state.write(&addr, new_bv)?;
                         Ok(*bits)
                     }
@@ -577,7 +577,7 @@ impl<'a> InitializationContext<'a> {
                             self.size_check_ty(ctx, ty, *bits);
                         }
                         let new_bv = ctx.state.new_bv_with_name(Name::from(format!("UnsignedGreaterThan:{}", name)), width)?;
-                        new_bv.ugt(&bv).assert()?;
+                        ctx.state.assert(&new_bv.ugt(&bv))?;
                         ctx.state.write(&addr, new_bv)?;
                         Ok(*bits)
                     }

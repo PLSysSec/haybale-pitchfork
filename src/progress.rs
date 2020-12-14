@@ -1,8 +1,9 @@
 #![cfg(feature = "progress-updates")]
 
-use crate::{ConstantTimeResultForPath, PathStatistics};
+use crate::{CTViolation, PathResult, PathStatistics};
 use colored::*;
 use crossterm::{QueueableCommand, cursor, terminal};
+use either::Either;
 use haybale::{Config, Result, State};
 use haybale::backend::Backend;
 use std::convert::TryInto;
@@ -98,7 +99,12 @@ enum ProgressMsg {
     /// requires a read-only reference to the path result, but for now we have an
     /// owned one here. Note that it should be fairly quick to `clone()` on the
     /// main thread, and this message is infrequent compared to the other messages.
-    PathCompleted(ConstantTimeResultForPath),
+    PathCompleted(PathResult),
+    /// we observed a CTViolation. The progress-display-updater thread really only
+    /// requires a read-only reference to the violation, but for now we have an
+    /// owned one here. Note that it should be fairly quick to `clone()` on the
+    /// main thread, and this message is infrequent compared to the other messages.
+    CTViolation(CTViolation),
 }
 
 impl ProgressDisplayState {
@@ -217,7 +223,8 @@ impl ProgressDisplayState {
                     },
                 }
             },
-            ProgressMsg::PathCompleted(ctresult) => self.process_path_result(&ctresult),
+            ProgressMsg::PathCompleted(path_result) => self.process_path_result_or_ctviolation(&Either::Left(path_result)),
+            ProgressMsg::CTViolation(ctviolation) => self.process_path_result_or_ctviolation(&Either::Right(ctviolation)),
         }
     }
 
@@ -389,7 +396,7 @@ impl ProgressDisplayState {
         stdout.queue(cursor::MoveToNextLine(1 + self.rows_of_log + 2 + self.rows_of_loc + 2)).unwrap();
     }
 
-    fn process_path_result(&mut self, path_result: &ConstantTimeResultForPath) {
+    fn process_path_result_or_ctviolation(&mut self, result: &Either<PathResult, CTViolation>) {
         let mut stdout = stdout();
         let mut q = stdout
             .queue(cursor::MoveToPreviousLine(2 + self.rows_of_loc + 2 + self.rows_of_log + 5)).unwrap();
@@ -398,7 +405,14 @@ impl ProgressDisplayState {
                 .queue(cursor::MoveToPreviousLine(1)).unwrap()
                 .queue(terminal::Clear(terminal::ClearType::CurrentLine)).unwrap();
         }
-        self.path_stats.add_path_result(path_result);
+        match result {
+            Either::Left(path_result) => {
+                self.path_stats.add_path_result(path_result);
+            }
+            Either::Right(ctviolation) => {
+                self.path_stats.add_ct_violation(ctviolation);
+            }
+        }
         let (_, stats_start_row) = cursor::position().unwrap();
         print!("{}", self.path_stats);  // the `Display` impl here includes the final newline
         let stats_end_row = {
@@ -525,8 +539,12 @@ impl<B: Backend> crate::ProgressUpdater<B> for MainThreadState {
         Ok(())
     }
 
-    fn update_path_result(&self, path_result: &ConstantTimeResultForPath) {
+    fn update_path_result(&self, path_result: &PathResult) {
         self.tx.send(ProgressMsg::PathCompleted(path_result.clone())).unwrap();
+    }
+
+    fn update_ct_violation(&self, ct_violation: &CTViolation) {
+        self.tx.send(ProgressMsg::CTViolation(ct_violation.clone())).unwrap();
     }
 
     fn process_log_message(&self, record: &log::Record) -> std::result::Result<(), Box<dyn std::error::Error + Sync + Send>> {
@@ -584,10 +602,16 @@ impl<B: Backend> crate::ProgressUpdater<B> for ProgressUpdater {
         <MainThreadState as crate::ProgressUpdater::<B>>::update_progress(mts, state)
     }
 
-    fn update_path_result(&self, path_result: &ConstantTimeResultForPath) {
+    fn update_path_result(&self, path_result: &PathResult) {
         let guard = self.borrow();
         let mts: &MainThreadState = guard.as_ref().unwrap();
         <MainThreadState as crate::ProgressUpdater::<B>>::update_path_result(mts, path_result)
+    }
+
+    fn update_ct_violation(&self, ct_violation: &CTViolation) {
+        let guard = self.borrow();
+        let mts: &MainThreadState = guard.as_ref().unwrap();
+        <MainThreadState as crate::ProgressUpdater::<B>>::update_ct_violation(mts, ct_violation)
     }
 
     fn process_log_message(&self, record: &log::Record) -> std::result::Result<(), Box<dyn std::error::Error + Sync + Send>> {

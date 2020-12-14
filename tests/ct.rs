@@ -14,37 +14,37 @@ fn get_project() -> Project {
 
 fn pitchfork_config() -> PitchforkConfig {
     let mut pconfig = PitchforkConfig::default();
-    pconfig.keep_going = true;
+    pconfig.keep_going = KeepGoing::StopPerPath;
     pconfig.dump_errors = false;
     pconfig.progress_updates = false;
     pconfig
 }
 
-fn assert_no_ct_violation(res: ConstantTimeResultForFunction) {
-    match res.first_error_or_violation() {
+fn assert_no_ct_violation(res: FunctionResult) {
+    if let Some(error) = res.first_error() {
+        match error {
+            PathResult::PathComplete => panic!("first_error should return an error, not a PathComplete"),
+            PathResult::Error { full_message, .. } => panic!("Encountered an unexpected error:\n  {}", full_message),
+        }
+    }
+    match res.ct_violations.get(0) {
         None => {},  // pass
-        Some(ConstantTimeResultForPath::IsConstantTime) => panic!("first_error_or_violation should return an error or violation"),
-        Some(ConstantTimeResultForPath::NotConstantTime { violation_message }) =>
-            panic!("Expected no ct violation, but found one:\n  {}", violation_message),
-        Some(ConstantTimeResultForPath::OtherError { full_message, .. }) =>
-            panic!("Encountered an unexpected error:\n  {}", full_message),
+        Some(CTViolation { msg, .. }) =>
+            panic!("Expected no ct violation, but found one:\n  {}", msg),
     }
 }
 
-fn assert_is_ct_violation(res: ConstantTimeResultForFunction) {
-    // we check for other-errors first, and fail if any are encountered,
+fn assert_is_ct_violation(res: FunctionResult) {
+    // we check for errors first, and fail if any are encountered,
     // even if there was also a ct violation reported
-    for path_result in &res.path_results {
-        match path_result {
-            ConstantTimeResultForPath::IsConstantTime => {},
-            ConstantTimeResultForPath::NotConstantTime { .. } => {},
-            ConstantTimeResultForPath::OtherError { full_message, .. } => {
-                panic!("Encountered an unexpected error: {}", full_message);
-            }
+    if let Some(error) = res.first_error() {
+        match error {
+            PathResult::PathComplete => panic!("first_error should return an error, not a PathComplete"),
+            PathResult::Error { full_message, .. } => panic!("Encountered an unexpected error:\n  {}", full_message),
         }
     }
-    // If we get here, there are no `OtherError`s, so just check for the ct violation we're interested in
-    let _ = res.first_ct_violation().expect("Expected a ct violation but didn't get one");
+    // If we get here, there are no errors, so just check for the ct violation we're interested in
+    let _ = res.ct_violations.get(0).expect("Expected a ct violation but didn't get one");
 }
 
 #[test]
@@ -113,7 +113,7 @@ fn notct_falsepath() {
 fn two_ct_violations() {
     init_logging();
     let project = get_project();
-    // should report two violations and one path without a violation
+    // should report a total of two violations on a total of three paths
     let result = check_for_ct_violation(
         "two_ct_violations",
         &project,
@@ -123,19 +123,19 @@ fn two_ct_violations() {
         &pitchfork_config(),
     );
     let path_stats = result.path_statistics();
-    assert_eq!(path_stats.num_ct_paths, 1, "Expected exactly one 'passing' path, but found {}", path_stats.num_ct_paths);
+    assert_eq!(path_stats.num_complete, 3, "Expected exactly three completed paths, but found {}", path_stats.num_complete);
     assert_eq!(path_stats.num_ct_violations, 2, "Expected exactly two ct violations, but found {}", path_stats.num_ct_violations);
     assert_eq!(result.path_results.len(), 3, "Encountered an unexpected error: {}",
-        result.path_results.iter().find_map(|res| match res {
-            ConstantTimeResultForPath::IsConstantTime => None,
-            ConstantTimeResultForPath::NotConstantTime { .. } => None,
-            ConstantTimeResultForPath::OtherError { full_message, .. } => Some(full_message),
-        }).expect("Expected to find a non-ct-violation error here, but didn't")
+        match result.first_error() {
+            None => panic!("Expected to find an error here, but didn't"),
+            Some(PathResult::PathComplete) => panic!("first_error should return an error, not a PathComplete"),
+            Some(PathResult::Error { full_message, .. }) => full_message,
+        }
     );
 
-    // with keep_going = false, we should get only one violation
+    // with KeepGoing::Stop, we should get only one violation
     let mut pitchfork_config = pitchfork_config();
-    pitchfork_config.keep_going = false;
+    pitchfork_config.keep_going = KeepGoing::Stop;
     let result = check_for_ct_violation(
         "two_ct_violations",
         &project,
@@ -148,9 +148,8 @@ fn two_ct_violations() {
     assert_eq!(path_stats.num_ct_violations, 1, "Expected exactly one ct violation, but found {}", path_stats.num_ct_violations);
     for res in &result.path_results {
          match res {
-            ConstantTimeResultForPath::IsConstantTime => {},
-            ConstantTimeResultForPath::NotConstantTime { .. } => {},
-            ConstantTimeResultForPath::OtherError { full_message, .. } => {
+            PathResult::PathComplete => {},
+            PathResult::Error { full_message, .. } => {
                 panic!("Encountered an unexpected error: {}", full_message);
             },
          }

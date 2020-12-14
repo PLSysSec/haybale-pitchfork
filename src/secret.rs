@@ -8,7 +8,7 @@
 //! `haybale::{cell_memory,simple_memory}::Memory`, or `boolector::BV`.
 
 use boolector::{Btor, BVSolution};
-use haybale::{Error, Result};
+use haybale::{BackendResult, Error, Result};
 use log::warn;
 use std::ops::Deref;
 use std::rc::Rc;
@@ -313,15 +313,17 @@ impl haybale::backend::BV for BV {
             _ => self.get_width() == other.get_width(),
         }
     }
-    fn assert(&self) -> Result<()> {
+    fn assert(&self) -> BackendResult<()> {
         match self {
             BV::Public(bv) => {
                 bv.assert();
-                Ok(())
+                Ok(()).into()
             },
             BV::Secret { .. } | BV::PartiallySecret { .. } => {
                 // `Secret` values influencing a path constraint means they influenced a control flow decision
-                Err(Error::OtherError("Constant-time violation: control-flow may be influenced by secret data".to_owned()))
+                let warn_msg = "Constant-time violation: control-flow may be influenced by secret data";
+                // we don't add a constraint here. that effectively assumes that the branch could go either way
+                BackendResult::with_warn(Ok(()), warn_msg.into())
             },
         }
     }
@@ -582,6 +584,36 @@ impl haybale::backend::BV for BV {
     }
 }
 
+/// If the expr is a `Result::Err`, throw it as a `BackendResult::Err` with no warnings.
+/// Otherwise, this evaluates to the `Ok` value.
+/// This is like `?`, but for expressions of type `Result` in functions returning `BackendResult`.
+macro_rules! throw_basic_errs {
+    ($expr:expr) => {
+        match $expr {
+            Ok(t) => t,
+            Err(err) => return Err(err).into(),
+        }
+    }
+}
+
+/// If the expr is a `BackendResult::Err`, throw it.
+/// Otherwise, this evaluates to the `Ok` value (panicking if there were any warnings).
+/// This is like `?`, but for expressions of type `BackendResult` in functions returning `BackendResult`.
+macro_rules! throw_errs {
+    ($expr:expr) => {
+        {
+            let backendresult = $expr; // if `expr` involves a function call or something, evaluate it just once
+            match backendresult.res {
+                Ok(_) => backendresult.unwrap_warn().unwrap(),
+                Err(err) => return BackendResult {
+                    res: Err(err),
+                    warnings: backendresult.warnings,
+                },
+            }
+        }
+    }
+}
+
 /// A `Memory` which tracks which of its contents are public or secret, and
 /// reports constant-time violations whenever secret data is used as an address
 /// for operations on it.
@@ -607,6 +639,25 @@ pub struct Memory {
 // A more general performance comparison across a wide variety of typical
 // workloads is probably called for.
 
+// for internal use
+impl Memory {
+    fn read_mem(&self, index: &boolector::BV<Rc<Btor>>, bits: u32) -> BackendResult<boolector::BV<Rc<Btor>>> {
+        haybale::backend::Memory::read(&self.mem, index, bits)
+    }
+
+    fn write_mem(&mut self, index: &boolector::BV<Rc<Btor>>, value: boolector::BV<Rc<Btor>>) -> BackendResult<()> {
+        haybale::backend::Memory::write(&mut self.mem, index, value)
+    }
+
+    fn read_shadow_mem(&self, index: &boolector::BV<Rc<Btor>>, bits: u32) -> BackendResult<boolector::BV<Rc<Btor>>> {
+        haybale::backend::Memory::read(&self.shadow_mem, index, bits)
+    }
+
+    fn write_shadow_mem(&mut self, index: &boolector::BV<Rc<Btor>>, value: boolector::BV<Rc<Btor>>) -> BackendResult<()> {
+        haybale::backend::Memory::write(&mut self.shadow_mem, index, value)
+    }
+}
+
 impl haybale::backend::Memory for Memory {
     type SolverRef = BtorRef;
     type Index = BV;
@@ -628,11 +679,11 @@ impl haybale::backend::Memory for Memory {
             btor,  // out of order so it can be used above but moved in here
         }
     }
-    fn read(&self, index: &Self::Index, bits: u32) -> Result<Self::Value> {
+    fn read(&self, index: &Self::Index, bits: u32) -> BackendResult<Self::Value> {
         match index {
             BV::Public(index) => {
                 use haybale::solver_utils::{bvs_must_be_equal, bvs_can_be_equal, max_possible_solution_for_bv_as_binary_str};
-                let shadow_cell = haybale::backend::Memory::read(&self.shadow_mem, index, bits)?;
+                let shadow_cell = throw_errs!(self.read_shadow_mem(index, bits));
                 // In Boolector, (at least when this comment was originally written) reads
                 // on a constant array that return the default value are nonetheless not
                 // constant (they are merely constrained to be equal to the default value).
@@ -645,17 +696,17 @@ impl haybale::backend::Memory for Memory {
                 let rc: Rc<Btor> = self.btor.clone().into();
                 let all_zeroes = boolector::BV::zero(rc.clone(), shadow_cell.get_width());
                 let all_ones = boolector::BV::ones(rc.clone(), shadow_cell.get_width());
-                if bvs_must_be_equal(&rc, &shadow_cell, &all_zeroes)? {
+                if throw_errs!(bvs_must_be_equal(&rc, &shadow_cell, &all_zeroes)) {
                     // the bits are all public
-                    haybale::backend::Memory::read(&self.mem, index, bits).map(BV::Public)
-                } else if bvs_can_be_equal(&rc, &shadow_cell, &all_ones)? {
+                    Ok(BV::Public(throw_errs!(self.read_mem(index, bits)))).into()
+                } else if throw_errs!(bvs_can_be_equal(&rc, &shadow_cell, &all_ones)) {
                     // the bits all _can_ be secret. And any bit that _can_ be
                     // secret, we mark as secret (following the worst case).
                     // (Non-constant secrecy bits means that the bits could be
                     // secret or not, depending on the values of other variables.
                     // This can happen, e.g., when reading from a symbolic address
                     // that could point to either secret or public data.)
-                    Ok(BV::Secret { btor: self.btor.clone(), width: bits, symbol: None })
+                    Ok(BV::Secret { btor: self.btor.clone(), width: bits, symbol: None }).into()
                 } else {
                     // Some of the bits are secret, others are public.
                     // We get a mask of which can be secret by finding the
@@ -665,21 +716,27 @@ impl haybale::backend::Memory for Memory {
                     // that is, that there is not a situation where a bit could
                     // be secret, but only if some other bit isn't.)
                     // Any bits that have 0s in that mask must be public.
-                    let secret_mask_as_str = max_possible_solution_for_bv_as_binary_str(rc, &shadow_cell)?.ok_or(Error::Unsat)?;
+                    let secret_mask_as_str = {
+                        let max_sol = throw_basic_errs!(max_possible_solution_for_bv_as_binary_str(rc, &shadow_cell));
+                        throw_basic_errs!(max_sol.ok_or(Error::Unsat))
+                    };
                     let secret_mask = secret_mask_as_str.chars().rev().map(|c| c == '1').collect();
                     Ok(BV::PartiallySecret {
                         secret_mask,
-                        data: haybale::backend::Memory::read(&self.mem, index, bits)?,
+                        data: throw_errs!(self.read_mem(index, bits)),
                         symbol: None,
-                    })
+                    }).into()
                 }
             },
             BV::Secret { .. } | BV::PartiallySecret { .. } => {
-                Err(Error::OtherError("Constant-time violation: memory read on an address which can be influenced by secret data".to_owned()))
+                let warn_msg = "Constant-time violation: memory read on an address which can be influenced by secret data";
+                // assume that read of a secret address may produce secret data
+                let result_bv = BV::Secret { btor: self.btor.clone(), width: bits, symbol: None };
+                BackendResult::with_warn(Ok(result_bv), warn_msg.into())
             }
         }
     }
-    fn write(&mut self, index: &Self::Index, value: Self::Value) -> Result<()> {
+    fn write(&mut self, index: &Self::Index, value: Self::Value) -> BackendResult<()> {
         match index {
             BV::Public(index) => {
                 if !index.is_const() {
@@ -688,27 +745,28 @@ impl haybale::backend::Memory for Memory {
                 match value {
                     BV::Public(value) => {
                         let all_zeroes = boolector::BV::zero(self.btor.clone().into(), value.get_width());
-                        haybale::backend::Memory::write(&mut self.shadow_mem, index, all_zeroes)?; // we are writing a public value to these bits
-                        haybale::backend::Memory::write(&mut self.mem, index, value)?;
-                        Ok(())
+                        throw_errs!(self.write_shadow_mem(index, all_zeroes)); // we are writing a public value to these bits
+                        throw_errs!(self.write_mem(index, value));
                     },
                     BV::Secret { btor, width, .. } => {
                         let all_ones = boolector::BV::ones(btor.clone().into(), width);
-                        haybale::backend::Memory::write(&mut self.shadow_mem, index, all_ones)?; // we are writing a secret value to these bits
+                        throw_errs!(self.write_shadow_mem(index, all_ones)); // we are writing a secret value to these bits
                         // we don't write anything to self.mem, because the value of its secret bits doesn't matter
-                        Ok(())
                     },
                     BV::PartiallySecret { secret_mask, data, .. } => {
                         let shadow_mem_string: String = secret_mask.iter().map(|b| if *b { "1" } else { "0" }).rev().collect();
                         let shadow_mem_bv = boolector::BV::from_binary_str(self.btor.clone().into(), &shadow_mem_string);
-                        haybale::backend::Memory::write(&mut self.shadow_mem, index, shadow_mem_bv)?;
-                        haybale::backend::Memory::write(&mut self.mem, index, data)?;
-                        Ok(())
+                        throw_errs!(self.write_shadow_mem(index, shadow_mem_bv));
+                        throw_errs!(self.write_mem(index, data));
                     },
-                }
+                };
+                Ok(()).into()
             },
             BV::Secret { .. } | BV::PartiallySecret { .. } => {
-                Err(Error::OtherError("Constant-time violation: memory write on an address which can be influenced by secret data".to_owned()))
+                let warn_msg = "Constant-time violation: memory write on an address which can be influenced by secret data";
+                // for now we just consider writing a secret address a no-op and go from there.
+                // this could miss stuff, of course.
+                BackendResult::with_warn(Ok(()), warn_msg.into())
             },
         }
     }
@@ -841,6 +899,14 @@ mod tests {
         assert!(secret_high.sext(16).slice(79, 64).is_secret());
     }
 
+    /// `doing_what`: just used for the error message
+    fn assert_no_violation<T>(backendresult: BackendResult<T>, doing_what: &str) -> Result<T> {
+        if backendresult.has_warnings() {
+            panic!("assert_no_violation: {} shouldn't be a violation; got {:?}", doing_what, backendresult.warnings[0]);
+        }
+        backendresult.res
+    }
+
     #[test]
     fn read_and_write() {
         let btor = BtorRef::new();
@@ -853,39 +919,39 @@ mod tests {
         let mixed = super::BV::from_u32(btor.clone(), 321, 64).concat(&secret_32bits);
 
         // uninitialized values are public
-        let data = mem.read(&addr, 64).expect("Reading memory at a constant address shouldn't be a violation");
+        let data = assert_no_violation(mem.read(&addr, 64), "Reading memory at a constant address").unwrap();
         assert!(!data.is_secret());
 
         // initialized values are public
-        let data = initialized_mem.read(&addr, 64).expect("Reading memory at a constant address shouldn't be a violation");
+        let data = assert_no_violation(initialized_mem.read(&addr, 64), "Reading memory at a constant address").unwrap();
         assert!(!data.is_secret());
 
         // read at secret or mixed address is a violation
-        assert!(mem.read(&secret, 64).is_err());
-        assert!(mem.read(&mixed, 64).is_err());
+        assert!(mem.read(&secret, 64).has_warnings(), "Expected a violation");
+        assert!(mem.read(&mixed, 64).has_warnings(), "Expected a violation");
 
         // write a public value, get a public value back
         let value = super::BV::from_u32(btor.clone(), 577, 64);
-        mem.write(&addr, value.clone()).expect("Writing memory at a constant address shouldn't be a violation");
-        let data = mem.read(&addr, 64).expect("Reading memory at a constant address shouldn't be a violation");
+        assert_no_violation(mem.write(&addr, value.clone()), "Writing memory at a constant address").unwrap();
+        let data = assert_no_violation(mem.read(&addr, 64), "Reading memory at a constant address").unwrap();
         assert!(!data.is_secret());
-        assert!(bvs_must_be_equal(&btor, &value, &data).unwrap());
+        assert!(bvs_must_be_equal(&btor, &value, &data).unwrap_warn().unwrap());
 
         // write a secret value, get a secret value back
-        mem.write(&addr, secret.clone()).expect("Writing memory at a constant address shouldn't be a violation");
-        let data = mem.read(&addr, 64).expect("Reading memory at a constant address shouldn't be a violation");
+        assert_no_violation(mem.write(&addr, secret.clone()), "Writing memory at a constant address").unwrap();
+        let data = assert_no_violation(mem.read(&addr, 64), "Reading memory at a constant address").unwrap();
         assert!(data.is_secret());
 
         // write a mixed value, get a mixed value back
-        mem.write(&addr, mixed.clone()).expect("Writing memory at a constant address shouldn't be a violation");
-        let data = mem.read(&addr, 64).expect("Reading memory at a constant address shouldn't be a violation");
+        assert_no_violation(mem.write(&addr, mixed.clone()), "Writing memory at a constant address").unwrap();
+        let data = assert_no_violation(mem.read(&addr, 64), "Reading memory at a constant address").unwrap();
         assert!(!data.slice(63, 32).is_secret());
         assert!(data.slice(31, 0).is_secret());
 
         // overwrite a large public value with a few secret bits, get the appropriate mixed value back
-        mem.write(&addr, value.clone()).expect("Writing memory at a constant address shouldn't be a violation");
-        mem.write(&addr_plus_two, secret_32bits.clone()).expect("Writing memory at a constant address shouldn't be a violation");
-        let data = mem.read(&addr, 64).expect("Reading memory at a constant address shouldn't be a violation");
+        assert_no_violation(mem.write(&addr, value.clone()), "Writing memory at a constant address").unwrap();
+        assert_no_violation(mem.write(&addr_plus_two, secret_32bits.clone()), "Writing memory at a constant address").unwrap();
+        let data = assert_no_violation(mem.read(&addr, 64), "Reading memory at a constant address").unwrap();
         assert!(data.is_secret());
         assert!(data.slice(30, 30).is_secret());
         assert!(data.slice(40, 40).is_secret());
@@ -893,10 +959,10 @@ mod tests {
         assert!(!data.slice(2, 2).is_secret());
 
         // overwrite a large secret value with a few public bits, get the appropriate mixed value back
-        mem.write(&addr, secret.clone()).expect("Writing memory at a constant address shouldn't be a violation");
+        assert_no_violation(mem.write(&addr, secret.clone()), "Writing memory at a constant address").unwrap();
         let public_32bits = super::BV::from_u32(btor.clone(), 4678, 32);
-        mem.write(&addr_plus_two, public_32bits.clone()).expect("Writing memory at a constant address shouldn't be a violation");
-        let data = mem.read(&addr, 64).expect("Reading memory at a constant address shouldn't be a violation");
+        assert_no_violation(mem.write(&addr_plus_two, public_32bits.clone()), "Writing memory at a constant address").unwrap();
+        let data = assert_no_violation(mem.read(&addr, 64), "Reading memory at a constant address").unwrap();
         assert!(data.is_secret());
         assert!(!data.slice(30, 30).is_secret());
         assert!(!data.slice(40, 40).is_secret());
@@ -905,7 +971,7 @@ mod tests {
 
         // read at a fully symbolic addr, should result in a secret as there are some secret bits in the mem right now
         let symbolic = super::BV::new(btor.clone(), 64, Some("symbolic"));
-        let data = mem.read(&symbolic, 8).expect("Reading memory at a public address shouldn't be a violation");
+        let data = assert_no_violation(mem.read(&symbolic, 8), "Reading memory at a public address").unwrap();
         assert!(data.is_secret());
 
         // write a small secret to some address in a range; reading an element of that range gives secret
@@ -913,11 +979,11 @@ mod tests {
         let range_top = range_bottom.add(&super::BV::from_u64(btor.clone(), 0x1000, 64));
         let secret_8bits = super::BV::Secret { btor: btor.clone(), width: 8, symbol: Some("secret_8bits".into()) };
         let symbolic = super::BV::new(btor.clone(), 64, Some("symbolic_range"));
-        symbolic.ugte(&range_bottom).assert().unwrap();
-        symbolic.ult(&range_top).assert().unwrap();
-        mem.write(&symbolic, secret_8bits.clone()).expect("Writing memory at a public address shouldn't be a violation");
+        symbolic.ugte(&range_bottom).assert().unwrap_warn().unwrap();
+        symbolic.ult(&range_top).assert().unwrap_warn().unwrap();
+        assert_no_violation(mem.write(&symbolic, secret_8bits.clone()), "Writing memory at a public address").unwrap();
         let somewhere_in_middle_of_range = range_bottom.add(&super::BV::from_u64(btor.clone(), 100, 64));
-        let data = mem.read(&somewhere_in_middle_of_range, 8).expect("Reading memory at a public address shouldn't be a violation");
+        let data = assert_no_violation(mem.read(&somewhere_in_middle_of_range, 8), "Reading memory at a public address").unwrap();
         assert!(data.is_secret());
     }
 }
