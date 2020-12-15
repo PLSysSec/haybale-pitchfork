@@ -103,6 +103,9 @@ pub enum KeepGoing {
     ///
     /// It is recommended to only use this in conjunction with solver query
     /// timeouts; see the `solver_query_timeout` setting in `Config`.
+    ///
+    /// This functionality is _currently not working_: this option currently
+    /// behaves the same as `Full`.
     StopPerPath,
     /// Like `StopPerPath`, but also don't stop at constant-time violations.
     /// (We still have to stop at errors.)
