@@ -26,6 +26,12 @@ pub struct PitchforkConfig {
     /// Default is `true`.
     pub dump_errors: bool,
 
+    /// If `true`, `pitchfork` will dump detailed coverage stats for the analysis
+    /// to a file.
+    ///
+    /// Default is `true`.
+    pub dump_coverage_stats: bool,
+
     /// If `true`, `pitchfork` will provide detailed progress updates in a
     /// continuously-updated terminal display. This includes counts of paths
     /// verified / errors encountered / warnings generated; the current code
@@ -75,6 +81,7 @@ impl Default for PitchforkConfig {
         Self {
             keep_going: KeepGoing::Stop,
             dump_errors: true,
+            dump_coverage_stats: true,
             progress_updates: true,
             debug_logging: false,
         }
