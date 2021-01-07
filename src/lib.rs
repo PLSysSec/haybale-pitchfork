@@ -57,7 +57,11 @@ pub enum PathResult {
 pub struct CTViolation {
     /// Short message describing the violation
     pub msg: String,
-    /// Backtrace where the violation occurred
+    /// LLVM location where the violation occurred
+    pub llvm_loc: String,
+    /// Source location where the violation occurred, if available
+    pub src_loc: Option<String>,
+    /// Backtrace where the violation occurred (includes LLVM and/or source locations interleaved)
     pub backtrace: String,
     /// LLVM path to violation
     pub llvm_path: String,
@@ -68,6 +72,10 @@ pub struct CTViolation {
 impl<'p> fmt::Display for CTViolation {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}\n\n", &self.msg)?;
+        write!(f, "LLVM location:\n{}\n\n", &self.llvm_loc)?;
+        if let Some(src_loc) = &self.src_loc {
+            write!(f, "Source-language location:\n{}\n\n", src_loc)?;
+        }
         write!(f, "Backtrace:\n{}\n", &self.backtrace)?;
         write!(f, "LLVM path to violation:\n{}\n", &self.llvm_path)?;
         write!(f, "Source-language path to violation:\n{}", &self.src_path)?;
@@ -369,6 +377,8 @@ pub fn check_for_ct_violation<'p>(
                         have_violation = true;
                         let violation = CTViolation {
                             msg: warning.msg,
+                            llvm_loc: warning.loc.to_string_short_module(),
+                            src_loc: warning.loc.source_loc.map(|loc| format!("{}", loc)),
                             backtrace: warning.backtrace,
                             llvm_path: warning.llvm_path,
                             src_path: warning.src_path,
