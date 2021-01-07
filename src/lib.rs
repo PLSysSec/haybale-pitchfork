@@ -70,7 +70,7 @@ impl<'p> fmt::Display for CTViolation {
         write!(f, "{}\n\n", &self.msg)?;
         write!(f, "Backtrace:\n{}\n", &self.backtrace)?;
         write!(f, "LLVM path to violation:\n{}\n", &self.llvm_path)?;
-        write!(f, "Source-language path to violation:\n{}\n", &self.src_path)?;
+        write!(f, "Source-language path to violation:\n{}", &self.src_path)?;
         Ok(())
     }
 }
