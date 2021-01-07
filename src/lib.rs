@@ -32,6 +32,7 @@ use haybale::{symex_function, backend::Backend, ExecutionManager, State, ReturnV
 use haybale::{Error, Result};
 pub use haybale::{Config, Project};
 use haybale::function_hooks::IsCall;
+use itertools::Itertools;
 use lazy_static::lazy_static;
 use log::{debug, info, warn};
 use std::collections::{HashMap, HashSet};
@@ -160,7 +161,8 @@ impl<'a> fmt::Display for FunctionResult<'a> {
         writeln!(f)?;
 
         // is the function entirely verified (no CT violations or other errors)?
-        let is_ct = path_stats.num_ct_violations == 0 && self.path_results.len() == path_stats.num_complete;
+        let num_errors = self.path_results.len() - path_stats.num_complete;
+        let is_ct = path_stats.num_ct_violations == 0 && num_errors == 0;
 
         // if the function was entirely verified, show coverage stats here directly.
         if is_ct {
@@ -173,24 +175,56 @@ impl<'a> fmt::Display for FunctionResult<'a> {
                 None => panic!("we counted a ct violation, but now can't find one"),
                 Some(violation) => {
                     writeln!(f, "{} {}", self.funcname, "is not constant-time".red())?;
-                    if let Some(filename) = &self.error_filename {
-                        writeln!(f, "All errors and violations have been logged to {}", filename)?;
-                        writeln!(f, "  and the first constant-time violation is described below:\n\n{}", violation)?;
+                    if path_stats.num_ct_violations == 1 {
+                        writeln!(f, "{}", violation)?;
                     } else {
-                        writeln!(f, "First constant-time violation encountered:\n\n{}", violation)?;
+                        // source_locs holds the source locations where we observed violations
+                        let mut source_locs = self.ct_violations
+                            .iter()
+                            .filter_map(|violation| violation.src_loc.as_ref())
+                            .peekable();
+                        // llvm_locs holds the llvm locations of violations _for which we don't have a source mapping_
+                        let mut llvm_locs = self.ct_violations
+                            .iter()
+                            .filter(|violation| violation.src_loc.is_none())
+                            .map(|violation| &violation.llvm_loc)
+                            .peekable();
+                        if source_locs.peek().is_some() {
+                            // we have at least one source location
+                            writeln!(f, "Constant-time violations were found at the following (unique) source locations:")?;
+                            source_locs
+                                .unique()
+                                .map(|loc| writeln!(f, "  {}", loc))
+                                .collect::<std::fmt::Result>()?;
+                            if llvm_locs.peek().is_some() {
+                                writeln!(f, "and the following (unique) LLVM locations which don't map to a source location:")?;
+                                llvm_locs
+                                    .unique()
+                                    .map(|loc| writeln!(f, "  {}", loc))
+                                    .collect::<std::fmt::Result>()?;
+                            }
+                        } else {
+                            writeln!(f, "Constant-time violations were found at the following (unique) LLVM locations:")?;
+                            llvm_locs
+                                .unique()
+                                .map(|loc| writeln!(f, "{}", loc))
+                                .collect::<std::fmt::Result>()?;
+                        }
+                    }
+                    if let Some(filename) = &self.error_filename {
+                        writeln!(f, "\nFull details of all errors and violations have been logged to {}", filename)?;
                     }
                 },
             }
         } else if !is_ct {
+            debug_assert!(num_errors > 0);
             match self.first_error() {
                 None => panic!("we counted an error, but now can't find one"),
                 Some(PathResult::PathComplete) => panic!("first_error shouldn't return a PathComplete"),
                 Some(PathResult::Error { full_message, .. }) => {
+                    writeln!(f, "First error encountered:\n\n{}", full_message)?;
                     if let Some(filename) = &self.error_filename {
-                        writeln!(f, "All errors have been logged to {}", filename)?;
-                        writeln!(f, "  and the first error encountered is described below:\n\n{}", full_message)?;
-                    } else {
-                        writeln!(f, "First error encountered:\n\n{}", full_message)?;
+                        writeln!(f, "\nFull details of all errors have been logged to {}", filename)?;
                     }
                 },
             }
