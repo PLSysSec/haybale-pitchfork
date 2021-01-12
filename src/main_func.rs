@@ -44,6 +44,10 @@ fn usage() {
     println!("      be printed directly to stderr. You may redirect stderr if you still want");
     println!("      log messages recorded in a file.");
     println!();
+    println!("  --keep-going: Use `KeepGoing::Full` instead of `KeepGoing::StopPerPath` in");
+    println!("      the `PitchforkConfig`. For more information, see the docs on");
+    println!("      `PitchforkConfig`.");
+    println!();
     println!("  --prefix: instead of each non-option argument being a function name, it will");
     println!("      indicate a prefix, and all functions defined in the LLVM bitcode which");
     println!("      have names beginning with that prefix will be checked for constant-time");
@@ -144,6 +148,9 @@ pub fn main_func<F>(
             },
             "--no-progress-updates" => {
                 cmdlineoptions.pitchfork_config.progress_updates = false;
+            },
+            "--keep-going" => {
+                cmdlineoptions.pitchfork_config.keep_going = KeepGoing::Full;
             },
             "--prefix" => {
                 cmdlineoptions.prefix = true;
