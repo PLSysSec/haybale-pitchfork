@@ -11,16 +11,16 @@ keywords = ["constant-time", "symbolic", "llvm", "SMT"]
 license = "MIT"
 
 [dependencies]
-boolector = "0.4.1"
-haybale = "0.6.3"
-llvm-ir = "0.7.4"
+boolector = "0.4.2"
+haybale = "0.7.0"
+llvm-ir = "0.8.0"
 log = "0.4.8"
 lazy_static = "1.4"
 colored = "1.9"
-itertools = "0.9.0"
-either = "1.5.3"
+itertools = "0.10"
+either = "1.6"
 chrono = "0.4"
-env_logger = "0.7.1"
+env_logger = "0.8"
 log4rs = { version = "0.10.0", optional = true, default-features = false, features = ["file_appender", "simple_writer", "pattern_encoder", "threshold_filter"] }
 crossterm = { version = "0.16.0", optional = true }
 
@@ -32,6 +32,7 @@ default = ["progress-updates"]
 llvm-9 = ["haybale/llvm-9", "llvm-ir/llvm-9"]
 llvm-10 = ["haybale/llvm-10", "llvm-ir/llvm-10"]
 llvm-11 = ["haybale/llvm-11", "llvm-ir/llvm-11"]
+llvm-12 = ["haybale/llvm-12", "llvm-ir/llvm-12"]
 
 # These features select the corresponding LLVM version, and require an exact
 # match between the system LLVM version and the LLVM version chosen here. For
@@ -39,6 +40,27 @@ llvm-11 = ["haybale/llvm-11", "llvm-ir/llvm-11"]
 llvm-9-strict = ["llvm-9", "haybale/llvm-9-strict", "llvm-ir/llvm-9-strict"]
 llvm-10-strict = ["llvm-10", "haybale/llvm-10-strict", "llvm-ir/llvm-10-strict"]
 llvm-11-strict = ["llvm-11", "haybale/llvm-11-strict", "llvm-ir/llvm-11-strict"]
+llvm-12-strict = ["llvm-12", "haybale/llvm-12-strict", "llvm-ir/llvm-12-strict"]
+
+# If you enable this, Cargo will automatically download and build Boolector as
+# part of the build process.  If you don't enable this, Cargo will look for a
+# system install of Boolector as a shared library.
+vendor-boolector = ["haybale/vendor-boolector", "boolector/vendor-lgl"]
+
+###
+# For convenience, these automatically-enabled features allow us to avoid
+# checking complex combinations of features all the time. They are not meant to
+# be manually enabled; use the above llvm-x features instead
+llvm-9-or-greater = []
+llvm-10-or-greater = ["llvm-9-or-greater"]
+llvm-11-or-greater = ["llvm-10-or-greater"]
+llvm-12-or-greater = ["llvm-11-or-greater"]
+
+llvm-9-or-lower = ["llvm-10-or-lower"]
+llvm-10-or-lower = ["llvm-11-or-lower"]
+llvm-11-or-lower = ["llvm-12-or-lower"]
+llvm-12-or-lower = []
+###
 
 # This feature enables the `progress_updates` option in `PitchforkConfig`.
 # For more details, see the documentation of that option.

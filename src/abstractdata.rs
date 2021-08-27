@@ -1270,23 +1270,13 @@ impl AbstractValue {
 ///
 /// If the `Type` represents an array of a single element, returns `Some` with the element type.
 /// Otherwise, returns `None`.
-#[cfg(feature = "llvm-11")]
 pub(crate) fn array_of_one_element<'t>(ty: &'t Type) -> Option<&'t Type> {
-    if let Type::ArrayType { num_elements: 1, element_type } = ty {
-        Some(element_type)
-    } else if let Type::VectorType { num_elements: 1, scalable: false, element_type } = ty {
-        Some(element_type)
-    } else {
-        None
-    }
-}
-#[cfg(not(feature = "llvm-11"))]
-pub(crate) fn array_of_one_element<'t>(ty: &'t Type) -> Option<&'t Type> {
-    if let Type::ArrayType { num_elements: 1, element_type } = ty {
-        Some(element_type)
-    } else if let Type::VectorType { num_elements: 1, element_type } = ty {
-        Some(element_type)
-    } else {
-        None
+    match ty {
+        Type::ArrayType { num_elements: 1, element_type } => Some(element_type),
+        #[cfg(feature="llvm-10-or-lower")]
+        Type::VectorType { num_elements: 1, element_type } => Some(element_type),
+        #[cfg(feature="llvm-11-or-greater")]
+        Type::VectorType { num_elements: 1, scalable: false, element_type } => Some(element_type),
+        _ => None,
     }
 }

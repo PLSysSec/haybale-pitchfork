@@ -531,7 +531,7 @@ pub fn check_for_ct_violation<'p>(
     }
 
     info!("Checking function {:?} for ct violations", funcname);
-    let mut em: ExecutionManager<secret::Backend> = symex_function(funcname, project, config);
+    let mut em: ExecutionManager<secret::Backend> = symex_function(funcname, project, config, None).unwrap();
 
     info!("Allocating memory for function parameters");
     let params = em.state().cur_loc.func.parameters.iter();
@@ -613,12 +613,11 @@ pub fn check_for_ct_violation<'p>(
 }
 
 fn hook_uninitialized_function_pointer(
-    proj: &Project,
     state: &mut State<secret::Backend>,
     call: &dyn IsCall,
 ) -> Result<ReturnValue<secret::BV>> {
     info!("Function pointer is uninitialized; trying Pitchfork default hook");
-    default_hook::pitchfork_default_hook(proj, state, call)
+    default_hook::pitchfork_default_hook(state, call)
 }
 
 trait ProgressUpdater<B: Backend> {

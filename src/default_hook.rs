@@ -1,6 +1,6 @@
 use crate::secret;
 use either::Either;
-use haybale::{Error, Project, Result, ReturnValue, State};
+use haybale::{Error, Result, ReturnValue, State};
 use haybale::backend::BV;
 use haybale::function_hooks::IsCall;
 use llvm_ir::{Constant, Name, Operand, Type};
@@ -8,7 +8,6 @@ use llvm_ir::types::NamedStructDef;
 use log::info;
 
 pub fn pitchfork_default_hook(
-    proj: &Project,
     state: &mut State<secret::Backend>,
     call: &dyn IsCall,
 ) -> Result<ReturnValue<secret::BV>> {
@@ -30,7 +29,7 @@ pub fn pitchfork_default_hook(
     for (i, arg) in call.get_arguments().iter().map(|(arg, _)| arg).enumerate() {
         // if the arg is secret, or points to any secret data, then raise an error and require a manually-specified hook or LLVM definition
         let arg_bv = state.operand_to_bv(arg)?;
-        match is_or_points_to_secret(proj, state, &arg_bv, &state.type_of(arg))? {
+        match is_or_points_to_secret(state, &arg_bv, &state.type_of(arg))? {
             ArgumentKind::Secret => match called_funcname {
                 Some(funcname) => {
                     let demangled = state.demangle(funcname);
@@ -56,7 +55,7 @@ pub fn pitchfork_default_hook(
     }
 
     // if we get here, no secret data is being handled by this function, so we just default to generic_stub_hook
-    haybale::function_hooks::generic_stub_hook(proj, state, call)
+    haybale::function_hooks::generic_stub_hook(state, call)
 }
 
 #[derive(Clone, Debug)]
@@ -70,7 +69,7 @@ pub(crate) enum ArgumentKind {
 }
 
 /// Classifies the `bv` into an `ArgumentKind` - see notes on `ArgumentKind`
-pub(crate) fn is_or_points_to_secret(proj: &Project, state: &mut State<secret::Backend>, bv: &secret::BV, ty: &llvm_ir::Type) -> Result<ArgumentKind> {
+pub(crate) fn is_or_points_to_secret(state: &mut State<secret::Backend>, bv: &secret::BV, ty: &llvm_ir::Type) -> Result<ArgumentKind> {
     if bv.is_secret() {
         Ok(ArgumentKind::Secret)
     } else {
@@ -104,7 +103,7 @@ pub(crate) fn is_or_points_to_secret(proj: &Project, state: &mut State<secret::B
                         return Err(e);
                     },
                 };
-                let retval = is_or_points_to_secret(proj, state, &pointee, &**pointee_type);
+                let retval = is_or_points_to_secret(state, &pointee, &**pointee_type);
                 if need_pop {
                     state.solver.pop(1);
                 }
@@ -123,7 +122,7 @@ pub(crate) fn is_or_points_to_secret(proj: &Project, state: &mut State<secret::B
                     for i in 0 .. *num_elements {
                         let i = i as u32;
                         let element = bv.slice((i+1) * element_bits - 1, i * element_bits);
-                        match is_or_points_to_secret(proj, state, &element, &**element_type)? {
+                        match is_or_points_to_secret(state, &element, &**element_type)? {
                             ArgumentKind::Secret => return Ok(ArgumentKind::Secret),  // we're done, there's definitely a Secret
                             ArgumentKind::Unknown => retval = ArgumentKind::Unknown,  // keep going, maybe we'll find a Secret later
                             ArgumentKind::Public => {},  // leave in place the previous retval
@@ -144,7 +143,7 @@ pub(crate) fn is_or_points_to_secret(proj: &Project, state: &mut State<secret::B
                         // nothing to do.  An element of size 0 bits can't contain secret information, and we don't need to update the current offset
                     } else {
                         let element = bv.slice(offset_bits + element_bits - 1, offset_bits);
-                        match is_or_points_to_secret(proj, state, &element, element_ty)? {
+                        match is_or_points_to_secret(state, &element, element_ty)? {
                             ArgumentKind::Secret => return Ok(ArgumentKind::Secret),  // we're done, there's definitely a Secret
                             ArgumentKind::Unknown => retval = ArgumentKind::Unknown,  // keep going, maybe we'll find a Secret later
                             ArgumentKind::Public => {},  // leave in place the previous retval
@@ -156,9 +155,9 @@ pub(crate) fn is_or_points_to_secret(proj: &Project, state: &mut State<secret::B
                 Ok(retval)  // this will be Unknown if we ever encountered an Unknown, or Public if everything came back Public
             },
             Type::NamedStructType { name } => {
-                match proj.get_named_struct_def(name)? {
+                match state.proj.get_named_struct_def(name)? {
                     (NamedStructDef::Opaque, _) => Ok(ArgumentKind::Unknown),
-                    (NamedStructDef::Defined(ty), _) => is_or_points_to_secret(proj, state, bv, &ty),
+                    (NamedStructDef::Defined(ty), _) => is_or_points_to_secret(state, bv, &ty),
                 }
             },
             _ => Ok(ArgumentKind::Public),  // for any other type, the `is_secret()` check above was sufficient
