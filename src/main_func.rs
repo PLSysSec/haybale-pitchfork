@@ -176,9 +176,9 @@ fn process_nonoption_args<F>(
     if !cmdlineoptions.pitchfork_config.progress_updates || cfg!(not(feature = "progress-updates")) {
         use env_logger::Env;
         if cmdlineoptions.pitchfork_config.debug_logging {
-            env_logger::from_env(Env::default().default_filter_or("debug")).init();
+            env_logger::Builder::from_env(Env::default().default_filter_or("debug")).init();
         } else {
-            env_logger::from_env(Env::default().default_filter_or("info")).init();
+            env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
         }
     }
     let proj = get_project();

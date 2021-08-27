@@ -1185,7 +1185,7 @@ impl UnderspecifiedAbstractData {
                                 },
                                 NamedStructDef::Opaque => {
                                     ctx.error_backtrace();
-                                    panic!("Encountered infinite recursion in struct {:?}, which is opaque; this should be impossible");
+                                    panic!("Encountered infinite recursion in struct {:?}, which is opaque; this should be impossible", name);
                                 },
                             }
                         }
