@@ -162,7 +162,7 @@ impl<'a> fmt::Display for ConstantTimeResultForFunction<'a> {
                 Some(violation_message) => {
                     writeln!(f, "{} {}", self.funcname, "is not constant-time".red())?;
                     if let Some(filename) = &self.error_filename {
-                        writeln!(f, "All errors have been logged to {}", filename)?;
+                        writeln!(f, "All errors and violations have been logged to {}", filename)?;
                         writeln!(f, "  and the first constant-time violation is described below:\n\n{}", violation_message)?;
                     } else {
                         writeln!(f, "First constant-time violation encountered:\n\n{}", violation_message)?;
