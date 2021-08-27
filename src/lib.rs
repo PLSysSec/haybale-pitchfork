@@ -84,6 +84,13 @@ pub struct ConstantTimeResultForFunction<'a> {
     /// (In either case, all the detailed error messages are available in the
     /// `path_results` field above.)
     pub error_filename: Option<String>,
+    /// If we dumped detailed coverage stats, then this is the name of the file
+    /// that we dumped to.
+    /// Otherwise, if this is `None`, we did not dump the detailed coverage
+    /// stats.
+    /// (In either case, coverage stats are available in the `block_coverage`
+    /// field above.)
+    pub coverage_filename: Option<String>,
 }
 
 impl<'a> ConstantTimeResultForFunction<'a> {
@@ -134,27 +141,11 @@ impl<'a> fmt::Display for ConstantTimeResultForFunction<'a> {
         // is the function entirely verified (no CT violations or other errors)?
         let is_ct = self.path_results.len() == path_stats.num_ct_paths;
 
-        let show_coverage_stats = is_ct || match std::env::var("PITCHFORK_COVERAGE_STATS") {
-            Ok(val) if val == "1" => true,
-            _ => false,
-        };
-        if show_coverage_stats {
-            writeln!(f, "Coverage stats:\n")?;
-            let toplevel_coverage = self.block_coverage.get(self.mangled_funcname).unwrap();
-            writeln!(f, "  Block coverage of toplevel function ({}): {:.1}%", self.funcname, 100.0 * toplevel_coverage.percentage)?;
-            if toplevel_coverage.percentage < 1.0 {
-                writeln!(f, "  Missed blocks in toplevel function: {:?}", toplevel_coverage.missed_blocks.iter())?;
-            }
+        // if the function was entirely verified, show coverage stats here directly.
+        if is_ct {
+            write!(f, "{}", pretty_coverage_stats(&self.funcname, &self.mangled_funcname, &self.block_coverage)?)?;
             writeln!(f)?;
-            for (fname, coverage) in &self.block_coverage {
-                if fname != self.mangled_funcname {
-                    writeln!(f, "  Block coverage of {}: {:.1}%", fname, 100.0 * coverage.percentage)?;
-                }
-            }
-        } else {
-            writeln!(f, "(for detailed block-coverage stats, rerun with PITCHFORK_COVERAGE_STATS=1 environment variable.)")?;
         }
-        writeln!(f)?;
 
         if path_stats.num_ct_violations > 0 {
             match self.first_ct_violation() {
@@ -189,6 +180,29 @@ impl<'a> fmt::Display for ConstantTimeResultForFunction<'a> {
 
         Ok(())
     }
+}
+
+/// Get a formatted version of the coverage results as a `String`.
+///
+/// `funcname`, `mangled_funcname`: name of the top-level function, unmangled and mangled respectively
+///
+/// `block_coverage`: as appears in the `block_coverage` field of `FunctionResult`
+pub fn pretty_coverage_stats(funcname: &str, mangled_funcname: &str, block_coverage: &HashMap<String, BlockCoverage>) -> std::result::Result<String, std::fmt::Error> {
+    use std::fmt::Write;
+    let mut s = String::new();
+    writeln!(&mut s, "Coverage stats:\n")?;
+    let toplevel_coverage = block_coverage.get(mangled_funcname).unwrap();
+    writeln!(&mut s, "  Block coverage of toplevel function ({}): {:.1}%", funcname, 100.0 * toplevel_coverage.percentage)?;
+    if toplevel_coverage.percentage < 1.0 {
+        writeln!(&mut s, "  Missed blocks in toplevel function: {:?}", toplevel_coverage.missed_blocks.iter())?;
+    }
+    writeln!(&mut s)?;
+    for (fname, coverage) in block_coverage {
+        if fname != mangled_funcname {
+            writeln!(&mut s, "  Block coverage of {}: {:.1}%", fname, 100.0 * coverage.percentage)?;
+        }
+    }
+    Ok(s)
 }
 
 /// Checks whether a function is "constant-time" in its inputs. That is, does the
@@ -261,7 +275,7 @@ pub fn check_for_ct_violation<'p>(
         config.function_hooks.add_default_hook(&pitchfork_default_hook);
     }
 
-    let (log_filename, error_filename) = {
+    let (log_filename, error_filename, coverage_filename) = {
         use chrono::prelude::Local;
         let time = Local::now().format("%Y-%m-%d_%H:%M:%S").to_string();
         let dir = format!("logs/{}", funcname);
@@ -277,7 +291,13 @@ pub fn check_for_ct_violation<'p>(
         } else {
             None
         };
-        (log_filename, error_filename)
+        let coverage_filename = if pitchfork_config.dump_coverage_stats {
+            std::fs::create_dir_all(&dir).unwrap();
+            Some(format!("{}/coverage_{}.txt", dir, time))
+        } else {
+            None
+        };
+        (log_filename, error_filename, coverage_filename)
     };
 
     let mut progress_updater: Box<dyn ProgressUpdater<secret::Backend>> = if pitchfork_config.progress_updates {
@@ -364,6 +384,26 @@ pub fn check_for_ct_violation<'p>(
     let block_coverage = blocks_seen.full_coverage_stats();
     info!("Block coverage of toplevel function ({:?}): {:.1}%", funcname, 100.0 * block_coverage.get(mangled_funcname).unwrap().percentage);
 
+    if let Some(filename) = &coverage_filename {
+        debug!("Analysis finished. Dumping coverage stats to {}", filename);
+        use std::fs::File;
+        use std::io::Write;
+        use std::path::Path;
+        match File::create(&Path::new(filename)) {
+            Err(e) => warn!("Failed to open file {} to dump coverage stats: {}", filename, e),
+            Ok(mut file) => {
+                match pretty_coverage_stats(funcname, mangled_funcname, &block_coverage) {
+                    Err(e) => warn!("Failed to format coverage stats: {}", e),
+                    Ok(pretty_stats) => {
+                        write!(&mut file, "{}", pretty_stats)
+                            .unwrap_or_else(|e| warn!("Failed to dump coverage stats to {}: {}", filename, e));
+                        debug!("Done dumping coverage stats");
+                    }
+                }
+            }
+        }
+    }
+
     progress_updater.finalize();
 
     ConstantTimeResultForFunction {
@@ -372,6 +412,7 @@ pub fn check_for_ct_violation<'p>(
         path_results,
         block_coverage,
         error_filename,
+        coverage_filename,
     }
 }
 
