@@ -1,5 +1,8 @@
 # `pitchfork`: Verifying constant-time code with symbolic execution
 
+[![crates.io](https://img.shields.io/crates/v/haybale-pitchfork.svg)](https://crates.io/crates/haybale-pitchfork)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](https://raw.githubusercontent.com/PLSysSec/haybale-pitchfork/main/LICENSE)
+
 `pitchfork` is a tool for verifying that constant-time code is, indeed,
 constant-time.
 It can analyze code written in C/C++, Rust, or any other language which can
