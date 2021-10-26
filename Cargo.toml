@@ -1,6 +1,6 @@
 [package]
 name = "haybale-pitchfork"
-version = "0.4.0"
+version = "0.4.1"
 authors = ["Craig Disselkoen <craigdissel@gmail.com>"]
 edition = "2018"
 description = "Verifying constant-time code with symbolic execution"

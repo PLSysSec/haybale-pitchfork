@@ -43,7 +43,7 @@ the name `haybale-pitchfork`. You can add it as a dependency in your
 
 ```toml
 [dependencies]
-haybale-pitchfork = { version = "0.4.0", features = ["llvm-12"] }
+haybale-pitchfork = { version = "0.4.1", features = ["llvm-12"] }
 ```
 
 Currently, the supported LLVM versions are `llvm-9`, `llvm-10`, `llvm-11`, and
@@ -54,7 +54,7 @@ your code, you can use Cargo's [dependency renaming] feature:
 
 ```toml
 [dependencies]
-pitchfork = { package = "haybale-pitchfork", version = "0.4.0", features = ["llvm-12"] }
+pitchfork = { package = "haybale-pitchfork", version = "0.4.1", features = ["llvm-12"] }
 ```
 
 Because it is built on [`haybale`], `pitchfork` also depends (indirectly) on
@@ -514,12 +514,12 @@ etc, and then call `main_func()` in your own `main()`.
 [dependency renaming]: https://doc.rust-lang.org/cargo/reference/specifying-dependencies.html#renaming-dependencies-in-cargotoml
 [`llvm-sys`]: https://crates.io/crates/llvm-sys
 [`boolector-sys`]: https://crates.io/crates/boolector-sys
-[`Project` documentation]: https://docs.rs/haybale/0.6.1/haybale/project/struct.Project.html
-[`Project`]: https://docs.rs/haybale/0.6.1/haybale/project/struct.Project.html
-[`Config`]: https://docs.rs/haybale/0.6.1/haybale/config/struct.Config.html
-[`check_for_ct_violation_in_inputs()`]: https://docs.rs/haybale-pitchfork/0.4.0/haybale_pitchfork/fn.check_for_ct_violation_in_inputs.html
-[`check_for_ct_violation()`]: https://docs.rs/haybale-pitchfork/0.4.0/haybale_pitchfork/fn.check_for_ct_violation.html
-[`AbstractData`]: https://docs.rs/haybale-pitchfork/0.4.0/haybale_pitchfork/struct.AbstractData.html
-[`AbstractValue`]: https://docs.rs/haybale-pitchfork/0.4.0/haybale_pitchfork/enum.AbstractValue.html
-[`AbstractData::default()`]: https://docs.rs/haybale-pitchfork/0.4.0/haybale_pitchfork/struct.AbstractData.html#method.default
-[`main_func()`]: https://docs.rs/haybale-pitchfork/0.4.0/haybale_pitchfork/fn.main_func.html
+[`Project` documentation]: https://docs.rs/haybale/0.7.1/haybale/project/struct.Project.html
+[`Project`]: https://docs.rs/haybale/0.7.1/haybale/project/struct.Project.html
+[`Config`]: https://docs.rs/haybale/0.7.1/haybale/config/struct.Config.html
+[`check_for_ct_violation_in_inputs()`]: https://docs.rs/haybale-pitchfork/0.4.1/haybale_pitchfork/fn.check_for_ct_violation_in_inputs.html
+[`check_for_ct_violation()`]: https://docs.rs/haybale-pitchfork/0.4.1/haybale_pitchfork/fn.check_for_ct_violation.html
+[`AbstractData`]: https://docs.rs/haybale-pitchfork/0.4.1/haybale_pitchfork/struct.AbstractData.html
+[`AbstractValue`]: https://docs.rs/haybale-pitchfork/0.4.1/haybale_pitchfork/enum.AbstractValue.html
+[`AbstractData::default()`]: https://docs.rs/haybale-pitchfork/0.4.1/haybale_pitchfork/struct.AbstractData.html#method.default
+[`main_func()`]: https://docs.rs/haybale-pitchfork/0.4.1/haybale_pitchfork/fn.main_func.html
