@@ -4,7 +4,6 @@ use log::LevelFilter;
 use log4rs::append::file::FileAppender;
 use log4rs::config::{Appender, Config, Root};
 use log4rs::filter::threshold::ThresholdFilter;
-use std::error::Error;
 
 /// Returns `true` if initialization is successful, or `false` if the logger was
 /// already initialized (in which case this function does nothing, except
@@ -47,7 +46,7 @@ impl ProgressAppender {
 }
 
 impl log4rs::append::Append for ProgressAppender {
-    fn append(&self, record: &log::Record) -> Result<(), Box<dyn Error + Sync + Send>> {
+    fn append(&self, record: &log::Record) -> anyhow::Result<()> {
         crate::progress::process_log_message(record)
     }
 

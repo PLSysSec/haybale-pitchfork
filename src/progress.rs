@@ -529,7 +529,7 @@ impl<B: Backend> crate::ProgressUpdater<B> for MainThreadState {
         self.tx.send(ProgressMsg::PathCompleted(path_result.clone())).unwrap();
     }
 
-    fn process_log_message(&self, record: &log::Record) -> std::result::Result<(), Box<dyn std::error::Error + Sync + Send>> {
+    fn process_log_message(&self, record: &log::Record) -> anyhow::Result<()> {
         let mut formatted_msg = Vec::new();
         self.encoder.encode(&mut SimpleWriter(&mut formatted_msg), record)?;
         self.tx.send(ProgressMsg::LogMessage {
@@ -561,7 +561,7 @@ fn update_progress<B: Backend>(state: &State<B>) -> Result<()> {
     })
 }
 
-pub fn process_log_message(record: &log::Record) -> std::result::Result<(), Box<dyn std::error::Error + Sync + Send>> {
+pub fn process_log_message(record: &log::Record) -> anyhow::Result<()> {
     MAIN_THREAD_STATE.with(|mts| {
         let mut guard = mts.borrow_mut();
         let mts: &mut MainThreadState = guard.as_mut().expect("process_log_message: expected a MainThreadState to exist");
@@ -590,7 +590,7 @@ impl<B: Backend> crate::ProgressUpdater<B> for ProgressUpdater {
         <MainThreadState as crate::ProgressUpdater::<B>>::update_path_result(mts, path_result)
     }
 
-    fn process_log_message(&self, record: &log::Record) -> std::result::Result<(), Box<dyn std::error::Error + Sync + Send>> {
+    fn process_log_message(&self, record: &log::Record) -> anyhow::Result<()> {
         let guard = self.borrow();
         let mts: &MainThreadState = guard.as_ref().unwrap();
         <MainThreadState as crate::ProgressUpdater::<B>>::process_log_message(mts, record)

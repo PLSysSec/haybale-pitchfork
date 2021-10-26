@@ -427,7 +427,7 @@ fn hook_uninitialized_function_pointer(
 trait ProgressUpdater<B: Backend> {
     fn update_progress(&self, state: &State<B>) -> Result<()>;
     fn update_path_result(&self, path_result: &ConstantTimeResultForPath);
-    fn process_log_message(&self, record: &log::Record) -> std::result::Result<(), Box<dyn std::error::Error + Sync + Send>>;
+    fn process_log_message(&self, record: &log::Record) -> anyhow::Result<()>;
     fn finalize(&mut self);
 }
 
@@ -437,7 +437,7 @@ struct NullProgressUpdater { }
 impl<B: Backend> ProgressUpdater<B> for NullProgressUpdater {
     fn update_progress(&self, _state: &State<B>) -> Result<()> { Ok(()) }
     fn update_path_result(&self, _path_result: &ConstantTimeResultForPath) { }
-    fn process_log_message(&self, _record: &log::Record) -> std::result::Result<(), Box<dyn std::error::Error + Sync + Send>> { Ok(()) }
+    fn process_log_message(&self, _record: &log::Record) -> anyhow::Result<()> { Ok(()) }
     fn finalize(&mut self) { }
 }
 
